@@ -246,16 +246,16 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
         const fields = {
-            employee_name: [`${employee.firstName} ${employee.lastName}`, 'fullname', 'name', 'employee_name'],
-            date_filed: [format(new Date(leaveRequest.dateFiled), 'yyyy-MM-dd'), 'date_filed', 'datefiled', 'date_applied'],
-            department: [leaveRequest.department || '', 'department', 'dept', 'office'],
-            employee_id: [leaveRequest.idNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber'],
-            leave_dates: [`${format(new Date(leaveRequest.startDate), 'yyyy-MM-dd')} to ${format(new Date(leaveRequest.endDate), 'yyyy-MM-dd')}`, 'leave_dates', 'dates', 'period'],
-            total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose'],
-            contact_info: [leaveRequest.contactInfo || '', 'contact_info', 'contact', 'phone'],
-            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'yyyy-MM-dd') : '', 'approval_date', 'approvaldate', 'date_approved'],
-            manager_name: [manager ? `${manager.firstName} ${manager.lastName}` : '', 'manager_name', 'manager', 'supervisor', 'superior'],
+            employee_name: [`${employee.firstName} ${employee.lastName}`, 'fullname', 'name', 'employee_name', 'employee name'],
+            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'yyyy-MM-dd'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept'],
+            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no'],
+            leave_dates: [`${format(new Date(leaveRequest.startDate), 'yyyy-MM-dd')} to ${format(new Date(leaveRequest.endDate), 'yyyy-MM-dd')}`, 'leave_dates', 'dates', 'period', 'dates of leave applied for'],
+            total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days'],
+            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at'],
+            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'yyyy-MM-dd') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
+            manager_name: [manager ? `${manager.firstName} ${manager.lastName}` : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
         };
 
         // Fill Text Fields with variations
@@ -267,9 +267,19 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     field.setText(value);
                     fieldSet = true;
                     break;
-                } catch (e) {}
+                } catch (e) {
+                    // Try lowercase and uppercase versions
+                    try {
+                        form.getTextField(name.toLowerCase()).setText(value);
+                        fieldSet = true; break;
+                    } catch (e2) {}
+                    try {
+                        form.getTextField(name.toUpperCase()).setText(value);
+                        fieldSet = true; break;
+                    } catch (e3) {}
+                }
             }
-            if (!fieldSet) console.warn(`Could not find field for ${key} using variations: ${fieldNames.join(', ')}`);
+            if (!fieldSet) console.warn(`Could not find text field for ${key} using variations: ${fieldNames.join(', ')}`);
         }
         
         // Handle Leave Type Checkbox - try several variations
@@ -279,7 +289,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 leaveRequest.type.toUpperCase(), 
                 leaveRequest.type.toLowerCase(),
                 leaveRequest.type.replace(/\s+/g, '_').toLowerCase(),
-                leaveRequest.type.replace(/\s+/g, '').toLowerCase()
+                leaveRequest.type.replace(/\s+/g, '').toLowerCase(),
+                `chk_${leaveRequest.type.toLowerCase().replace(/\s+/g, '')}`
             ];
             
             let checked = false;
@@ -311,7 +322,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
             if (!checked) {
                 // Fallback to text field
-                const statusNames = ['approval_status', 'status', 'decision'];
+                const statusNames = ['approval_status', 'status', 'decision', 'official action'];
                 for (const name of statusNames) {
                     try {
                         form.getTextField(name).setText(leaveRequest.status.toUpperCase());
@@ -322,11 +333,12 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
 
-        // Handle signatures
-        const embedSignature = async (sigData: string | undefined, fieldName: string) => {
+        // Handle signatures - digital signatures are often "Button" fields in PDF forms acting as image placeholders
+        const embedSignature = async (sigData: string | undefined, fieldNames: string[]) => {
             if (!sigData) return;
+            let fieldSet = false;
+            
             try {
-                const signatureField = form.getButton(fieldName);
                 const sigBase64 = sigData.includes('base64,') ? sigData.split('base64,')[1] : sigData;
                 const buffer = Buffer.from(sigBase64, 'base64');
                 
@@ -336,14 +348,28 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 } else {
                     image = await pdfDoc.embedPng(buffer);
                 }
-                signatureField.setImage(image);
-            } catch (e) {
-                console.warn(`Could not set signature: ${fieldName} field missing or invalid.`);
+
+                for (const name of fieldNames) {
+                    try {
+                        const field = form.getButton(name);
+                        field.setImage(image);
+                        fieldSet = true;
+                        break;
+                    } catch (e) {
+                        // Try common naming variants for the button field
+                        try { form.getButton(name.toLowerCase()).setImage(image); fieldSet = true; break; } catch (e2) {}
+                        try { form.getButton(name.toUpperCase()).setImage(image); fieldSet = true; break; } catch (e3) {}
+                    }
+                }
+            } catch (sigErr) {
+                console.error("Signature processing error:", sigErr);
             }
+            
+            if (!fieldSet) console.warn(`Could not set signature using variations: ${fieldNames.join(', ')}`);
         };
 
-        await embedSignature(leaveRequest.employeeSignature, 'employee_signature');
-        await embedSignature(leaveRequest.managerSignature, 'manager_signature');
+        await embedSignature(leaveRequest.employeeSignature || employee.signature, ['employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
+        await embedSignature(leaveRequest.managerSignature || (manager?.signature), ['manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
 
         try {
             form.flatten(); // Make fields non-editable

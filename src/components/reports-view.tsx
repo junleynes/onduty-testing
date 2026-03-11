@@ -667,6 +667,17 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 ...leaveCounts
             ]);
         });
+
+        // Calculate Totals
+        const totals = new Array(headers.length - 1).fill(0);
+        rows.forEach(row => {
+            for (let i = 1; i < row.length; i++) {
+                totals[i - 1] += Number(row[i]) || 0;
+            }
+        });
+
+        const totalRow: (string | number)[] = ['TOTAL', ...totals.map((t, i) => i === 1 ? t.toFixed(2) : t)];
+        rows.push(totalRow);
         
         return { headers, rows };
     };
@@ -687,6 +698,10 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true };
+
+        // Bold the last row (TOTAL)
+        const lastRow = worksheet.getRow(data.rows.length + 1);
+        lastRow.font = { bold: true };
 
         const fileBuffer = await workbook.xlsx.writeBuffer();
         return Buffer.from(fileBuffer);

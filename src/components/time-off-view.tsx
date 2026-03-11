@@ -122,8 +122,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     setIsWorkExtensionDialogOpen(false);
   };
   
-  const handleManageRequest = (requestId: string, newStatus: 'approved' | 'rejected') => {
-    let updatedRequest: Leave | undefined;
+  const handleManageRequest = async (requestId: string, newStatus: 'approved' | 'rejected') => {
+    let finalUpdatedRequest: Leave | undefined;
 
     setLeaveRequests(prevLeaveRequests => {
         const newLeaveRequests = [...prevLeaveRequests];
@@ -133,7 +133,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         const originalRequest = newLeaveRequests[requestIndex];
         const leaveTypeDetails = leaveTypes.find(lt => lt.type === originalRequest.type);
 
-        updatedRequest = {
+        finalUpdatedRequest = {
             ...originalRequest,
             status: newStatus,
             managedBy: currentUser.id,
@@ -142,15 +142,15 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             color: leaveTypeDetails?.color || originalRequest.color
         };
 
-        if (newStatus === 'approved' && updatedRequest.type === 'Work Extension') {
-            updatedRequest.workExtensionStatus = 'not-claimed';
+        if (newStatus === 'approved' && finalUpdatedRequest.type === 'Work Extension') {
+            finalUpdatedRequest.workExtensionStatus = 'not-claimed';
         }
 
-        newLeaveRequests[requestIndex] = updatedRequest;
+        newLeaveRequests[requestIndex] = finalUpdatedRequest;
 
         // If it's an approved Offset, update the corresponding Work Extension
-        if (newStatus === 'approved' && updatedRequest.type === 'Offset' && updatedRequest.claimedWorkExtensionId) {
-            const weIndex = newLeaveRequests.findIndex(r => r.id === updatedRequest!.claimedWorkExtensionId);
+        if (newStatus === 'approved' && finalUpdatedRequest.type === 'Offset' && finalUpdatedRequest.claimedWorkExtensionId) {
+            const weIndex = newLeaveRequests.findIndex(r => r.id === finalUpdatedRequest!.claimedWorkExtensionId);
             if (weIndex > -1) {
                 newLeaveRequests[weIndex] = {
                     ...newLeaveRequests[weIndex],
@@ -159,15 +159,14 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             }
         }
         
-        // This must run after state update
-        if (newStatus === 'approved' && updatedRequest.type !== 'Work Extension') {
-            const leaveStart = startOfDay(new Date(updatedRequest!.startDate));
-            const leaveEnd = startOfDay(new Date(updatedRequest!.endDate));
+        if (newStatus === 'approved' && finalUpdatedRequest.type !== 'Work Extension') {
+            const leaveStart = startOfDay(new Date(finalUpdatedRequest!.startDate));
+            const leaveEnd = startOfDay(new Date(finalUpdatedRequest!.endDate));
             const leaveInterval = { start: leaveStart, end: leaveEnd };
             
             setShifts(prevShifts =>
                 prevShifts.filter(shift => {
-                    if (shift.employeeId !== updatedRequest!.employeeId) {
+                    if (shift.employeeId !== finalUpdatedRequest!.employeeId) {
                         return true;
                     }
                     const shiftDate = startOfDay(new Date(shift.date));
@@ -178,22 +177,19 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         return newLeaveRequests;
     });
 
-    // We need to wait for state to update to get the correct updatedRequest
-    setTimeout(async () => {
-        const finalUpdatedRequest = leaveRequests.find(r => r.id === requestId);
-        if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.type !== 'Work Extension' && finalUpdatedRequest.type !== 'Offset') {
-            toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
-            const result = await generateLeavePdf(finalUpdatedRequest);
-            if (result.success && result.pdfDataUri) {
-                setLeaveRequests(prev => prev.map(req => req.id === requestId ? { ...req, pdfDataUri: result.pdfDataUri } : req));
-                toast({ title: "PDF Generated", description: "The leave form has been created." });
-            } else {
-                toast({ variant: 'destructive', title: 'PDF Generation Failed', description: result.error });
-            }
+    // Use the locally constructed updated request object to avoid captured state issues
+    if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.type !== 'Work Extension' && finalUpdatedRequest.type !== 'Offset') {
+        toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
+        const result = await generateLeavePdf(finalUpdatedRequest);
+        if (result.success && result.pdfDataUri) {
+            setLeaveRequests(prev => prev.map(req => req.id === requestId ? { ...req, pdfDataUri: result.pdfDataUri } : req));
+            toast({ title: "PDF Generated", description: "The leave form has been created." });
         } else {
-            toast({ title: `Request ${newStatus}` });
+            toast({ variant: 'destructive', title: 'PDF Generation Failed', description: result.error });
         }
-    }, 100);
+    } else {
+        toast({ title: `Request ${newStatus}` });
+    }
   };
 
 

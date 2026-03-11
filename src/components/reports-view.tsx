@@ -114,6 +114,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     const [tardyDateRange, setTardyDateRange] = React.useState<DateRange | undefined>();
     const [wfhCertMonth, setWfhCertMonth] = React.useState<Date | undefined>();
     const [workExtensionWeek, setWorkExtensionWeek] = React.useState<Date | undefined>();
+    const [workExtensionRange, setWorkExtensionRange] = React.useState<DateRange | undefined>();
+    const [workExtensionSelectionMode, setWorkExtensionSelectionMode] = React.useState<'week' | 'range'>('week');
     const [overtimeDateRange, setOvertimeDateRange] = React.useState<DateRange | undefined>();
 
     // Settings states
@@ -154,11 +156,14 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     }, [attendanceWeek]);
 
     const workExtensionDateRange = React.useMemo(() => {
-        if (!workExtensionWeek) return undefined;
-        const start = startOfWeek(workExtensionWeek, { weekStartsOn: 1 });
-        const end = endOfWeek(workExtensionWeek, { weekStartsOn: 1 });
-        return { from: start, to: end };
-    }, [workExtensionWeek]);
+        if (workExtensionSelectionMode === 'week') {
+            if (!workExtensionWeek) return undefined;
+            const start = startOfWeek(workExtensionWeek, { weekStartsOn: 1 });
+            const end = endOfWeek(workExtensionWeek, { weekStartsOn: 1 });
+            return { from: start, to: end };
+        }
+        return workExtensionRange;
+    }, [workExtensionWeek, workExtensionRange, workExtensionSelectionMode]);
 
     const wfhCertDateRange = React.useMemo(() => {
         if (!wfhCertMonth) return undefined;
@@ -1022,7 +1027,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     // --- Work Extension Functions ---
     const generateWorkExtensionData = (): WorkExtensionRowData[] | null => {
          if (!workExtensionDateRange || !workExtensionDateRange.from || !workExtensionDateRange.to) {
-            toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a week for the report.' });
+            toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a covered period for the report.' });
             return null;
         }
 
@@ -1579,40 +1584,61 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         },
         workExtension: {
             label: "Work Extension Summary",
-            description: "Generate a summary of work extensions for the selected week.",
+            description: "Generate a summary of work extensions for the selected week or date range.",
             permissionKey: 'report-work-extension',
             isDateRequired: true,
             dateComponent: (
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="work-extension-date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !workExtensionDateRange && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {workExtensionDateRange?.from ? (
-                            <>
-                            {format(workExtensionDateRange.from, "LLL dd, y")} -{" "}
-                            {format(workExtensionDateRange.to, "LLL dd, y")}
-                            </>
+                <div className="flex flex-col gap-2">
+                    <Select value={workExtensionSelectionMode} onValueChange={(v) => setWorkExtensionSelectionMode(v as 'week' | 'range')}>
+                        <SelectTrigger className="w-[150px]">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="week">Weekly</SelectItem>
+                            <SelectItem value="range">Custom Range</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                        <Button
+                            id="work-extension-date"
+                            variant={"outline"}
+                            className={cn(
+                            "w-full sm:w-[300px] justify-start text-left font-normal",
+                            !workExtensionDateRange && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {workExtensionDateRange?.from ? (
+                                <>
+                                {format(workExtensionDateRange.from, "LLL dd, y")}
+                                {workExtensionDateRange.to && ` - ${format(workExtensionDateRange.to, "LLL dd, y")}`}
+                                </>
+                            ) : (
+                            <span>{workExtensionSelectionMode === 'week' ? 'Pick a week' : 'Pick a range'}</span>
+                            )}
+                        </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                        {workExtensionSelectionMode === 'week' ? (
+                            <Calendar
+                                initialFocus
+                                mode="single"
+                                selected={workExtensionWeek}
+                                onSelect={setWorkExtensionWeek}
+                            />
                         ) : (
-                        <span>Pick a week</span>
+                            <Calendar
+                                initialFocus
+                                mode="range"
+                                selected={workExtensionRange}
+                                onSelect={setWorkExtensionRange}
+                                numberOfMonths={2}
+                            />
                         )}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="single"
-                        selected={workExtensionWeek}
-                        onSelect={setWorkExtensionWeek}
-                    />
-                    </PopoverContent>
-                </Popover>
+                        </PopoverContent>
+                    </Popover>
+                </div>
             ),
             templateKey: 'workExtensionTemplate',
             openUploader: () => setIsWorkExtensionUploaderOpen(true),

@@ -14,7 +14,7 @@ import {
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from './ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 
 type AlafTemplateUploaderProps = {
@@ -81,15 +81,16 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
             Upload your Application for Leave of Absence Form (ALAF) in PDF format.
           </DialogDescription>
         </DialogHeader>
-        <Alert>
-            <AlertTitle className="font-bold text-primary">Critical: Signature Instructions</AlertTitle>
+        <Alert variant="destructive" className="bg-destructive/10">
+            <Info className="h-4 w-4" />
+            <AlertTitle className="font-bold">Important: Signature Requirement</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">To ensure signatures appear, your PDF must use <b>Button fields</b> (also called Push Buttons or Icon fields) as placeholders.</p>
+                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields will not work as they are reserved for encrypted certificates.</p>
                 <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><b>Signatures (Buttons):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
-                    <li><b>Text:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
-                    <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Vacation Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
+                    <li><b>Signatures (Place as Buttons):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                    <li><b>Text Fields:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
+                    <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Sick Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
                 </ul>
             </AlertDescription>
         </Alert>

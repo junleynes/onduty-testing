@@ -275,25 +275,21 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 }
                 if (fieldSet) break;
             }
-            if (!fieldSet) console.warn(`Could not find text field for ${key} using variations: ${fieldNames.join(', ')}`);
         }
         
         // Handle Leave Type Checkbox
         if (leaveRequest.type) {
             const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_]/g, '');
-            let checked = false;
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
                 if (currentFieldName === normalizedType || currentFieldName === `chk${normalizedType}`) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
-                        checked = true;
                         break;
                     } catch (e) {}
                 }
             }
-            if (!checked) console.warn(`Could not find checkbox for leave type: "${leaveRequest.type}"`);
         }
         
         // Handle Approval Status Checkbox
@@ -327,11 +323,11 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         // Handle signatures - we treat placeholders as "Button" fields
         const embedSignature = async (sigData: string | undefined, fieldNames: string[]) => {
-            if (!sigData) return;
+            if (!sigData || !sigData.includes('base64,')) return;
             let fieldSet = false;
             
             try {
-                const sigBase64 = sigData.includes('base64,') ? sigData.split('base64,')[1] : sigData;
+                const sigBase64 = sigData.split('base64,')[1];
                 const buffer = Buffer.from(sigBase64, 'base64');
                 
                 let image;
@@ -350,17 +346,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                             const button = form.getButton(field.getName());
                             button.setImage(image);
                             fieldSet = true;
-                        } catch (e) {
-                            console.warn(`Field ${field.getName()} matches signature name but is not a Button field. Image cannot be embedded.`);
-                        }
+                        } catch (e) {}
                     }
                     if (fieldSet) break;
                 }
             } catch (sigErr) {
                 console.error("Signature processing error:", sigErr);
             }
-            
-            if (!fieldSet) console.warn(`Could not set signature using variations: ${fieldNames.join(', ')}`);
         };
 
         await embedSignature(leaveRequest.employeeSignature || employee.signature, ['employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);

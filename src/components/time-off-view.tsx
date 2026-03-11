@@ -1,11 +1,10 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
 import type { Leave, Employee, LeaveRequestStatus, Shift } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { format, isSameDay, isWithinInterval, startOfDay, eachDayOfInterval } from 'date-fns';
@@ -44,6 +43,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const { toast } = useToast();
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
   const [isOffsetDialogOpen, setIsOffsetDialogOpen] = useState(false);
+  const [isWorkExtensionDialogOpen, setIsWorkExtensionDialogOpen] = useState(false);
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isPurging, startPurgeTransition] = useTransition();
   const [editingRequest, setEditingRequest] = useState<Partial<Leave> | null>(null);
@@ -52,14 +52,14 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
 
   const myRequests = useMemo(() => 
-    leaveRequests.filter(req => req.employeeId === currentUser.id && req.type !== 'Work Extension').sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
+    leaveRequests.filter(req => req.employeeId === currentUser.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
   [leaveRequests, currentUser.id]);
 
   const teamRequests = useMemo(() => 
     isManager 
       ? leaveRequests.filter(req => {
           const employee = employees.find(e => e.id === req.employeeId);
-          return employee?.group === currentUser.group && req.type !== 'Work Extension';
+          return employee?.group === currentUser.group;
         }).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
       : [],
   [leaveRequests, employees, currentUser.group, isManager]);
@@ -73,6 +73,11 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     setEditingRequest(null);
     setIsOffsetDialogOpen(true);
   };
+
+  const handleNewWorkExtensionRequest = () => {
+    setEditingRequest(null);
+    setIsWorkExtensionDialogOpen(true);
+  };
   
   const handleEditRequest = (request: Leave) => {
     if (request.status !== 'pending') {
@@ -82,6 +87,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     setEditingRequest(request);
     if (request.type === 'Offset') {
       setIsOffsetDialogOpen(true);
+    } else if (request.type === 'Work Extension') {
+      setIsWorkExtensionDialogOpen(true);
     } else {
       setIsRequestDialogOpen(true);
     }
@@ -105,13 +112,14 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         idNumber: currentUser.employeeNumber || '',
         contactInfo: currentUser.phone || '',
         employeeSignature: currentUser.signature,
-        color: leaveTypeDetails?.color || '#6b7280',
+        color: leaveTypeDetails?.color || (requestData.type === 'Work Extension' ? '#f39c12' : '#6b7280'),
       } as Leave;
       setLeaveRequests(prev => [newRequest, ...prev]);
       toast({ title: 'Request Submitted' });
     }
     setIsRequestDialogOpen(false);
     setIsOffsetDialogOpen(false);
+    setIsWorkExtensionDialogOpen(false);
   };
   
   const handleManageRequest = (requestId: string, newStatus: 'approved' | 'rejected') => {
@@ -133,6 +141,11 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             managerSignature: currentUser.signature,
             color: leaveTypeDetails?.color || originalRequest.color
         };
+
+        if (newStatus === 'approved' && updatedRequest.type === 'Work Extension') {
+            updatedRequest.workExtensionStatus = 'not-claimed';
+        }
+
         newLeaveRequests[requestIndex] = updatedRequest;
 
         // If it's an approved Offset, update the corresponding Work Extension
@@ -165,8 +178,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         return newLeaveRequests;
     });
 
-    // We need to wait for state to update to get the correct `updatedRequest`
-    // So we use a short timeout before PDF generation
+    // We need to wait for state to update to get the correct updatedRequest
     setTimeout(async () => {
         const finalUpdatedRequest = leaveRequests.find(r => r.id === requestId);
         if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.type !== 'Work Extension' && finalUpdatedRequest.type !== 'Offset') {
@@ -373,7 +385,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <CardTitle>Time Off Requests</CardTitle>
-            <CardDescription>Manage your leave requests and offsets.</CardDescription>
+            <CardDescription>Manage your leave requests, offsets, and work extensions.</CardDescription>
           </div>
            <div className="flex gap-2">
                 {isManager && (
@@ -418,6 +430,9 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                       </DropdownMenuItem>
                        <DropdownMenuItem onClick={handleNewOffsetRequest}>
                           Offset Request
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleNewWorkExtensionRequest}>
+                          Work Extension Request
                       </DropdownMenuItem>
                   </DropdownMenuContent>
               </DropdownMenu>
@@ -467,6 +482,14 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         request={editingRequest}
         currentUser={currentUser}
         allLeaveRequests={leaveRequests}
+      />
+
+      <WorkExtensionRequestDialog
+        isOpen={isWorkExtensionDialogOpen}
+        setIsOpen={setIsWorkExtensionDialogOpen}
+        onSave={handleSaveRequest}
+        request={editingRequest}
+        currentUser={currentUser}
       />
 
       {emailingRequest && (

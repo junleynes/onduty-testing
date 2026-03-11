@@ -74,39 +74,23 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent>
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Upload ALAF Template</DialogTitle>
            <DialogDescription>
-            Upload your Application for Leave of Absence Form (ALAF) in PDF format. The system will find and replace placeholders to fill in the data.
+            Upload your Application for Leave of Absence Form (ALAF) in PDF format.
           </DialogDescription>
         </DialogHeader>
         <Alert>
-            <AlertTitle>Template Instructions</AlertTitle>
+            <AlertTitle className="font-bold text-primary">Critical: Signature Instructions</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">Ensure your PDF form has fields with the following names. The system will automatically fill these fields.</p>
-                <p className="text-xs mt-2 font-semibold">Text Fields:</p>
+                <p className="text-xs mt-2">To ensure signatures appear, your PDF must use <b>Button fields</b> (also called Push Buttons or Icon fields) as placeholders.</p>
+                <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><code>employee_name</code></li>
-                    <li><code>date_filed</code></li>
-                    <li><code>department</code></li>
-                    <li><code>employee_id</code></li>
-                    <li><code>leave_dates</code></li>
-                    <li><code>total_days</code></li>
-                    <li><code>reason</code></li>
-                    <li><code>contact_info</code></li>
-                    <li><code>approval_date</code></li>
+                    <li><b>Signatures (Buttons):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                    <li><b>Text:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
+                    <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Vacation Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
                 </ul>
-                 <p className="text-xs mt-2 font-semibold">Checkbox Fields:</p>
-                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li>For leave types, create checkboxes where the name exactly matches the leave type defined in the system (e.g., "Vacation Leave", "Sick Leave").</li>
-                    <li>For approval status, create checkboxes named <code>approved</code> and <code>rejected</code>.</li>
-                 </ul>
-                 <p className="text-xs mt-2 font-semibold">Image Fields (for signatures):</p>
-                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><code>employee_signature</code></li>
-                    <li><code>manager_signature</code></li>
-                 </ul>
             </AlertDescription>
         </Alert>
 

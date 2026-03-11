@@ -259,69 +259,61 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         };
 
         // Fill Text Fields with variations
+        const allFormFields = form.getFields();
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
             let fieldSet = false;
-            for (const name of fieldNames) {
-                try {
-                    const field = form.getTextField(name);
-                    field.setText(value);
-                    fieldSet = true;
-                    break;
-                } catch (e) {
-                    // Try lowercase and uppercase versions
+            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
+            
+            for (const field of allFormFields) {
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                if (normalizedTargets.includes(currentFieldName)) {
                     try {
-                        form.getTextField(name.toLowerCase()).setText(value);
-                        fieldSet = true; break;
-                    } catch (e2) {}
-                    try {
-                        form.getTextField(name.toUpperCase()).setText(value);
-                        fieldSet = true; break;
-                    } catch (e3) {}
+                        const textField = form.getTextField(field.getName());
+                        textField.setText(value);
+                        fieldSet = true;
+                    } catch (e) {}
                 }
+                if (fieldSet) break;
             }
             if (!fieldSet) console.warn(`Could not find text field for ${key} using variations: ${fieldNames.join(', ')}`);
         }
         
-        // Handle Leave Type Checkbox - try several variations
+        // Handle Leave Type Checkbox
         if (leaveRequest.type) {
-            const typesToTry = [
-                leaveRequest.type, 
-                leaveRequest.type.toUpperCase(), 
-                leaveRequest.type.toLowerCase(),
-                leaveRequest.type.replace(/\s+/g, '_').toLowerCase(),
-                leaveRequest.type.replace(/\s+/g, '').toLowerCase(),
-                `chk_${leaveRequest.type.toLowerCase().replace(/\s+/g, '')}`
-            ];
-            
+            const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_]/g, '');
             let checked = false;
-            for (const t of typesToTry) {
-                try {
-                    const checkbox = form.getCheckBox(t);
-                    checkbox.check();
-                    checked = true;
-                    break;
-                } catch (e) {}
+            for (const field of allFormFields) {
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                if (currentFieldName === normalizedType || currentFieldName === `chk${normalizedType}`) {
+                    try {
+                        const checkbox = form.getCheckBox(field.getName());
+                        checkbox.check();
+                        checked = true;
+                        break;
+                    } catch (e) {}
+                }
             }
             if (!checked) console.warn(`Could not find checkbox for leave type: "${leaveRequest.type}"`);
         }
         
         // Handle Approval Status Checkbox
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
-            const statusKey = leaveRequest.status; // 'approved' or 'rejected'
-            const variations = [statusKey, statusKey.toUpperCase(), statusKey.charAt(0).toUpperCase() + statusKey.slice(1)];
-            
+            const statusKey = leaveRequest.status.toLowerCase();
             let checked = false;
-            for (const v of variations) {
-                try {
-                    const checkbox = form.getCheckBox(v);
-                    checkbox.check();
-                    checked = true;
-                    break;
-                } catch (e) {}
+            for (const field of allFormFields) {
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                if (currentFieldName === statusKey) {
+                    try {
+                        const checkbox = form.getCheckBox(field.getName());
+                        checkbox.check();
+                        checked = true;
+                        break;
+                    } catch (e) {}
+                }
             }
 
             if (!checked) {
-                // Fallback to text field
+                // Fallback to text field for status
                 const statusNames = ['approval_status', 'status', 'decision', 'official action'];
                 for (const name of statusNames) {
                     try {
@@ -333,7 +325,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
 
-        // Handle signatures - digital signatures are often "Button" fields in PDF forms acting as image placeholders
+        // Handle signatures - we treat placeholders as "Button" fields
         const embedSignature = async (sigData: string | undefined, fieldNames: string[]) => {
             if (!sigData) return;
             let fieldSet = false;
@@ -349,17 +341,20 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     image = await pdfDoc.embedPng(buffer);
                 }
 
-                for (const name of fieldNames) {
-                    try {
-                        const field = form.getButton(name);
-                        field.setImage(image);
-                        fieldSet = true;
-                        break;
-                    } catch (e) {
-                        // Try common naming variants for the button field
-                        try { form.getButton(name.toLowerCase()).setImage(image); fieldSet = true; break; } catch (e2) {}
-                        try { form.getButton(name.toUpperCase()).setImage(image); fieldSet = true; break; } catch (e3) {}
+                const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
+
+                for (const field of allFormFields) {
+                    const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                    if (normalizedTargets.includes(currentFieldName)) {
+                        try {
+                            const button = form.getButton(field.getName());
+                            button.setImage(image);
+                            fieldSet = true;
+                        } catch (e) {
+                            console.warn(`Field ${field.getName()} matches signature name but is not a Button field. Image cannot be embedded.`);
+                        }
                     }
+                    if (fieldSet) break;
                 }
             } catch (sigErr) {
                 console.error("Signature processing error:", sigErr);

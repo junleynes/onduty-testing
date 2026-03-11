@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
@@ -122,7 +121,7 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Claim Work Extension</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select an approved work extension..." />
@@ -132,11 +131,14 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                       {availableWorkExtensions.length > 0 ? (
                         availableWorkExtensions.map(we => (
                           <SelectItem key={we.id} value={we.id}>
-                            {format(new Date(we.startDate), 'MMM d, yyyy')} ({we.startTime}-{we.endTime})
+                            <div className="flex flex-col">
+                                <span className="font-medium">{format(new Date(we.startDate), 'MMM d, yyyy')} ({we.startTime}-{we.endTime})</span>
+                                <span className="text-xs text-muted-foreground line-clamp-1">{we.reason}</span>
+                            </div>
                           </SelectItem>
                         ))
                       ) : (
-                        <div className="p-4 text-sm text-muted-foreground text-center">No claimable work extensions found.</div>
+                        <div className="p-4 text-sm text-muted-foreground text-center italic">No claimable work extensions found.</div>
                       )}
                     </SelectContent>
                   </Select>

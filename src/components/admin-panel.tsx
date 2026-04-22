@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useTransition } from 'react';
@@ -10,18 +9,21 @@ import { getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu';
-import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail } from 'lucide-react';
+import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from './ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { sendActivationLink } from '@/app/actions';
+import Papa from 'papaparse';
+import { saveAs } from 'file-saver';
+import { format } from 'date-fns';
 
 type AdminPanelProps = {
   users: Employee[];
   setUsers: React.Dispatch<React.SetStateAction<Employee[]>>;
   groups: string[];
   onAddMember: () => void;
-  onEditMember: (employee: Employee) => void;
+  onEditMember: (employee: Employee, isPasswordReset?: boolean) => void;
   onDeleteMember: (employeeId: string) => void;
   onBatchDelete: (employeeIds: string[]) => void;
   onImportMembers: () => void;
@@ -77,6 +79,40 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
     });
   }
 
+  const handleExportCsv = () => {
+    const csvData = users.map(user => {
+        const manager = users.find(e => e.id === user.reportsTo);
+        return {
+            'First Name': user.firstName,
+            'Last Name': user.lastName,
+            'M.I.': user.middleInitial || '',
+            'Position': user.position || '',
+            'Group': user.group || '',
+            'Email': user.email,
+            'Phone': user.phone || '',
+            'ID Number': user.employeeNumber || '',
+            'Employee Number': user.personnelNumber || '',
+            'Role': user.role,
+            'Load Allocation': user.loadAllocation || 0,
+            'Show in Schedule': user.visibility?.schedule !== false,
+            'Show in On Duty': user.visibility?.onDuty !== false,
+            'Show in Org Chart': user.visibility?.orgChart !== false,
+            'Show in Mobile Load': user.visibility?.mobileLoad !== false,
+            'Reports To': manager ? getFullName(manager) : '',
+            'Gender': user.gender || '',
+            'Employee Classification': user.employeeClassification || '',
+            'Birth Date': user.birthDate ? format(new Date(user.birthDate), 'yyyy-MM-dd') : '',
+            'Start Date': user.startDate ? format(new Date(user.startDate), 'yyyy-MM-dd') : '',
+            'Last Promotion Date': user.lastPromotionDate ? format(new Date(user.lastPromotionDate), 'yyyy-MM-dd') : '',
+        };
+    });
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, `Users_Export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    toast({ title: 'Export Successful', description: 'User data has been exported to CSV.' });
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -112,6 +148,10 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
                     <Button variant="outline" onClick={onManageGroups}>
                         <Users className="h-4 w-4 mr-2" />
                         Manage Groups
+                    </Button>
+                    <Button variant="outline" onClick={handleExportCsv}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Export Users
                     </Button>
                     <Button variant="outline" onClick={onImportMembers}>
                         <Upload className="h-4 w-4 mr-2" />
@@ -156,7 +196,7 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
                 <TableCell>
                   <div className="flex items-center gap-4">
                     <Avatar>
-                      <AvatarImage src={user.avatar} data-ai-hint="profile avatar" />
+                      <AvatarImage src={user.avatar || undefined} data-ai-hint="profile avatar" />
                       <AvatarFallback style={{ backgroundColor: getBackgroundColor(getFullName(user)) }}>
                         {getInitials(getFullName(user))}
                       </AvatarFallback>

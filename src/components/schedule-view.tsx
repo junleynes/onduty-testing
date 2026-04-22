@@ -73,12 +73,10 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
   const [viewEmployeeOrder, setViewEmployeeOrder] = useState<string[] | null>(null);
 
   useEffect(() => {
-    // When the month changes, check for a saved order for that month.
     const monthKey = format(currentDate, 'yyyy-MM');
     if (monthlyEmployeeOrder[monthKey]) {
         setViewEmployeeOrder(monthlyEmployeeOrder[monthKey]);
     } else {
-        // If no order exists for the new month, reset to default (null will trigger alphabetical sort)
         setViewEmployeeOrder(null);
     }
   }, [currentDate, monthlyEmployeeOrder]);
@@ -182,10 +180,10 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
 
   const handleEditItemClick = (item: Shift | Leave) => {
     if (isReadOnly) return;
-    if ('label' in item) { // It's a shift
+    if ('label' in item) {
         setEditingShift(item);
         setIsShiftEditorOpen(true);
-    } else { // It's leave
+    } else {
         setEditingLeave(item);
         setIsLeaveEditorOpen(true);
     }
@@ -254,6 +252,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
       addNotification({ message: `Shift for ${employeeName} on ${format(deletedShift.date!, 'MMM d')} was deleted.` });
     }
     setShifts(shifts.filter(s => s.id !== shiftId));
+    setTasks(tasks.filter(t => t.shiftId !== shiftId));
     setIsShiftEditorOpen(false);
     setEditingShift(null);
     toast({ title: "Shift Deleted", variant: "destructive" });
@@ -304,39 +303,53 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
       setCurrentDate(newDate);
   }
   
-  // Action handlers
   const handleClearWeek = () => {
     if (isReadOnly) return;
+    const shiftIdsInView = new Set(shifts.filter(shift => displayedDays.some(day => isSameDay(new Date(shift.date), day))).map(s => s.id));
+    
     setShifts(shifts.filter(shift => !displayedDays.some(day => isSameDay(new Date(shift.date), day))));
     setLeave(leave.filter(l => {
         const startDate = new Date(l.startDate);
         const endDate = new Date(l.endDate || l.startDate);
         return !displayedDays.some(day => isWithinInterval(startOfDay(day), { start: startOfDay(startDate), end: startOfDay(endDate) }));
     }));
-    toast({ title: "Week Cleared", description: "All shifts and time off for the current week have been removed." });
+    setTasks(tasks.filter(t => !t.shiftId || !shiftIdsInView.has(t.shiftId)));
+    
+    toast({ title: "Week Cleared", description: "All shifts, tasks, and time off for the current week have been removed." });
   };
   
   const handleClearMonth = () => {
     if (isReadOnly) return;
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
+    
+    const shiftIdsInMonth = new Set(shifts.filter(shift => new Date(shift.date) >= monthStart && new Date(shift.date) <= monthEnd).map(s => s.id));
+    
     setShifts(shifts.filter(shift => new Date(shift.date) < monthStart || new Date(shift.date) > monthEnd));
     setLeave(leave.filter(l => !l.endDate || new Date(l.endDate) < monthStart || new Date(l.startDate) > monthEnd));
-    toast({ title: "Month Cleared", description: "All shifts and time off for the current month have been removed." });
+    setTasks(tasks.filter(t => !t.shiftId || !shiftIdsInMonth.has(t.shiftId)));
+
+    toast({ title: "Month Cleared", description: "All shifts, tasks, and time off for the current month have been removed." });
   };
 
   const handleClearYear = () => {
     if (isReadOnly) return;
     const currentYear = currentDate.getFullYear();
+    const shiftIdsInYear = new Set(shifts.filter(shift => new Date(shift.date).getFullYear() === currentYear).map(s => s.id));
+
     setShifts(shifts.filter(shift => new Date(shift.date).getFullYear() !== currentYear));
     setLeave(leave.filter(l => new Date(l.startDate).getFullYear() !== currentYear));
-    toast({ title: "Year Cleared", description: `All shifts and time off for ${currentYear} have been removed.` });
+    setTasks(tasks.filter(t => !t.shiftId || !shiftIdsInYear.has(t.shiftId)));
+
+    toast({ title: "Year Cleared", description: `All shifts, tasks, and time off for ${currentYear} have been removed.` });
   };
 
   const handleClearDraft = () => {
     if (isReadOnly) return;
+    const draftShiftIds = new Set(shifts.filter(shift => shift.status === 'draft').map(s => s.id));
     setShifts(shifts.filter(shift => shift.status !== 'draft'));
-    toast({ title: "Drafts Cleared", description: "All unpublished shifts have been removed." });
+    setTasks(tasks.filter(t => !t.shiftId || !draftShiftIds.has(t.shiftId)));
+    toast({ title: "Drafts Cleared", description: "All unpublished shifts and their tasks have been removed." });
   };
 
 
@@ -384,9 +397,9 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
     const shiftsInView = shifts.filter(shift => displayedDays.some(day => isSameDay(new Date(shift.date), day)));
     const template = shiftsInView.map(({ id, date, ...rest }) => ({
       ...rest,
-      dayOfWeek: new Date(date).getDay(), // 0 for Sunday, 1 for Monday, etc.
+      dayOfWeek: new Date(date).getDay(),
     }));
-    setWeekTemplate(template as any); // Type casting to avoid complex dayOfWeek type
+    setWeekTemplate(template as any);
     toast({ title: "Template Saved", description: "Current week's layout has been saved as a template." });
   };
 
@@ -397,7 +410,6 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
       return;
     }
     
-    // Clear current week before applying template
     const shiftsOutsideCurrentWeek = shifts.filter(shift => !displayedDays.some(day => isSameDay(new Date(shift.date), day)));
     
     const newShifts = weekTemplate.map((templateShift: any) => {
@@ -430,6 +442,10 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
       overwrittenCells.map(cell => `${cell.employeeId}-${format(cell.date, 'yyyy-MM-dd')}`)
     );
   
+    const shiftIdsBeingOverwritten = new Set(shifts.filter(s => 
+        s.employeeId && cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)
+    ).map(s => s.id));
+
     const remainingShifts = shifts.filter(s => 
         !s.employeeId || !cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)
     );
@@ -445,6 +461,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
 
     setShifts([...remainingShifts, ...shiftsWithStatus]);
     setLeave([...remainingLeave, ...importedLeave]);
+    setTasks(tasks.filter(t => !t.shiftId || !shiftIdsBeingOverwritten.has(t.shiftId)));
     
     setMonthlyEmployeeOrder(prev => ({
         ...prev,
@@ -472,10 +489,8 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
 
   const handleSaveDraft = () => {
     toast({ title: "Draft Saved", description: "Your schedule changes have been saved." });
-    // Data is already saved via useEffect, so this is just for user feedback.
   };
 
-  // Shift/Item Drag and Drop Handlers
   const handleShiftDragStart = (e: React.DragEvent<HTMLDivElement>, item: Shift | Leave) => {
     if (isReadOnly) return;
     e.dataTransfer.setData("itemId", item.id);
@@ -502,14 +517,13 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
        setLeave(prevLeave => 
         prevLeave.map(l =>
           l.id === itemId
-            ? { ...l, employeeId: targetEmployeeId!, startDate: targetDate, endDate: targetDate } // Drop becomes single day
+            ? { ...l, employeeId: targetEmployeeId!, startDate: targetDate, endDate: targetDate }
             : l
         )
       );
     }
   };
   
-  // Employee Row Drag and Drop Handlers
   const handleEmployeeDragStart = (e: React.DragEvent<HTMLDivElement>, employeeId: string) => {
     if (isReadOnly) return;
     e.dataTransfer.setData('draggedEmployeeId', employeeId);
@@ -567,7 +581,6 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
 
   const renderGridHeader = (days: Date[]) => (
      <div className="contents">
-         {/* Header Row */}
         <div className={cn("sticky top-0 left-0 z-30 p-2 bg-card border-b border-r flex items-center justify-center")}>
             <p className="font-semibold text-sm">Employees</p>
         </div>
@@ -585,7 +598,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
                     if (isNaN(start.getTime()) || isNaN(end.getTime())) return acc;
 
                     let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                    if (diff < 0) diff += 24; // Account for overnight shifts
+                    if (diff < 0) diff += 24;
                     
                     let breakHours = 0;
                     if (shift.isUnpaidBreak && shift.breakStartTime && shift.breakEndTime) {
@@ -696,11 +709,10 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         const leaveForDay = leave.filter(l => {
             if (l.employeeId !== employee.id) return false;
             if (!l.startDate || !l.endDate) return false;
-            // Normalize all dates to the start of the day for comparison
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));
             const leaveEnd = startOfDay(new Date(l.endDate));
-            if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) return false;
+            if (isNaN(leaveStart.getTime()) || iisNaN(leaveEnd.getTime())) return false;
             
             return isWithinInterval(checkDay, { start: leaveStart, end: leaveEnd });
         }).map(l => {
@@ -718,7 +730,6 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => handleEmployeeDrop(e, employee.id)}
         >
-        {/* Employee Cell */}
         <div className={cn("sticky left-0 z-20 py-1 px-2 border-b border-r flex items-center gap-3 min-h-[52px] bg-card group")}>
             {!isReadOnly && employee.id !== 'unassigned' && (
               <div draggable onDragStart={(e) => handleEmployeeDragStart(e, employee.id)} className="cursor-grab">
@@ -744,7 +755,6 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
             </div>
         </div>
 
-        {/* Day Cells for Shifts */}
         {days.map((day) => {
         const itemsForDay = getItemsForDay(day);
         return (

@@ -712,7 +712,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));
             const leaveEnd = startOfDay(new Date(l.endDate));
-            if (isNaN(leaveStart.getTime()) || iisNaN(leaveEnd.getTime())) return false;
+            if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) return false;
             
             return isWithinInterval(checkDay, { start: leaveStart, end: leaveEnd });
         }).map(l => {

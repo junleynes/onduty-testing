@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -8,15 +7,14 @@ import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { format, isSameDay, isWithinInterval, startOfDay, eachDayOfInterval } from 'date-fns';
-import { getFullName, getInitialState } from '@/lib/utils';
-import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4 } from 'lucide-react';
+import { getFullName, getInitialState, cn } from '@/lib/utils';
+import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter } from 'lucide-react';
 import { LeaveRequestDialog } from './leave-request-dialog';
-import { WorkExtensionRequestDialog } from './work-extension-request-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaveTypeOption } from './leave-type-editor';
-import { generateLeavePdf, generateOffsetPdf, sendEmail, purgeData } from '@/app/actions';
+import { generateLeavePdf, generateOffsetPdf, sendEmail } from '@/app/actions';
 import type { SmtpSettings } from '@/types';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
@@ -25,7 +23,7 @@ import { Textarea } from './ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { OffsetRequestDialog } from './offset-request-dialog';
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 type TimeOffViewProps = {
   leaveRequests: Leave[];
@@ -40,6 +38,9 @@ type TimeOffViewProps = {
   onUploadOffset: () => void;
 };
 
+type SortKey = 'employee' | 'type' | 'startDate' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings, onUploadAlaf, onUploadOffset }: TimeOffViewProps) {
   const { toast } = useToast();
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
@@ -49,20 +50,73 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const [editingRequest, setEditingRequest] = useState<Partial<Leave> | null>(null);
   const [emailingRequest, setEmailingRequest] = useState<Leave | null>(null);
 
+  // Sorting & Filtering state
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'startDate', direction: 'desc' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
 
+  const handleSort = (key: SortKey) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const applyFiltersAndSort = (requests: Leave[]) => {
+    return requests
+      .filter(req => {
+        const employee = employees.find(e => e.id === req.employeeId);
+        const nameMatch = getFullName(employee || {}).toLowerCase().includes(searchTerm.toLowerCase());
+        const statusMatch = statusFilter === 'all' || req.status === statusFilter;
+        const typeMatch = typeFilter === 'all' || req.type === typeFilter;
+        return nameMatch && statusMatch && typeMatch;
+      })
+      .sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortConfig.key) {
+          case 'employee':
+            aValue = getFullName(employees.find(e => e.id === a.employeeId) || {}).toLowerCase();
+            bValue = getFullName(employees.find(e => e.id === b.employeeId) || {}).toLowerCase();
+            break;
+          case 'type':
+            aValue = a.type.toLowerCase();
+            bValue = b.type.toLowerCase();
+            break;
+          case 'startDate':
+            aValue = new Date(a.startDate).getTime();
+            bValue = new Date(b.startDate).getTime();
+            break;
+          case 'status':
+            aValue = a.status.toLowerCase();
+            bValue = b.status.toLowerCase();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+  };
+
   const myRequests = useMemo(() => 
-    leaveRequests.filter(req => req.employeeId === currentUser.id && req.type !== 'Work Extension').sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
-  [leaveRequests, currentUser.id]);
+    applyFiltersAndSort(leaveRequests.filter(req => req.employeeId === currentUser.id && req.type !== 'Work Extension')),
+  [leaveRequests, currentUser.id, searchTerm, statusFilter, typeFilter, sortConfig, employees]);
 
   const teamRequests = useMemo(() => 
     isManager 
-      ? leaveRequests.filter(req => {
+      ? applyFiltersAndSort(leaveRequests.filter(req => {
           const employee = employees.find(e => e.id === req.employeeId);
           return employee?.group === currentUser.group && req.type !== 'Work Extension';
-        }).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+        }))
       : [],
-  [leaveRequests, employees, currentUser.group, isManager]);
+  [leaveRequests, employees, currentUser.group, isManager, searchTerm, statusFilter, typeFilter, sortConfig]);
   
   const handleNewTimeOffRequest = () => {
     setEditingRequest(null);
@@ -99,7 +153,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         status: 'pending',
         requestedAt: new Date(),
         ...requestData,
-        endDate: requestData.endDate || requestData.startDate, // Ensure endDate is set
+        endDate: requestData.endDate || requestData.startDate,
         dateFiled: new Date(),
         department: currentUser.group || '',
         idNumber: currentUser.employeeNumber || '',
@@ -136,7 +190,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
         newLeaveRequests[requestIndex] = finalUpdatedRequest;
 
-        // If it's an approved Offset, update the corresponding Work Extension
         if (newStatus === 'approved' && finalUpdatedRequest.type === 'Offset' && finalUpdatedRequest.claimedWorkExtensionId) {
             const weIndex = newLeaveRequests.findIndex(r => r.id === finalUpdatedRequest!.claimedWorkExtensionId);
             if (weIndex > -1) {
@@ -199,15 +252,31 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
   const handleClearAllRequests = () => {
     startPurgeTransition(async () => {
-        // Soft clear: filter out non-work extension requests
         const currentWorkExtensions = leaveRequests.filter(l => l.type === 'Work Extension');
         setLeaveRequests(currentWorkExtensions);
         toast({ title: 'Standard Requests Cleared', variant: 'destructive', description: 'All time off requests (excluding extensions) have been permanently deleted.' });
     });
   }
   
-  const RequestList = ({ requests, forManagerView = false }: { requests: Leave[], forManagerView?: boolean }) => {
+  const SortableHeader = ({ tKey, children }: { tKey: SortKey, children: React.ReactNode }) => {
+    const isSorted = sortConfig.key === tKey;
+    const isAsc = sortConfig.direction === 'asc';
+    return (
+      <TableHead>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="-ml-3 h-8 data-[state=open]:bg-accent" 
+          onClick={() => handleSort(tKey)}
+        >
+          {children}
+          <ArrowUpDown className={cn("ml-2 h-4 w-4", !isSorted && "opacity-20", isSorted && isAsc && "transform rotate-180")} />
+        </Button>
+      </TableHead>
+    );
+  };
 
+  const RequestList = ({ requests, forManagerView = false }: { requests: Leave[], forManagerView?: boolean }) => {
     const renderActions = (req: Leave) => {
         const employee = employees.find(e => e.id === req.employeeId);
         if (forManagerView) {
@@ -228,7 +297,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-        } else { // Not manager view
+        } else {
             if (req.status === 'pending') {
                 return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
             }
@@ -304,7 +373,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-        } else { // Not manager view
+        } else {
             if (req.status === 'pending') {
                 return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
             }
@@ -325,11 +394,11 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
          <Table>
             <TableHeader>
                 <TableRow>
-                {forManagerView && <TableHead>Employee</TableHead>}
-                <TableHead>Type</TableHead>
-                <TableHead>Dates</TableHead>
+                {forManagerView && <SortableHeader tKey="employee">Employee</SortableHeader>}
+                <SortableHeader tKey="type">Type</SortableHeader>
+                <SortableHeader tKey="startDate">Dates</SortableHeader>
                 <TableHead>Reason</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableHeader tKey="status">Status</SortableHeader>
                 <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
             </TableHeader>
@@ -434,10 +503,50 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
            </div>
         </CardHeader>
         <CardContent>
+            {/* Filter Bar */}
+            <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search team members..." 
+                  className="pl-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2 w-full md:w-auto">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <Filter className="h-4 w-4 mr-2 opacity-50" />
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <Type className="h-4 w-4 mr-2 opacity-50" />
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {leaveTypes.map(lt => (
+                      <SelectItem key={lt.type} value={lt.type}>{lt.type}</SelectItem>
+                    ))}
+                    <SelectItem value="Offset">Offset</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <Tabs defaultValue={isManager ? "team-requests" : "my-requests"} className="w-full">
-                <TabsList>
-                    <TabsTrigger value="my-requests">My Requests</TabsTrigger>
-                    {isManager && <TabsTrigger value="team-requests">Team Requests</TabsTrigger>}
+                <TabsList className="mb-4">
+                    <TabsTrigger value="my-requests">My Requests ({myRequests.length})</TabsTrigger>
+                    {isManager && <TabsTrigger value="team-requests">Team Requests ({teamRequests.length})</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="my-requests">
                     {myRequests.length > 0 ? (
@@ -445,7 +554,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                            <RequestTable requests={myRequests} />
                            <RequestList requests={myRequests} />
                         </>
-                     ) : <p className="text-center text-muted-foreground p-8">You haven't made any requests yet.</p>}
+                     ) : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">No matching requests found.</p>}
                 </TabsContent>
                 {isManager && (
                     <TabsContent value="team-requests">
@@ -454,7 +563,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                                 <RequestTable requests={teamRequests} forManagerView />
                                 <RequestList requests={teamRequests} forManagerView />
                             </>
-                        ) : <p className="text-center text-muted-foreground p-8">Your team members haven't made any requests yet.</p>}
+                        ) : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">No matching team requests found.</p>}
                     </TabsContent>
                 )}
             </Tabs>

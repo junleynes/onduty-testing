@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -865,11 +864,6 @@ function AppContent() {
         setIsOpen={setIsImporterOpen}
         onImport={handleImportMembers}
         employees={employees}
-    />
-    <ProjectDataImporter
-        isOpen={isProjectImporterOpen}
-        setIsOpen={setIsProjectImporterOpen}
-        onImport={handleImportProjectData}
     />
     <GroupEditor
         isOpen={isGroupEditorOpen}

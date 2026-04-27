@@ -50,7 +50,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const [editingRequest, setEditingRequest] = useState<Partial<Leave> | null>(null);
   const [emailingRequest, setEmailingRequest] = useState<Leave | null>(null);
 
-  // Sorting & Filtering state
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'startDate', direction: 'desc' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -71,7 +70,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         const employee = employees.find(e => e.id === req.employeeId);
         const nameMatch = getFullName(employee || {}).toLowerCase().includes(searchTerm.toLowerCase());
         const statusMatch = statusFilter === 'all' || req.status === statusFilter;
-        // Updated: Case-insensitive type matching
         const typeMatch = typeFilter === 'all' || req.type.toLowerCase() === typeFilter.toLowerCase();
         return nameMatch && statusMatch && typeMatch;
       })
@@ -119,18 +117,14 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       : [],
   [leaveRequests, employees, currentUser.group, isManager, searchTerm, statusFilter, typeFilter, sortConfig]);
   
-  // Calculate unique leave types for the filter list with consistent casing
   const uniqueTypesForFilter = useMemo(() => {
     const types = new Set<string>();
-    // Start with defined types
     leaveTypes.forEach(lt => types.add(lt.type.toUpperCase()));
-    // Add any types from requests that might not be in definitions (e.g. from imports)
     leaveRequests.forEach(req => {
       if (req.type && req.type !== 'Work Extension') {
         types.add(req.type.toUpperCase());
       }
     });
-    // Add Offset explicitly as it's a core feature
     types.add('OFFSET');
     return Array.from(types).sort();
   }, [leaveTypes, leaveRequests]);
@@ -159,10 +153,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   }
 
   const handleSaveRequest = (requestData: Partial<Leave>) => {
-    if (editingRequest?.id) { // Editing
+    if (editingRequest?.id) { 
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
-    } else { // Creating
+    } else { 
       const leaveTypeDetails = leaveTypes.find(lt => lt.type.toLowerCase() === requestData.type?.toLowerCase());
       const newRequest: Leave = {
         id: uuidv4(),
@@ -251,7 +245,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         toast({ title: `Request ${newStatus}` });
     }
   };
-
 
   const handleDownloadPdf = (pdfDataUri: string, employeeName: string) => {
     const link = document.createElement('a');
@@ -520,7 +513,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
            </div>
         </CardHeader>
         <CardContent>
-            {/* Filter Bar */}
             <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
               <div className="relative flex-1 w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -630,6 +622,7 @@ function EmailDialog({ isOpen, setIsOpen, leaveRequest, smtpSettings, employees 
     const requester = employees.find(e => e.id === leaveRequest.employeeId);
     const manager = employees.find(e => e.id === leaveRequest.managedBy);
 
+    const [recipientName, setRecipientName] = useState('');
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
@@ -637,13 +630,16 @@ function EmailDialog({ isOpen, setIsOpen, leaveRequest, smtpSettings, employees 
     const { toast } = useToast();
 
     React.useEffect(() => {
-        if (isOpen && requester && manager) {
+        if (isOpen && requester) {
+            const initialRecipientName = manager ? getFullName(manager) : '';
+            const initialTo = manager ? manager.email : '';
+            
             const startDate = format(new Date(leaveRequest.startDate), 'MMM d, yyyy');
             const endDate = format(new Date(leaveRequest.endDate), 'MMM d, yyyy');
             const duration = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDate : `From ${startDate} to ${endDate}`;
 
             const newSubject = `Leave Request - ${getFullName(requester)}`;
-            const newBody = `Dear ${getFullName(manager)},
+            const newBody = `Dear ${initialRecipientName || 'Recipient'},
 
 Please find attached the leave application form of ${getFullName(requester)}.
 
@@ -656,7 +652,8 @@ Details:
 Thank you,  
 Onduty Admin`;
             
-            setTo(manager.email);
+            setRecipientName(initialRecipientName);
+            setTo(initialTo);
             setSubject(newSubject);
             setBody(newBody);
         }
@@ -690,17 +687,47 @@ Onduty Admin`;
         });
     };
 
+    // Helper to update body when name changes
+    const updateBodyName = (newName: string) => {
+        setRecipientName(newName);
+        setBody(prev => {
+            const lines = prev.split('\n');
+            if (lines.length > 0 && lines[0].startsWith('Dear ')) {
+                lines[0] = `Dear ${newName || 'Recipient'},`;
+                return lines.join('\n');
+            }
+            return prev;
+        });
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>Send Leave Form</DialogTitle>
                     <DialogDescription>The approved ALAF will be sent as a PDF attachment.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="recipientEmail">Recipient Email</Label>
-                        <Input id="recipientEmail" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recipient@example.com" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="recipientName">Recipient Name</Label>
+                            <Input 
+                                id="recipientName" 
+                                value={recipientName} 
+                                onChange={(e) => updateBodyName(e.target.value)} 
+                                placeholder="e.g. John Doe" 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="recipientEmail">Recipient Email</Label>
+                            <Input 
+                                id="recipientEmail" 
+                                type="email" 
+                                value={to} 
+                                onChange={(e) => setTo(e.target.value)} 
+                                placeholder="recipient@example.com" 
+                            />
+                        </div>
                     </div>
                      <div className="space-y-2">
                         <Label>Subject</Label>
@@ -708,7 +735,7 @@ Onduty Admin`;
                     </div>
                     <div className="space-y-2">
                         <Label>Body</Label>
-                        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} />
+                        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} />
                     </div>
                 </div>
                 <DialogFooter>

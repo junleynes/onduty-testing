@@ -84,10 +84,10 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
             <Info className="h-4 w-4" />
             <AlertTitle className="font-bold">Important: Signature Requirement</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields or static images will not work.</p>
+                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Image fields</b> or <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" tools in PDF editors are for digital certificates and will not work.</p>
                 <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><b>Signatures (Place as Buttons):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                    <li><b>Signatures (Place as Image/Button):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
                     <li><b>Text Fields:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
                     <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Sick Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
                 </ul>

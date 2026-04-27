@@ -82,10 +82,10 @@ export function OffsetTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
             <Info className="h-4 w-4" />
             <AlertTitle className="font-bold">Digital Signature Requirement</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields or "Image" fields will not allow dynamic placement.</p>
+                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Image fields</b> or <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields in your editor will not allow the system to insert your signature picture.</p>
                 <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><b>Signatures (Buttons):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                    <li><b>Signatures (Image/Button):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
                     <li><b>Basic Details:</b> <code>employee_name</code>, <code>date_filed</code>, <code>department</code></li>
                     <li><b>Request Details:</b> <code>offset_dates</code>, <code>total_days</code>, <code>reason</code></li>
                     <li><b>Claimed Work Ext:</b> <code>work_extension_date</code>, <code>work_extension_hours</code></li>

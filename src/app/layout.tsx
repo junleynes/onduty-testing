@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   title: 'OnDuty',
   description: 'Modern Duty Scheduling',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({

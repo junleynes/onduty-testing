@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -46,9 +44,8 @@ import { PermissionsEditor } from '@/components/permissions-editor';
 import DangerZoneView from '@/components/danger-zone-view';
 import DashboardView from '@/components/dashboard-view';
 import FaqView from '@/components/faq-view';
-import NewsFeedsView from '@/components/news-feeds-view';
-import ChatView from '@/components/chat-view';
 import { AlafTemplateUploader } from '@/components/alaf-template-uploader';
+import { OffsetTemplateUploader } from '@/components/offset-template-uploader';
 import WorkExtensionsView from '@/components/work-extensions-view';
 
 
@@ -96,6 +93,7 @@ function AppContent() {
   const [isNoteEditorOpen, setIsNoteEditorOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Partial<Note> | null>(null);
   const [isAlafUploaderOpen, setIsAlafUploaderOpen] = useState(false);
+  const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = useState(false);
 
 
   const { notifications, setNotifications, addNotification, addNotificationForUser } = useNotifications();
@@ -738,6 +736,7 @@ function AppContent() {
                   leaveTypes={leaveTypes}
                   smtpSettings={smtpSettings}
                   onUploadAlaf={() => setIsAlafUploaderOpen(true)}
+                  onUploadOffset={() => setIsOffsetUploaderOpen(true)}
                />;
         case 'work-extensions':
         return <WorkExtensionsView
@@ -909,6 +908,11 @@ function AppContent() {
         isOpen={isAlafUploaderOpen}
         setIsOpen={setIsAlafUploaderOpen}
         onTemplateUpload={(data) => setTemplates(prev => ({...prev, alafTemplate: data}))}
+    />
+    <OffsetTemplateUploader
+        isOpen={isOffsetUploaderOpen}
+        setIsOpen={setIsOffsetUploaderOpen}
+        onTemplateUpload={(data) => setTemplates(prev => ({...prev, offsetTemplate: data}))}
     />
     </>
   );

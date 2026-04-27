@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -37,9 +36,10 @@ type TimeOffViewProps = {
   leaveTypes: LeaveTypeOption[];
   smtpSettings: SmtpSettings;
   onUploadAlaf: () => void;
+  onUploadOffset: () => void;
 };
 
-export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings, onUploadAlaf }: TimeOffViewProps) {
+export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings, onUploadAlaf, onUploadOffset }: TimeOffViewProps) {
   const { toast } = useToast();
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
   const [isOffsetDialogOpen, setIsOffsetDialogOpen] = useState(false);
@@ -409,10 +409,25 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </AlertDialog>
                 )}
                 {isManager && (
-                    <Button variant="outline" onClick={onUploadAlaf}>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload ALAF Template
-                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline">
+                                <Settings className="h-4 w-4 mr-2" />
+                                Manage Templates
+                                <ChevronsUpDown className="h-4 w-4 ml-2" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={onUploadAlaf}>
+                                <Upload className="h-4 w-4 mr-2" />
+                                ALAF Template (Leave Form)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={onUploadOffset}>
+                                <Upload className="h-4 w-4 mr-2" />
+                                Offset Request Template
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 )}
                <DropdownMenu>
                   <DropdownMenuTrigger asChild>

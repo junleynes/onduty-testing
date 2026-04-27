@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -28,8 +27,6 @@ import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { OvertimeTemplateUploader } from './overtime-template-uploader';
-import { AlafTemplateUploader } from './alaf-template-uploader';
-import { OffsetTemplateUploader } from './offset-template-uploader';
 import { sendEmail } from '@/app/actions';
 import { Textarea } from './ui/textarea';
 
@@ -50,7 +47,7 @@ type ReportsViewProps = {
     smtpSettings: SmtpSettings;
 }
 
-type ReportType = 'workSchedule' | 'attendance' | 'userSummary' | 'tardy' | 'wfh' | 'workExtension' | 'overtime' | 'alaf' | 'offset';
+type ReportType = 'workSchedule' | 'attendance' | 'userSummary' | 'tardy' | 'wfh' | 'workExtension' | 'overtime';
 
 type ReportData = {
     headers: string[];
@@ -137,8 +134,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = React.useState(false);
     const [isOvertimeSettingsOpen, setIsOvertimeSettingsOpen] = React.useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
-    const [isAlafUploaderOpen, setIsAlafUploaderOpen] = React.useState(false);
-    const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = React.useState(false);
     const [isEmailDialogOpen, setIsEmailDialogOpen] = React.useState(false);
     
     // Preview states
@@ -844,8 +839,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
                     let breakHours = 0;
                     if (dayData.shift.isUnpaidBreak && dayData.shift.breakStartTime && dayData.shift.breakEndTime) {
-                        const breakStart = parse(dayData.shift.breakStartTime, 'HH:mm', new Date());
-                        const breakEnd = parse(dayData.shift.breakEndTime, 'HH:mm', new Date());
+                        const breakStart = parse(shift.breakStartTime, 'HH:mm', new Date());
+                        const breakEnd = parse(shift.breakEndTime, 'HH:mm', new Date());
                         if (!isNaN(breakStart.getTime()) || !isNaN(breakEnd.getTime())) {
                            let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
                             if (breakDiff < 0) breakDiff += 24;
@@ -1821,29 +1816,11 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             ),
             templateKey: 'wfhCertificationTemplate',
             openUploader: () => setIsWfhCertUploaderOpen(true),
-        },
-        alaf: {
-            label: "ALAF (Leave Form) Template",
-            description: "Upload and manage the PDF template for the Application for Leave of Absence Form.",
-            permissionKey: 'report-alaf',
-            isDateRequired: false,
-            dateComponent: <></>,
-            templateKey: 'alafTemplate',
-            openUploader: () => setIsAlafUploaderOpen(true),
-        },
-        offset: {
-            label: "Offset Request Template",
-            description: "Upload and manage the PDF template for Offset Requests.",
-            permissionKey: 'report-offset',
-            isDateRequired: false,
-            dateComponent: <></>,
-            templateKey: 'offsetTemplate',
-            openUploader: () => setIsOffsetUploaderOpen(true),
         }
     };
     
     const availableReports = Object.entries(reportConfig)
-        .filter(([, config]) => userPermissions.includes(config.permissionKey) || (config.permissionKey as string) === 'report-alaf' || (config.permissionKey as string) === 'report-offset') 
+        .filter(([, config]) => userPermissions.includes(config.permissionKey)) 
         .map(([key]) => key as ReportType);
 
     const currentReport = reportConfig[selectedReportType];
@@ -1957,22 +1934,20 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                                 {currentReport.settingsComponent}
                             </div>
                         </div>
-                        {selectedReportType !== 'alaf' && selectedReportType !== 'offset' && (
-                            <div className="pt-6 flex flex-wrap gap-2">
-                                <Button onClick={() => handleViewReport(selectedReportType)} disabled={currentReport.isDateRequired && !isDateFilled()}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    View Report
-                                </Button>
-                                <Button onClick={() => handleEmailReport()} disabled={isDownloadDisabled}>
-                                    <Send className="mr-2 h-4 w-4" />
-                                    Send Email
-                                </Button>
-                                <Button onClick={() => reportGenerator && reportGenerator()} disabled={isDownloadDisabled}>
-                                    <Download className="mr-2 h-4 w-4" />
-                                    Generate & Download
-                                </Button>
-                            </div>
-                        )}
+                        <div className="pt-6 flex flex-wrap gap-2">
+                            <Button onClick={() => handleViewReport(selectedReportType)} disabled={currentReport.isDateRequired && !isDateFilled()}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Report
+                            </Button>
+                            <Button onClick={() => handleEmailReport()} disabled={isDownloadDisabled}>
+                                <Send className="mr-2 h-4 w-4" />
+                                Send Email
+                            </Button>
+                            <Button onClick={() => reportGenerator && reportGenerator()} disabled={isDownloadDisabled}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Generate & Download
+                            </Button>
+                        </div>
                     </Card>
                 </CardContent>
             </Card>
@@ -2001,21 +1976,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 setIsOpen={setIsTardyImporterOpen}
                 onImport={setTardyRecords}
                 employees={employees}
-            />
-            <OvertimeTemplateUploader 
-                isOpen={isOvertimeUploaderOpen}
-                setIsOpen={setIsOvertimeUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, overtimeTemplate: data}))}
-            />
-             <AlafTemplateUploader 
-                isOpen={isAlafUploaderOpen}
-                setIsOpen={setIsAlafUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, alafTemplate: data}))}
-            />
-            <OffsetTemplateUploader
-                isOpen={isOffsetUploaderOpen}
-                setIsOpen={setIsOffsetUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, offsetTemplate: data}))}
             />
             <Dialog open={isOvertimeSettingsOpen} onOpenChange={setIsOvertimeSettingsOpen}>
                 <DialogContent>

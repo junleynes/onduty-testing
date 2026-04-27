@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -85,7 +84,7 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
             <Info className="h-4 w-4" />
             <AlertTitle className="font-bold">Important: Signature Requirement</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields will not work as they are reserved for encrypted certificates.</p>
+                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields or static images will not work.</p>
                 <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Signatures (Place as Buttons):</b> <code>employee_signature</code>, <code>manager_signature</code></li>

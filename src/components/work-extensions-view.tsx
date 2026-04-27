@@ -1,11 +1,10 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
 import type { Leave, Employee } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { format, isSameDay, addDays } from 'date-fns';

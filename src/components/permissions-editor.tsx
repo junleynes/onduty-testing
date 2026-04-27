@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -19,6 +18,7 @@ const ALL_FEATURES: { key: NavItemKey; label: string, group: string }[] = [
   { key: 'schedule', label: 'Schedule', group: 'Main Views' },
   { key: 'onduty', label: 'On Duty', group: 'Main Views' },
   { key: 'time-off', label: 'Time Off', group: 'Main Views' },
+  { key: 'work-extensions', label: 'Work Extensions', group: 'Main Views' },
   { key: 'allowance', label: 'Mobile Load', group: 'Main Views' },
   { key: 'task-manager', label: 'Task Manager', group: 'Main Views' },
   { key: 'team', label: 'Team', group: 'Main Views' },

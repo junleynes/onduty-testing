@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -43,7 +44,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const { toast } = useToast();
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
   const [isOffsetDialogOpen, setIsOffsetDialogOpen] = useState(false);
-  const [isWorkExtensionDialogOpen, setIsWorkExtensionDialogOpen] = useState(false);
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isPurging, startPurgeTransition] = useTransition();
   const [editingRequest, setEditingRequest] = useState<Partial<Leave> | null>(null);
@@ -52,14 +52,14 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
 
   const myRequests = useMemo(() => 
-    leaveRequests.filter(req => req.employeeId === currentUser.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
+    leaveRequests.filter(req => req.employeeId === currentUser.id && req.type !== 'Work Extension').sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
   [leaveRequests, currentUser.id]);
 
   const teamRequests = useMemo(() => 
     isManager 
       ? leaveRequests.filter(req => {
           const employee = employees.find(e => e.id === req.employeeId);
-          return employee?.group === currentUser.group;
+          return employee?.group === currentUser.group && req.type !== 'Work Extension';
         }).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
       : [],
   [leaveRequests, employees, currentUser.group, isManager]);
@@ -73,11 +73,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     setEditingRequest(null);
     setIsOffsetDialogOpen(true);
   };
-
-  const handleNewWorkExtensionRequest = () => {
-    setEditingRequest(null);
-    setIsWorkExtensionDialogOpen(true);
-  };
   
   const handleEditRequest = (request: Leave) => {
     if (request.status !== 'pending') {
@@ -87,8 +82,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     setEditingRequest(request);
     if (request.type === 'Offset') {
       setIsOffsetDialogOpen(true);
-    } else if (request.type === 'Work Extension') {
-      setIsWorkExtensionDialogOpen(true);
     } else {
       setIsRequestDialogOpen(true);
     }
@@ -99,7 +92,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
     } else { // Creating
-      const leaveTypeDetails = requestData.type !== 'Work Extension' ? leaveTypes.find(lt => lt.type === requestData.type) : undefined;
+      const leaveTypeDetails = leaveTypes.find(lt => lt.type === requestData.type);
       const newRequest: Leave = {
         id: uuidv4(),
         employeeId: currentUser.id,
@@ -112,14 +105,13 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         idNumber: currentUser.employeeNumber || '',
         contactInfo: currentUser.phone || '',
         employeeSignature: currentUser.signature,
-        color: leaveTypeDetails?.color || (requestData.type === 'Work Extension' ? '#f39c12' : '#6b7280'),
+        color: leaveTypeDetails?.color || '#6b7280',
       } as Leave;
       setLeaveRequests(prev => [newRequest, ...prev]);
       toast({ title: 'Request Submitted' });
     }
     setIsRequestDialogOpen(false);
     setIsOffsetDialogOpen(false);
-    setIsWorkExtensionDialogOpen(false);
   };
   
   const handleManageRequest = async (requestId: string, newStatus: 'approved' | 'rejected') => {
@@ -142,10 +134,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             color: leaveTypeDetails?.color || originalRequest.color
         };
 
-        if (newStatus === 'approved' && finalUpdatedRequest.type === 'Work Extension') {
-            finalUpdatedRequest.workExtensionStatus = 'not-claimed';
-        }
-
         newLeaveRequests[requestIndex] = finalUpdatedRequest;
 
         // If it's an approved Offset, update the corresponding Work Extension
@@ -159,7 +147,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             }
         }
         
-        if (newStatus === 'approved' && finalUpdatedRequest.type !== 'Work Extension') {
+        if (newStatus === 'approved') {
             const leaveStart = startOfDay(new Date(finalUpdatedRequest!.startDate));
             const leaveEnd = startOfDay(new Date(finalUpdatedRequest!.endDate));
             const leaveInterval = { start: leaveStart, end: leaveEnd };
@@ -177,7 +165,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         return newLeaveRequests;
     });
 
-    if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.type !== 'Work Extension') {
+    if (newStatus === 'approved' && finalUpdatedRequest) {
         toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
         
         const generatorAction = finalUpdatedRequest.type === 'Offset' ? generateOffsetPdf : generateLeavePdf;
@@ -211,13 +199,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
   const handleClearAllRequests = () => {
     startPurgeTransition(async () => {
-        const result = await purgeData('leave');
-        if (result.success) {
-            setLeaveRequests([]);
-            toast({ title: 'All Requests Cleared', variant: 'destructive', description: 'All time off requests have been permanently deleted.' });
-        } else {
-            toast({ title: 'Clear Failed', description: result.error, variant: 'destructive' });
-        }
+        // Soft clear: filter out non-work extension requests
+        const currentWorkExtensions = leaveRequests.filter(l => l.type === 'Work Extension');
+        setLeaveRequests(currentWorkExtensions);
+        toast({ title: 'Standard Requests Cleared', variant: 'destructive', description: 'All time off requests (excluding extensions) have been permanently deleted.' });
     });
   }
   
@@ -234,7 +219,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension') {
+            if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end flex-wrap">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
@@ -247,7 +232,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.status === 'pending') {
                 return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension') {
+            if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
@@ -310,7 +295,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension') {
+            if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
@@ -323,7 +308,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.status === 'pending') {
                 return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension') {
+            if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
@@ -383,7 +368,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <CardTitle>Time Off Requests</CardTitle>
-            <CardDescription>Manage your leave requests, offsets, and work extensions.</CardDescription>
+            <CardDescription>Manage your leave requests and offsets.</CardDescription>
           </div>
            <div className="flex gap-2">
                 {isManager && (
@@ -398,7 +383,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                             <AlertDialogHeader>
                             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                This action will permanently delete all time off requests for your team. This cannot be undone.
+                                This action will permanently delete all standard time off requests for your team. This cannot be undone.
                             </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -443,9 +428,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                       </DropdownMenuItem>
                        <DropdownMenuItem onClick={handleNewOffsetRequest}>
                           Offset Request
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleNewWorkExtensionRequest}>
-                          Work Extension Request
                       </DropdownMenuItem>
                   </DropdownMenuContent>
               </DropdownMenu>
@@ -495,14 +477,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         request={editingRequest}
         currentUser={currentUser}
         allLeaveRequests={leaveRequests}
-      />
-
-      <WorkExtensionRequestDialog
-        isOpen={isWorkExtensionDialogOpen}
-        setIsOpen={setIsWorkExtensionDialogOpen}
-        onSave={handleSaveRequest}
-        request={editingRequest}
-        currentUser={currentUser}
       />
 
       {emailingRequest && (

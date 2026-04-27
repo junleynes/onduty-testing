@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaveTypeOption } from './leave-type-editor';
-import { generateLeavePdf, sendEmail, purgeData } from '@/app/actions';
+import { generateLeavePdf, generateOffsetPdf, sendEmail, purgeData } from '@/app/actions';
 import type { SmtpSettings } from '@/types';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
@@ -177,13 +177,15 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         return newLeaveRequests;
     });
 
-    // Use the locally constructed updated request object to avoid captured state issues
-    if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.type !== 'Work Extension' && finalUpdatedRequest.type !== 'Offset') {
+    if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.type !== 'Work Extension') {
         toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
-        const result = await generateLeavePdf(finalUpdatedRequest);
+        
+        const generatorAction = finalUpdatedRequest.type === 'Offset' ? generateOffsetPdf : generateLeavePdf;
+        const result = await generatorAction(finalUpdatedRequest);
+        
         if (result.success && result.pdfDataUri) {
             setLeaveRequests(prev => prev.map(req => req.id === requestId ? { ...req, pdfDataUri: result.pdfDataUri } : req));
-            toast({ title: "PDF Generated", description: "The leave form has been created." });
+            toast({ title: "PDF Generated", description: "The form has been created." });
         } else {
             toast({ variant: 'destructive', title: 'PDF Generation Failed', description: result.error });
         }
@@ -232,7 +234,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension' && req.type !== 'Offset') {
+            if (req.pdfDataUri && req.type !== 'Work Extension') {
                 return (
                     <div className="flex gap-2 justify-end flex-wrap">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
@@ -245,7 +247,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.status === 'pending') {
                 return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension' && req.type !== 'Offset') {
+            if (req.pdfDataUri && req.type !== 'Work Extension') {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
@@ -308,7 +310,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension' && req.type !== 'Offset') {
+            if (req.pdfDataUri && req.type !== 'Work Extension') {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
@@ -321,7 +323,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.status === 'pending') {
                 return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
             }
-            if (req.pdfDataUri && req.type !== 'Work Extension' && req.type !== 'Offset') {
+            if (req.pdfDataUri && req.type !== 'Work Extension') {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>

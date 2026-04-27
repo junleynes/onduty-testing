@@ -1,5 +1,4 @@
 
-
 export type UserRole = 'admin' | 'manager' | 'member';
 
 export type AppVisibility = {
@@ -157,10 +156,9 @@ export type NavItemKey =
   | 'team' | 'org-chart' | 'celebrations' | 'holidays'
   | 'faq'
   | 'reports'
-  | 'report-work-schedule' | 'report-attendance' | 'report-user-summary' | 'report-tardy' | 'report-wfh' | 'report-work-extension' | 'report-overtime' | 'report-alaf'
+  | 'report-work-schedule' | 'report-attendance' | 'report-user-summary' | 'report-tardy' | 'report-wfh' | 'report-work-extension' | 'report-overtime' | 'report-alaf' | 'report-offset'
   | 'admin' | 'smtp-settings' | 'permissions' | 'danger-zone';
 
 export type RolePermissions = {
   [key in UserRole]: NavItemKey[];
 };
-    

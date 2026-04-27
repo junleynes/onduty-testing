@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -28,6 +29,7 @@ import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { OvertimeTemplateUploader } from './overtime-template-uploader';
 import { AlafTemplateUploader } from './alaf-template-uploader';
+import { OffsetTemplateUploader } from './offset-template-uploader';
 import { sendEmail } from '@/app/actions';
 import { Textarea } from './ui/textarea';
 
@@ -48,7 +50,7 @@ type ReportsViewProps = {
     smtpSettings: SmtpSettings;
 }
 
-type ReportType = 'workSchedule' | 'attendance' | 'userSummary' | 'tardy' | 'wfh' | 'workExtension' | 'overtime' | 'alaf';
+type ReportType = 'workSchedule' | 'attendance' | 'userSummary' | 'tardy' | 'wfh' | 'workExtension' | 'overtime' | 'alaf' | 'offset';
 
 type ReportData = {
     headers: string[];
@@ -136,6 +138,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     const [isOvertimeSettingsOpen, setIsOvertimeSettingsOpen] = React.useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
     const [isAlafUploaderOpen, setIsAlafUploaderOpen] = React.useState(false);
+    const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = React.useState(false);
     const [isEmailDialogOpen, setIsEmailDialogOpen] = React.useState(false);
     
     // Preview states
@@ -1827,11 +1830,20 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             dateComponent: <></>,
             templateKey: 'alafTemplate',
             openUploader: () => setIsAlafUploaderOpen(true),
+        },
+        offset: {
+            label: "Offset Request Template",
+            description: "Upload and manage the PDF template for Offset Requests.",
+            permissionKey: 'report-offset',
+            isDateRequired: false,
+            dateComponent: <></>,
+            templateKey: 'offsetTemplate',
+            openUploader: () => setIsOffsetUploaderOpen(true),
         }
     };
     
     const availableReports = Object.entries(reportConfig)
-        .filter(([, config]) => userPermissions.includes(config.permissionKey) || (config.permissionKey as string) === 'report-alaf' ) // Admins can always see ALAF
+        .filter(([, config]) => userPermissions.includes(config.permissionKey) || (config.permissionKey as string) === 'report-alaf' || (config.permissionKey as string) === 'report-offset') 
         .map(([key]) => key as ReportType);
 
     const currentReport = reportConfig[selectedReportType];
@@ -1945,7 +1957,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                                 {currentReport.settingsComponent}
                             </div>
                         </div>
-                        {selectedReportType !== 'alaf' && (
+                        {selectedReportType !== 'alaf' && selectedReportType !== 'offset' && (
                             <div className="pt-6 flex flex-wrap gap-2">
                                 <Button onClick={() => handleViewReport(selectedReportType)} disabled={currentReport.isDateRequired && !isDateFilled()}>
                                     <Eye className="mr-2 h-4 w-4" />
@@ -1999,6 +2011,11 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 isOpen={isAlafUploaderOpen}
                 setIsOpen={setIsAlafUploaderOpen}
                 onTemplateUpload={(data) => setTemplates(prev => ({...prev, alafTemplate: data}))}
+            />
+            <OffsetTemplateUploader
+                isOpen={isOffsetUploaderOpen}
+                setIsOpen={setIsOffsetUploaderOpen}
+                onTemplateUpload={(data) => setTemplates(prev => ({...prev, offsetTemplate: data}))}
             />
             <Dialog open={isOvertimeSettingsOpen} onOpenChange={setIsOvertimeSettingsOpen}>
                 <DialogContent>

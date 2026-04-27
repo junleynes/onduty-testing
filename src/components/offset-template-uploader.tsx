@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -80,16 +81,19 @@ export function OffsetTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
         </DialogHeader>
         <Alert variant="destructive" className="bg-destructive/10">
             <Info className="h-4 w-4" />
-            <AlertTitle className="font-bold">Digital Signature Requirement</AlertTitle>
+            <AlertTitle className="font-bold">Digital Signature Requirements</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Image fields</b> or <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" fields in your editor will not allow the system to insert your signature picture.</p>
-                <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
-                <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><b>Signatures (Image/Button):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
-                    <li><b>Basic Details:</b> <code>employee_name</code>, <code>date_filed</code>, <code>department</code></li>
-                    <li><b>Request Details:</b> <code>offset_dates</code>, <code>total_days</code>, <code>reason</code></li>
-                    <li><b>Claimed Work Ext:</b> <code>work_extension_date</code>, <code>work_extension_hours</code></li>
-                </ul>
+                <div className="text-xs mt-2 space-y-2">
+                    <p>1. <b>Field Type:</b> Your PDF <b>MUST</b> use <b>"Push Button"</b> or <b>"Image"</b> tools for signatures. Standard "Signature" tools (digital certificates) will NOT allow image insertion.</p>
+                    <p>2. <b>Image Format:</b> Your signature picture should be a <b>PNG</b> (best) or <b>JPG</b>.</p>
+                    <p className="font-semibold underline">Required Field Names (Fuzzy matched):</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                        <li><b>Signatures (Push Button/Image):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                        <li><b>Basic Details:</b> <code>employee_name</code>, <code>date_filed</code>, <code>department</code></li>
+                        <li><b>Request Details:</b> <code>offset_dates</code>, <code>total_days</code>, <code>reason</code></li>
+                        <li><b>Claimed Work Ext:</b> <code>work_extension_date</code>, <code>work_extension_hours</code></li>
+                    </ul>
+                </div>
             </AlertDescription>
         </Alert>
 

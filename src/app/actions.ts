@@ -234,8 +234,11 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
         let image;
         if (sigData.includes('image/jpeg') || sigData.includes('image/jpg')) {
             image = await pdfDoc.embedJpg(buffer);
-        } else {
+        } else if (sigData.includes('image/png')) {
             image = await pdfDoc.embedPng(buffer);
+        } else {
+            // Fallback to PNG if type is ambiguous
+            try { image = await pdfDoc.embedPng(buffer); } catch (e) { return; }
         }
 
         const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
@@ -246,7 +249,9 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
                 try {
                     const button = form.getButton(field.getName());
                     button.setImage(image);
-                } catch (e) {}
+                } catch (e) {
+                    console.warn(`Field ${field.getName()} matched signature target but is not a Push Button field.`);
+                }
             }
         }
     } catch (sigErr) {

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -82,15 +83,18 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
         </DialogHeader>
         <Alert variant="destructive" className="bg-destructive/10">
             <Info className="h-4 w-4" />
-            <AlertTitle className="font-bold">Important: Signature Requirement</AlertTitle>
+            <AlertTitle className="font-bold">Digital Signature Requirements</AlertTitle>
             <AlertDescription>
-                <p className="text-xs mt-2">To display digital signatures, your PDF <b>MUST</b> use <b>Image fields</b> or <b>Button fields</b> (Push Buttons) as placeholders. Standard "Signature" tools in PDF editors are for digital certificates and will not work.</p>
-                <p className="text-xs mt-2 font-semibold underline">Required Field Names (Fuzzy matched):</p>
-                <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
-                    <li><b>Signatures (Place as Image/Button):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
-                    <li><b>Text Fields:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
-                    <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Sick Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
-                </ul>
+                <div className="text-xs mt-2 space-y-2">
+                    <p>1. <b>Field Type:</b> For signature spots, your PDF <b>MUST</b> use <b>"Push Button"</b> or <b>"Image"</b> tools. Standard "Signature" tools for digital certificates will NOT work.</p>
+                    <p>2. <b>Image Format:</b> Signatures should be uploaded as <b>PNG</b> (preferred for transparency) or <b>JPG</b> files.</p>
+                    <p className="font-semibold underline">Required Field Names (Fuzzy matched):</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                        <li><b>Signatures (Push Button/Image):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                        <li><b>Text Fields:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
+                        <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Sick Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
+                    </ul>
+                </div>
             </AlertDescription>
         </Alert>
 

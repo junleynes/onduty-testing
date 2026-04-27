@@ -23,7 +23,7 @@ import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { cn, getInitialState } from '@/lib/utils';
-import { format, addDays } from 'date-fns';
+import { format, addDays, startOfDay } from 'date-fns';
 
 const requestSchema = z.object({
   claimedWorkExtensionId: z.string().min(1, { message: 'You must select a work extension to claim.'}),
@@ -46,7 +46,7 @@ type OffsetRequestDialogProps = {
 };
 
 export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, currentUser, allLeaveRequests }: OffsetRequestDialogProps) {
-  const expiryDays = getInitialState('workExtensionExpiryDays', 30);
+  const expiryDays = Number(getInitialState('workExtensionExpiryDays', 30));
   
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
@@ -54,14 +54,20 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
   });
   
   const availableWorkExtensions = useMemo(() => {
-    return allLeaveRequests.filter(l => 
-        l.employeeId === currentUser.id &&
-        l.type === 'Work Extension' &&
-        l.status === 'approved' &&
-        l.workExtensionStatus === 'not-claimed' &&
-        l.managedAt &&
-        new Date() <= addDays(new Date(l.managedAt), expiryDays)
-    );
+    return allLeaveRequests.filter(l => {
+        const isMine = l.employeeId === currentUser.id;
+        const isWorkExtension = l.type === 'Work Extension';
+        const isApproved = l.status === 'approved';
+        // Assume not-claimed if the status field is missing (for newly approved items or legacy items)
+        const isNotClaimed = !l.workExtensionStatus || l.workExtensionStatus === 'not-claimed';
+        
+        if (!isMine || !isWorkExtension || !isApproved || !isNotClaimed || !l.managedAt) {
+            return false;
+        }
+
+        const expiryDate = addDays(new Date(l.managedAt), expiryDays);
+        return startOfDay(new Date()) <= startOfDay(expiryDate);
+    });
   }, [allLeaveRequests, currentUser.id, expiryDays]);
 
 

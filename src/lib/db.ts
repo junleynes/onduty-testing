@@ -62,6 +62,8 @@ function initializeDatabase() {
         { name: 'employeeSignature', type: 'TEXT' },
         { name: 'managerSignature', type: 'TEXT' },
         { name: 'pdfDataUri', type: 'TEXT' },
+        { name: 'workExtensionStatus', type: 'TEXT' },
+        { name: 'claimedWorkExtensionId', type: 'TEXT' },
     ];
     
     leaveColumns.forEach(col => {

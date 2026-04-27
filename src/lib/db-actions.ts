@@ -1,3 +1,4 @@
+
 'use server';
 
 import { getDb } from './db';
@@ -240,8 +241,8 @@ export async function saveAllData({
 
         // --- LEAVE ---
         const leaveInsertStmt = db.prepare(`
-        INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri) 
-        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri)
+        INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId) 
+        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId)
         `);
         
         for(const l of leave) {
@@ -269,7 +270,9 @@ export async function saveAllData({
                 contactInfo: l.contactInfo,
                 employeeSignature: l.employeeSignature,
                 managerSignature: l.managerSignature,
-                pdfDataUri: l.pdfDataUri
+                pdfDataUri: l.pdfDataUri,
+                workExtensionStatus: l.workExtensionStatus || null,
+                claimedWorkExtensionId: l.claimedWorkExtensionId || null
             });
         }
 
@@ -337,12 +340,6 @@ export async function saveAllData({
                 breakEndTime: tpl.breakEndTime || null,
                 isUnpaidBreak: tpl.isUnpaidBreak ? 1 : 0
             });
-        }
-
-        // --- LEAVE TYPES ---
-        const leaveTypeInsertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (@type, @color)');
-        for (const lt of leaveTypes) {
-            leaveTypeInsertStmt.run(lt);
         }
 
         // --- KEY-VALUE STORE ---

@@ -71,7 +71,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         const employee = employees.find(e => e.id === req.employeeId);
         const nameMatch = getFullName(employee || {}).toLowerCase().includes(searchTerm.toLowerCase());
         const statusMatch = statusFilter === 'all' || req.status === statusFilter;
-        const typeMatch = typeFilter === 'all' || req.type === typeFilter;
+        // Updated: Case-insensitive type matching
+        const typeMatch = typeFilter === 'all' || req.type.toLowerCase() === typeFilter.toLowerCase();
         return nameMatch && statusMatch && typeMatch;
       })
       .sort((a, b) => {
@@ -118,6 +119,22 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       : [],
   [leaveRequests, employees, currentUser.group, isManager, searchTerm, statusFilter, typeFilter, sortConfig]);
   
+  // Calculate unique leave types for the filter list with consistent casing
+  const uniqueTypesForFilter = useMemo(() => {
+    const types = new Set<string>();
+    // Start with defined types
+    leaveTypes.forEach(lt => types.add(lt.type.toUpperCase()));
+    // Add any types from requests that might not be in definitions (e.g. from imports)
+    leaveRequests.forEach(req => {
+      if (req.type && req.type !== 'Work Extension') {
+        types.add(req.type.toUpperCase());
+      }
+    });
+    // Add Offset explicitly as it's a core feature
+    types.add('OFFSET');
+    return Array.from(types).sort();
+  }, [leaveTypes, leaveRequests]);
+
   const handleNewTimeOffRequest = () => {
     setEditingRequest(null);
     setIsRequestDialogOpen(true);
@@ -146,7 +163,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
     } else { // Creating
-      const leaveTypeDetails = leaveTypes.find(lt => lt.type === requestData.type);
+      const leaveTypeDetails = leaveTypes.find(lt => lt.type.toLowerCase() === requestData.type?.toLowerCase());
       const newRequest: Leave = {
         id: uuidv4(),
         employeeId: currentUser.id,
@@ -177,7 +194,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         if (requestIndex === -1) return prevLeaveRequests;
         
         const originalRequest = newLeaveRequests[requestIndex];
-        const leaveTypeDetails = leaveTypes.find(lt => lt.type === originalRequest.type);
+        const leaveTypeDetails = leaveTypes.find(lt => lt.type.toLowerCase() === originalRequest.type.toLowerCase());
 
         finalUpdatedRequest = {
             ...originalRequest,
@@ -534,10 +551,9 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
-                    {leaveTypes.map(lt => (
-                      <SelectItem key={lt.type} value={lt.type}>{lt.type}</SelectItem>
+                    {uniqueTypesForFilter.map(typeName => (
+                      <SelectItem key={typeName} value={typeName}>{typeName}</SelectItem>
                     ))}
-                    <SelectItem value="Offset">Offset</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

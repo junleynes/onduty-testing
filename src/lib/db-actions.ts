@@ -30,8 +30,23 @@ export async function getData() {
     const tardyRecords = db.prepare('SELECT * FROM tardy_records').all() as any[];
     
     const shiftTemplates = db.prepare('SELECT * FROM shift_templates').all() as any[];
-    const leaveTypes = db.prepare('SELECT * FROM leave_types').all() as any[];
+    let leaveTypes = db.prepare('SELECT * FROM leave_types').all() as any[];
     
+    // Seed default leave types if empty
+    if (leaveTypes.length === 0) {
+        const defaults: LeaveTypeOption[] = [
+            { type: 'VL', color: '#3b82f6' },
+            { type: 'SL', color: '#ef4444' },
+            { type: 'EL', color: '#f59e0b' },
+            { type: 'CTO', color: '#10b981' },
+            { type: 'OFFSET', color: '#8b5cf6' },
+            { type: 'TARDY', color: '#6b7280' },
+        ];
+        const insertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (?, ?)');
+        defaults.forEach(d => insertStmt.run(d.type, d.color));
+        leaveTypes = defaults;
+    }
+
     const keyValuePairs = db.prepare('SELECT * FROM key_value_store').all() as {key: string, value: string}[];
     const templates = keyValuePairs.reduce((acc, { key, value }) => {
         acc[key] = value;
@@ -196,7 +211,7 @@ export async function saveAllData({
     db.prepare('PRAGMA foreign_keys = OFF').run();
 
     try {
-        // 2. Clear core data (Parents must be deleted after children, but since we re-insert all it's easier to disable FKs)
+        // 2. Clear core data
         db.prepare('DELETE FROM communication_allowances').run();
         db.prepare('DELETE FROM tasks').run();
         db.prepare('DELETE FROM shifts').run();
@@ -339,6 +354,15 @@ export async function saveAllData({
                 breakStartTime: tpl.breakStartTime || null,
                 breakEndTime: tpl.breakEndTime || null,
                 isUnpaidBreak: tpl.isUnpaidBreak ? 1 : 0
+            });
+        }
+
+        // --- LEAVE TYPES ---
+        const leaveTypeInsertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (@type, @color)');
+        for(const lt of leaveTypes) {
+            leaveTypeInsertStmt.run({
+                type: lt.type,
+                color: lt.color
             });
         }
 

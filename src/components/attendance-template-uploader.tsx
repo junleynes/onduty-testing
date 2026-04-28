@@ -92,19 +92,19 @@ export function AttendanceTemplateUploader({ isOpen, setIsOpen, onTemplateUpload
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Header Placeholders:</b> The system will find and replace these text placeholders anywhere in your sheet.
                         <ul className="list-disc pl-5">
-                             <li>`{{month}}` - The current month (e.g., AUGUST).</li>
-                             <li>`{{group}}` - The name of the current user's group (for a single group report).</li>
-                             <li>`{{day_1}}`...`{{day_7}}` - The day number for each day of the week.</li>
+                             <li><code>{"{{month}}"}</code> - The current month (e.g., AUGUST).</li>
+                             <li><code>{"{{group}}"}</code> - The name of the current user's group (for a single group report).</li>
+                             <li><code>{"{{day_1}}"}</code>...<code>{"{{day_7}}"}</code> - The day number for each day of the week.</li>
                         </ul>
                     </li>
                      <li><b>Employee Row Placeholders:</b> Create a row for each employee you want to appear in the report. The system will find and replace these placeholders for each employee.
                         <ul className="list-disc pl-5">
-                            <li>`{{employee_1}}`, `{{employee_2}}`, etc.</li>
-                            <li>`{{group_1}}`, `{{group_2}}`, etc.</li>
-                            <li>`{{position_1}}`, `{{position_2}}`, etc.</li>
-                            <li>`{{schedule_1_1}}` for Employee 1, Day 1.</li>
-                            <li>`{{schedule_1_2}}` for Employee 1, Day 2, etc.</li>
-                            <li>`{{schedule_2_1}}` for Employee 2, Day 1, etc.</li>
+                            <li><code>{"{{employee_1}}"}</code>, <code>{"{{employee_2}}"}</code>, etc.</li>
+                            <li><code>{"{{group_1}}"}</code>, <code>{"{{group_2}}"}</code>, etc.</li>
+                            <li><code>{"{{position_1}}"}</code>, <code>{"{{position_2}}"}</code>, etc.</li>
+                            <li><code>{"{{schedule_1_1}}"}</code> for Employee 1, Day 1.</li>
+                            <li><code>{"{{schedule_1_2}}"}</code> for Employee 1, Day 2, etc.</li>
+                            <li><code>{"{{schedule_2_1}}"}</code> for Employee 2, Day 1, etc.</li>
                         </ul>
                     </li>
                 </ul>

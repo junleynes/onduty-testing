@@ -92,15 +92,15 @@ export function WorkExtensionTemplateUploader({ isOpen, setIsOpen, onTemplateUpl
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each Work Extension entry in the selected date range.
                         <ul className="list-disc pl-5">
-                            <li>`{{employee_name}}`</li>
-                            <li>`{{work_sched_date}}`</li>
-                            <li>`{{start_time}}`</li>
-                            <li>`{{end_time}}`</li>
-                            <li>`{{date_of_work_extended}}`</li>
-                            <li>`{{extended_start_time}}`</li>
-                            <li>`{{extended_end_time}}`</li>
-                            <li>`{{total_hours_extended}}`</li>
-                            <li>`{{reason}}`</li>
+                            <li><code>{"{{employee_name}}"}</code></li>
+                            <li><code>{"{{work_sched_date}}"}</code></li>
+                            <li><code>{"{{start_time}}"}</code></li>
+                            <li><code>{"{{end_time}}"}</code></li>
+                            <li><code>{"{{date_of_work_extended}}"}</code></li>
+                            <li><code>{"{{extended_start_time}}"}</code></li>
+                            <li><code>{"{{extended_end_time}}"}</code></li>
+                            <li><code>{"{{total_hours_extended}}"}</code></li>
+                            <li><code>{"{{reason}}"}</code></li>
                         </ul>
                     </li>
                 </ul>

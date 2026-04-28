@@ -92,19 +92,19 @@ export function WfhCertificationTemplateUploader({ isOpen, setIsOpen, onTemplate
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Global Placeholders:</b> These can be used anywhere in the sheet.
                         <ul className="list-disc pl-5">
-                             <li>`{{first_day_of_month}}`</li>
-                             <li>`{{last_day_of_month}}`</li>
-                             <li>`{{employee_name}}`</li>
-                             <li>`{{reports_to_manager}}`</li>
-                              <li>`{{employee_signature}}` - Place this in the cell where you want the signature image to be inserted.</li>
+                             <li><code>{"{{first_day_of_month}}"}</code></li>
+                             <li><code>{"{{last_day_of_month}}"}</code></li>
+                             <li><code>{"{{employee_name}}"}</code></li>
+                             <li><code>{"{{reports_to_manager}}"}</code></li>
+                              <li><code>{"{{employee_signature}}"}</code> - Place this in the cell where you want the signature image to be inserted.</li>
                         </ul>
                     </li>
                      <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each day in the selected month.
                         <ul className="list-disc pl-5">
-                            <li>`{{DATE}}` - The date for the specific row.</li>
-                            <li>`{{ATTENDANCE_RENDERED}}` - e.g., OFFICE-BASED, WFH, ON LEAVE</li>
-                            <li>`{{TOTAL_HRS_SPENT}}` - e.g., 8.00</li>
-                            <li>`{{REMARKS}}` - e.g., VL, SL</li>
+                            <li><code>{"{{DATE}}"}</code> - The date for the specific row.</li>
+                            <li><code>{"{{ATTENDANCE_RENDERED}}"}</code> - e.g., OFFICE-BASED, WFH, ON LEAVE</li>
+                            <li><code>{"{{TOTAL_HRS_SPENT}}"}</code> - e.g., 8.00</li>
+                            <li><code>{"{{REMARKS}}"}</code> - e.g., VL, SL</li>
                         </ul>
                      </li>
                 </ul>

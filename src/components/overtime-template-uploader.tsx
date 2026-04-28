@@ -92,25 +92,25 @@ export function OvertimeTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Global Placeholders:</b> These can be used anywhere in the sheet for the person generating the report.
                         <ul className="list-disc pl-5">
-                            <li>`{{employee_name}}` - The current user's full name.</li>
-                            <li>`{{group}}` - The current user's group name.</li>
-                            <li>`{{employee_signature}}` - The current user's digital signature image.</li>
-                            <li>`{{current_date}}` - The date the report was generated.</li>
+                            <li><code>{"{{employee_name}}"}</code> - The current user's full name.</li>
+                            <li><code>{"{{group}}"}</code> - The current user's group name.</li>
+                            <li><code>{"{{employee_signature}}"}</code> - The current user's digital signature image.</li>
+                            <li><code>{"{{current_date}}"}</code> - The date the report was generated.</li>
                         </ul>
                     </li>
                     <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each OT or ND entry.
                         <ul className="list-disc pl-5">
-                            <li>`{{SURNAME}}`</li>
-                            <li>`{{EMPLOYEE NAME}}`</li>
-                            <li>`{{TYPE}}` - (OT or ND)</li>
-                            <li>`{{PERSONNEL NUMBER}}`</li>
-                            <li>`{{TYPE CODE}}`</li>
-                            <li>`{{START TIME}}`</li>
-                            <li>`{{END TIME}}`</li>
-                            <li>`{{START DATE}}`</li>
-                            <li>`{{END DATE}}`</li>
-                            <li>`{{TOTAL HOURS}}`</li>
-                            <li>`{{REASONS/REMARKS}}`</li>
+                            <li><code>{"{{SURNAME}}"}</code></li>
+                            <li><code>{"{{EMPLOYEE NAME}}"}</code></li>
+                            <li><code>{"{{TYPE}}"}</code> - (OT or ND)</li>
+                            <li><code>{"{{PERSONNEL NUMBER}}"}</code></li>
+                            <li><code>{"{{TYPE CODE}}"}</code></li>
+                            <li><code>{"{{START TIME}}"}</code></li>
+                            <li><code>{"{{END TIME}}"}</code></li>
+                            <li><code>{"{{START DATE}}"}</code></li>
+                            <li><code>{"{{END DATE}}"}</code></li>
+                            <li><code>{"{{TOTAL HOURS}}"}</code></li>
+                            <li><code>{"{{REASONS/REMARKS}}"}</code></li>
                         </ul>
                     </li>
                 </ul>

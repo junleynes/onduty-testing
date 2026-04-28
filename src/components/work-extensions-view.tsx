@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -67,6 +66,11 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
     setIsRequestDialogOpen(true);
   }
 
+  const handleDeleteRequest = (requestId: string) => {
+    setLeaveRequests(prev => prev.filter(r => r.id !== requestId));
+    toast({ title: 'Request Deleted', variant: 'destructive' });
+  };
+
   const handleSaveRequest = (requestData: Partial<Leave>) => {
     if (editingRequest?.id) { // Editing
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
@@ -114,11 +118,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
   
    const handleClearAllRequests = () => {
     startPurgeTransition(async () => {
-        const currentWorkExtensions = leaveRequests.filter(l => l.type === 'Work Extension');
         const otherLeave = leaveRequests.filter(l => l.type !== 'Work Extension');
-        
-        // This is a soft delete from the UI perspective.
-        // The main save action will persist this change to the DB by writing the new `otherLeave` array.
         setLeaveRequests(otherLeave);
         toast({ title: 'All Work Extensions Cleared', variant: 'destructive', description: 'All work extension requests have been permanently deleted.' });
     });
@@ -172,8 +172,9 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
                             <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5"/>
                             <p className="text-muted-foreground">{req.reason}</p>
                         </div>
-                        <div className="pt-2 flex justify-end">
+                        <div className="pt-2 flex justify-end gap-2">
                             {req.status === 'pending' && <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>}
+                            <Button size="sm" variant="outline" className="text-destructive border-destructive" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                     </CardContent>
                 </Card>
@@ -208,15 +209,18 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
                     <TableCell className="max-w-[200px] truncate">{req.reason}</TableCell>
                     <TableCell>{getStatusBadge(req)}</TableCell>
                     <TableCell className="text-right">
-                       {forManagerView && req.status === 'pending' && (
-                            <div className="flex gap-2 justify-end">
-                                <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4" /></Button>
-                                <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4" /></Button>
-                            </div>
-                       )}
-                       {!forManagerView && req.status === 'pending' && (
-                           <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>
-                       )}
+                       <div className="flex gap-2 justify-end">
+                            {forManagerView && req.status === 'pending' && (
+                                <>
+                                    <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4" /></Button>
+                                    <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4" /></Button>
+                                </>
+                            )}
+                            {!forManagerView && req.status === 'pending' && (
+                                <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
+                       </div>
                     </TableCell>
                 </TableRow>
               )

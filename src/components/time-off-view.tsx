@@ -152,6 +152,11 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     }
   }
 
+  const handleDeleteRequest = (requestId: string) => {
+    setLeaveRequests(prev => prev.filter(r => r.id !== requestId));
+    toast({ title: 'Request Deleted', variant: 'destructive' });
+  };
+
   const handleSaveRequest = (requestData: Partial<Leave>) => {
     if (editingRequest?.id) { 
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
@@ -295,6 +300,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     <div className="flex gap-2 justify-end">
                         <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4 mr-1" />Approve</Button>
                         <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4 mr-1" />Reject</Button>
+                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -304,23 +310,32 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
                         <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)}><Mail className="h-4 w-4 mr-1" />Email</Button>
+                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
         } else {
             if (req.status === 'pending') {
-                return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
+                return (
+                    <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>
+                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                );
             }
             if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
+                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
         }
-        return null;
+        return (
+            <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
+        );
     };
     
     return (
@@ -371,32 +386,42 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     <div className="flex gap-2 justify-end">
                         <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4" /></Button>
                         <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
             if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)}><Mail className="h-4 w-4" /></Button>
+                        <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline" title="View PDF"><Eye className="h-4 w-4" /></Button></a>
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))} title="Download PDF"><FileDown className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)} title="Send via Email"><Mail className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)} title="Delete Request"><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
         } else {
             if (req.status === 'pending') {
-                return <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>;
+                return (
+                    <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                );
             }
             if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
         }
-        return null;
+        return (
+            <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
+        );
     };
     
     return (

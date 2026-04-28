@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -88,7 +87,7 @@ export function OffsetTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
                     <p>2. <b>Image Format:</b> Your signature picture should be a <b>PNG</b> (best) or <b>JPG</b>.</p>
                     <p className="font-semibold underline">Required Field Names (Fuzzy matched):</p>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li><b>Signatures (Push Button/Image):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                        <li><b>Signatures (Push Button/Image):</b> <code>employee_signature_af_image</code>, <code>manager_signature_af_image</code></li>
                         <li><b>Basic Details:</b> <code>employee_name</code>, <code>date_filed</code>, <code>department</code></li>
                         <li><b>Request Details:</b> <code>offset_dates</code>, <code>total_days</code>, <code>reason</code></li>
                         <li><b>Claimed Work Ext:</b> <code>work_extension_date</code>, <code>work_extension_hours</code></li>

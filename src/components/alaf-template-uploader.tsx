@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -90,7 +89,7 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
                     <p>2. <b>Image Format:</b> Signatures should be uploaded as <b>PNG</b> (preferred for transparency) or <b>JPG</b> files.</p>
                     <p className="font-semibold underline">Required Field Names (Fuzzy matched):</p>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li><b>Signatures (Push Button/Image):</b> <code>employee_signature</code>, <code>manager_signature</code></li>
+                        <li><b>Signatures (Push Button/Image):</b> <code>employee_signature_af_image</code>, <code>manager_signature_af_image</code></li>
                         <li><b>Text Fields:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code></li>
                         <li><b>Checkboxes:</b> Name them exactly like the leave type (e.g., <code>Sick Leave</code>) or <code>approved</code> / <code>rejected</code>.</li>
                     </ul>

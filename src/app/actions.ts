@@ -1,4 +1,3 @@
-
 'use server';
 
 import type { SmtpSettings, Employee, Shift, AppVisibility, Leave } from '@/types';
@@ -352,8 +351,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
 
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
 
         try { form.flatten(); } catch (e) {}
 
@@ -390,9 +389,9 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 if (weRequest.startTime && weRequest.endTime) {
                     const start = parse(weRequest.startTime, 'HH:mm', new Date());
                     const end = parse(weRequest.endTime, 'HH:mm', new Date());
-                    let diff = (end.getTime() - start.getTime()) / (1000 * 60);
-                    if (diff < 0) diff += (24 * 60);
-                    weHours = (diff / 60).toFixed(2);
+                    let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+                    if (diff < 0) diff += 24;
+                    weHours = diff.toFixed(2);
                 }
             }
         }
@@ -433,8 +432,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             }
         }
 
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
 
         try { form.flatten(); } catch (e) {}
 

@@ -1977,6 +1977,11 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 onImport={setTardyRecords}
                 employees={employees}
             />
+            <OvertimeTemplateUploader
+                isOpen={isOvertimeUploaderOpen}
+                setIsOpen={setIsOvertimeUploaderOpen}
+                onTemplateUpload={(data) => setTemplates(prev => ({...prev, overtimeTemplate: data}))}
+            />
             <Dialog open={isOvertimeSettingsOpen} onOpenChange={setIsOvertimeSettingsOpen}>
                 <DialogContent>
                     <DialogHeader>

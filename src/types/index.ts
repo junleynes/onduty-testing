@@ -150,6 +150,12 @@ export type TardyRecord = {
   remarks: string;
 }
 
+export type FaqItem = {
+  id: string;
+  question: string;
+  answer: string;
+};
+
 export type NavItemKey = 
   | 'dashboard' | 'my-schedule' | 'my-tasks'
   | 'schedule' | 'onduty' | 'time-off' | 'work-extensions' | 'allowance' | 'task-manager'

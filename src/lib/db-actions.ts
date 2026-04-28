@@ -1,8 +1,7 @@
-
 'use server';
 
 import { getDb } from './db';
-import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey } from '@/types';
+import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey, FaqItem } from '@/types';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
 
@@ -61,6 +60,12 @@ export async function getData() {
 
     const monthlyOrderData = db.prepare("SELECT value FROM key_value_store WHERE key = 'monthlyEmployeeOrder'").get() as { value: string } | undefined;
     const monthlyEmployeeOrder = monthlyOrderData ? JSON.parse(monthlyOrderData.value) : {};
+
+    const faqData = db.prepare("SELECT value FROM key_value_store WHERE key = 'faqs'").get() as { value: string } | undefined;
+    const faqs: FaqItem[] = faqData ? JSON.parse(faqData.value) : [
+      { id: '1', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
+      { id: '2', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
+    ];
 
 
     const processedEmployees: Employee[] = employees.map(e => ({
@@ -162,6 +167,7 @@ export async function getData() {
         leaveTypes,
         permissions,
         monthlyEmployeeOrder,
+        faqs,
       }
     };
   } catch (error) {
@@ -187,6 +193,7 @@ export async function saveAllData({
   leaveTypes,
   permissions,
   monthlyEmployeeOrder,
+  faqs,
 }: {
   employees: Employee[];
   shifts: Shift[];
@@ -203,6 +210,7 @@ export async function saveAllData({
   leaveTypes: LeaveTypeOption[];
   permissions: RolePermissions;
   monthlyEmployeeOrder: Record<string, string[]>;
+  faqs: FaqItem[];
 }): Promise<{ success: boolean; error?: string }> {
   const db = getDb();
   
@@ -374,6 +382,7 @@ export async function saveAllData({
             }
         }
         templateStmt.run({ key: 'monthlyEmployeeOrder', value: JSON.stringify(monthlyEmployeeOrder) });
+        templateStmt.run({ key: 'faqs', value: JSON.stringify(faqs) });
         
         // --- PERMISSIONS ---
         const permissionsStmt = db.prepare('INSERT INTO permissions (role, allowed_views) VALUES (@role, @allowed_views) ON CONFLICT(role) DO UPDATE SET allowed_views=excluded.allowed_views');

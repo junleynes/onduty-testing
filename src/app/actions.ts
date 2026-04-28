@@ -8,6 +8,7 @@ import path from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { format, differenceInCalendarDays, parse, differenceInMinutes } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
+import { getFullName } from '@/lib/utils';
 
 
 type Attachment = {
@@ -283,7 +284,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
         const fields = {
-            employee_name: [`${employee.firstName} ${employee.lastName}`, 'fullname', 'name', 'employee_name', 'employee name'],
+            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'yyyy-MM-dd'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no'],
@@ -292,7 +293,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at'],
             approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'yyyy-MM-dd') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
-            manager_name: [manager ? `${manager.firstName} ${manager.lastName}` : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
         };
 
         const allFormFields = form.getFields();
@@ -404,7 +405,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (leaveRequest.isAllDay === false && totalDaysValue === 1) totalDaysValue = 0.5;
 
         const fields = {
-            employee_name: [`${employee.firstName} ${employee.lastName}`, 'fullname', 'name', 'employee_name'],
+            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'yyyy-MM-dd'), 'date_filed', 'datefiled'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept'],
             offset_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'offset_dates', 'dates', 'period'],
@@ -412,7 +413,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
-            manager_name: [manager ? `${manager.firstName} ${manager.lastName}` : '', 'manager_name', 'supervisor'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor'],
         };
 
         const allFormFields = form.getFields();

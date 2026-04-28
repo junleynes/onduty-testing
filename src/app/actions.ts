@@ -313,10 +313,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
+        // Handle Leave Type (Checkbox or Radio Group)
         if (leaveRequest.type) {
             const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_]/g, '');
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                
+                // Try as Checkbox
                 if (currentFieldName === normalizedType || currentFieldName === `chk${normalizedType}`) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
@@ -324,14 +327,30 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                         break;
                     } catch (e) {}
                 }
+
+                // Try as Radio Group
+                try {
+                    const radioGroup = form.getRadioGroup(field.getName());
+                    const options = radioGroup.getOptions();
+                    const matchingOption = options.find(opt => 
+                        opt.toLowerCase().replace(/[\s_]/g, '') === normalizedType
+                    );
+                    if (matchingOption) {
+                        radioGroup.select(matchingOption);
+                        break;
+                    }
+                } catch (e) {}
             }
         }
         
+        // Handle Approval Status
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
             let checked = false;
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                
+                // Try as Checkbox
                 if (currentFieldName === statusKey) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
@@ -340,6 +359,20 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                         break;
                     } catch (e) {}
                 }
+
+                // Try as Radio Group
+                try {
+                    const radioGroup = form.getRadioGroup(field.getName());
+                    const options = radioGroup.getOptions();
+                    const matchingOption = options.find(opt => 
+                        opt.toLowerCase() === statusKey
+                    );
+                    if (matchingOption) {
+                        radioGroup.select(matchingOption);
+                        checked = true;
+                        break;
+                    }
+                } catch (e) {}
             }
             if (!checked) {
                 const statusNames = ['approval_status', 'status', 'decision', 'official action'];
@@ -354,6 +387,9 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
+
+        // CRITICAL: Update appearances for all fields before flattening to prevent Adobe Acrobat Error (18)
+        form.updateFieldAppearances();
 
         try { form.flatten(); } catch (e) {}
 
@@ -435,6 +471,9 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
+
+        // CRITICAL: Update appearances for all fields before flattening to prevent Adobe Acrobat Error (18)
+        form.updateFieldAppearances();
 
         try { form.flatten(); } catch (e) {}
 

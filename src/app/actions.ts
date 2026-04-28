@@ -229,6 +229,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
     
     try {
         const sigBase64 = sigData.split('base64,')[1];
+        if (!sigBase64) return;
         const buffer = Buffer.from(sigBase64, 'base64');
         
         let image;
@@ -320,11 +321,10 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
                 
                 // Try as Checkbox
-                if (currentFieldName === normalizedType || currentFieldName === `chk${normalizedType}`) {
+                if (currentFieldName === normalizedType || currentFieldName === `chk${normalizedType}` || currentFieldName.includes(normalizedType)) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
-                        break;
                     } catch (e) {}
                 }
 
@@ -332,12 +332,12 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 try {
                     const radioGroup = form.getRadioGroup(field.getName());
                     const options = radioGroup.getOptions();
-                    const matchingOption = options.find(opt => 
-                        opt.toLowerCase().replace(/[\s_]/g, '') === normalizedType
-                    );
+                    const matchingOption = options.find(opt => {
+                        const normOpt = opt.toLowerCase().replace(/[\s_]/g, '');
+                        return normOpt === normalizedType || normOpt.includes(normalizedType);
+                    });
                     if (matchingOption) {
                         radioGroup.select(matchingOption);
-                        break;
                     }
                 } catch (e) {}
             }
@@ -346,7 +346,6 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // Handle Approval Status
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
-            let checked = false;
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
                 
@@ -355,8 +354,6 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
-                        checked = true;
-                        break;
                     } catch (e) {}
                 }
 
@@ -365,35 +362,24 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     const radioGroup = form.getRadioGroup(field.getName());
                     const options = radioGroup.getOptions();
                     const matchingOption = options.find(opt => 
-                        opt.toLowerCase() === statusKey
+                        opt.toLowerCase().replace(/[\s_]/g, '') === statusKey
                     );
                     if (matchingOption) {
                         radioGroup.select(matchingOption);
-                        checked = true;
-                        break;
                     }
                 } catch (e) {}
             }
-            if (!checked) {
-                const statusNames = ['approval_status', 'status', 'decision', 'official action'];
-                for (const name of statusNames) {
-                    try {
-                        form.getTextField(name).setText(leaveRequest.status.toUpperCase());
-                        break;
-                    } catch (e) {}
-                }
-            }
         }
 
-        // CRITICAL: Update appearances for standard fields BEFORE embedding images.
-        // This ensures text and radio buttons are correctly rendered in the PDF structure.
+        // Generate visuals for standard fields before images
         form.updateFieldAppearances();
 
-        // Now embed signatures (which manually set the appearance of their target buttons)
+        // Embed signatures
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
 
-        try { form.flatten(); } catch (e) {}
+        // IMPORTANT: Skip flattening if it causes corruption in Acrobat
+        // pdf-lib flattening is known to be problematic with image appearances
 
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
@@ -471,14 +457,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             }
         }
 
-        // CRITICAL: Update appearances for standard fields BEFORE embedding images.
         form.updateFieldAppearances();
 
         // Embed signatures
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
-
-        try { form.flatten(); } catch (e) {}
 
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;

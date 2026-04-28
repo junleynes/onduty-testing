@@ -242,10 +242,10 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
             try { image = await pdfDoc.embedPng(buffer); } catch (e) { return; }
         }
 
-        const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
+        const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_\.]/g, ''));
 
         for (const field of allFormFields) {
-            const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+            const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
             if (normalizedTargets.includes(currentFieldName)) {
                 try {
                     const button = form.getButton(field.getName());
@@ -286,69 +286,71 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const fields = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name'],
-            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'yyyy-MM-dd'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept'],
-            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no'],
-            leave_dates: [`${format(new Date(leaveRequest.startDate), 'yyyy-MM-dd')} to ${format(new Date(leaveRequest.endDate), 'yyyy-MM-dd')}`, 'leave_dates', 'dates', 'period', 'dates of leave applied for'],
-            total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at'],
-            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'yyyy-MM-dd') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
+            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed', 'date'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept', 'group'],
+            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
+            leave_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
+            total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
+            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons', 'details'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile'],
+            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
+            leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave', 'type', 'leavetype'],
         };
 
         const allFormFields = form.getFields();
         
         // 1. Fill Text and Button Fields First
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
-            let fieldSet = false;
-            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
+            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_\.]/g, ''));
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
                 if (normalizedTargets.includes(currentFieldName)) {
                     try {
                         const textField = form.getTextField(field.getName());
                         textField.setText(value);
-                        fieldSet = true;
                     } catch (e) {}
                 }
-                if (fieldSet) break;
             }
         }
         
-        // Handle Leave Type (Checkbox or Radio Group) with strict matching for short codes
+        // Handle Leave Type (Checkbox, Radio Group, or Text Field)
         if (leaveRequest.type) {
-            const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_]/g, '');
+            const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_\.]/g, '');
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
                 
-                // STRICT CHECKBOX MATCHING: 
-                // Only allow .includes() for descriptive names (> 3 chars)
-                // Short codes like VL/SL must match exactly or with a 'chk' prefix.
                 const isTypeMatch = currentFieldName === normalizedType || 
                                     currentFieldName === `chk${normalizedType}` ||
                                     (normalizedType.length > 3 && currentFieldName.includes(normalizedType));
 
                 if (isTypeMatch) {
+                    // Try as Checkbox
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
                     } catch (e) {}
-                }
 
-                // Try as Radio Group
-                try {
-                    const radioGroup = form.getRadioGroup(field.getName());
-                    const options = radioGroup.getOptions();
-                    const matchingOption = options.find(opt => {
-                        const normOpt = opt.toLowerCase().replace(/[\s_]/g, '');
-                        return normOpt === normalizedType || 
-                               (normalizedType.length > 3 && normOpt.includes(normalizedType));
-                    });
-                    if (matchingOption) {
-                        radioGroup.select(matchingOption);
-                    }
-                } catch (e) {}
+                    // Try as Radio Group
+                    try {
+                        const radioGroup = form.getRadioGroup(field.getName());
+                        const options = radioGroup.getOptions();
+                        const matchingOption = options.find(opt => {
+                            const normOpt = opt.toLowerCase().replace(/[\s_\.]/g, '');
+                            return normOpt === normalizedType || 
+                                   (normalizedType.length > 3 && normOpt.includes(normalizedType));
+                        });
+                        if (matchingOption) {
+                            radioGroup.select(matchingOption);
+                        }
+                    } catch (e) {}
+
+                    // Try as Text Field (Mark with X if it's the selected type)
+                    try {
+                        const textField = form.getTextField(field.getName());
+                        textField.setText('X');
+                    } catch (e) {}
+                }
             }
         }
         
@@ -356,22 +358,25 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
                 
-                // Try as Checkbox
                 if (currentFieldName === statusKey) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
                     } catch (e) {}
+                    
+                    try {
+                        const textField = form.getTextField(field.getName());
+                        textField.setText('X');
+                    } catch (e) {}
                 }
 
-                // Try as Radio Group
                 try {
                     const radioGroup = form.getRadioGroup(field.getName());
                     const options = radioGroup.getOptions();
                     const matchingOption = options.find(opt => 
-                        opt.toLowerCase().replace(/[\s_]/g, '') === statusKey
+                        opt.toLowerCase().replace(/[\s_\.]/g, '') === statusKey
                     );
                     if (matchingOption) {
                         radioGroup.select(matchingOption);
@@ -383,11 +388,10 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // 2. IMPORTANT: Generate visuals for standard fields BEFORE images
         form.updateFieldAppearances();
 
-        // 3. Embed signatures LAST to avoid them being overwritten by appearance updates
+        // 3. Embed signatures LAST
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
 
-        // Do NOT flatten. Flattening causes corruption in Acrobat when images are involved.
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
 
@@ -436,11 +440,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (leaveRequest.isAllDay === false && totalDaysValue === 1) totalDaysValue = 0.5;
 
         const fields = {
-            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name'],
-            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'yyyy-MM-dd'), 'date_filed', 'datefiled'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept'],
+            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name'],
+            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group'],
             offset_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'offset_dates', 'dates', 'period'],
-            total_days: [String(totalDaysValue), 'total_days', 'no_of_days'],
+            total_days: [String(totalDaysValue), 'total_days', 'no_of_days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
@@ -449,18 +453,15 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         const allFormFields = form.getFields();
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
-            let fieldSet = false;
-            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
+            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_\.]/g, ''));
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
+                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
                 if (normalizedTargets.includes(currentFieldName)) {
                     try {
                         const textField = form.getTextField(field.getName());
                         textField.setText(value);
-                        fieldSet = true;
                     } catch (e) {}
                 }
-                if (fieldSet) break;
             }
         }
 

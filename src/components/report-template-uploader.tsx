@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -45,11 +44,20 @@ export function ReportTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
 
     reader.onload = (e) => {
         try {
-            const data = e.target?.result;
-            if (typeof data !== 'string') {
+            const data = e.target?.result as ArrayBuffer;
+            if (!data) {
                 throw new Error("Failed to read file data.");
             }
-            onTemplateUpload(data);
+            
+            // Convert ArrayBuffer to Base64
+            const base64String = btoa(
+                new Uint8Array(data).reduce(
+                    (data, byte) => data + String.fromCharCode(byte),
+                    ''
+                )
+            );
+
+            onTemplateUpload(base64String);
             toast({ title: 'Template Uploaded', description: 'The new work schedule template has been saved.' });
             setIsOpen(false);
         } catch (error) {
@@ -66,7 +74,7 @@ export function ReportTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
         toast({ title: 'File Read Error', description: 'Could not read the selected file.', variant: 'destructive' });
     };
     
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   return (
@@ -84,19 +92,19 @@ export function ReportTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Global Placeholders:</b> These can be anywhere in the sheet, typically in a title or header area.
                         <ul className="list-disc pl-5">
-                             <li>`{'{{start_date}}'}` - The start of the covered period.</li>
-                             <li>`{'{{end_date}}'}` - The end of the covered period.</li>
+                             <li>`{{start_date}}` - The start of the covered period.</li>
+                             <li>`{{end_date}}` - The end of the covered period.</li>
                         </ul>
                     </li>
                      <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each employee for each day in your selected date range.
                         <ul className="list-disc pl-5">
-                            <li>`{'{{employee_name}}'}` - Full name of the employee. (This is required to identify the template row).</li>
-                            <li>`{'{{date}}'}` - The date for the specific row.</li>
-                            <li>`{'{{schedule_start}}'}` - Shift start time.</li>
-                            <li>`{'{{schedule_end}}'}` - Shift end time.</li>
-                            <li>`{'{{unpaidbreak_start}}'}` / `{'{{unpaidbreak_end}}'}`</li>
-                            <li>`{'{{paidbreak_start}}'}` / `{'{{paidbreak_end}}'}`</li>
-                             <li>`{'{{day_status}}'}` - Will show status like "OFF", "HOLIDAY OFF", or be empty.</li>
+                            <li>`{{employee_name}}` - Full name of the employee. (This is required to identify the template row).</li>
+                            <li>`{{date}}` - The date for the specific row.</li>
+                            <li>`{{schedule_start}}` - Shift start time.</li>
+                            <li>`{{schedule_end}}` - Shift end time.</li>
+                            <li>`{{unpaidbreak_start}}` / `{{unpaidbreak_end}}`</li>
+                            <li>`{{paidbreak_start}}` / `{{paidbreak_end}}`</li>
+                             <li>`{{day_status}}` - Will show status like "OFF", "HOLIDAY OFF", or be empty.</li>
                         </ul>
                      </li>
                 </ul>

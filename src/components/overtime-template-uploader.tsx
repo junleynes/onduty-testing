@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -45,11 +44,20 @@ export function OvertimeTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }
 
     reader.onload = (e) => {
         try {
-            const data = e.target?.result;
-            if (typeof data !== 'string') {
+            const data = e.target?.result as ArrayBuffer;
+            if (!data) {
                 throw new Error("Failed to read file data.");
             }
-            onTemplateUpload(data);
+            
+            // Convert ArrayBuffer to Base64 string for robust storage
+            const base64String = btoa(
+                new Uint8Array(data).reduce(
+                    (data, byte) => data + String.fromCharCode(byte),
+                    ''
+                )
+            );
+
+            onTemplateUpload(base64String);
             toast({ title: 'Template Uploaded', description: 'The new Overtime/ND template has been saved.' });
             setIsOpen(false);
         } catch (error) {
@@ -66,7 +74,7 @@ export function OvertimeTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }
         toast({ title: 'File Read Error', description: 'Could not read the selected file.', variant: 'destructive' });
     };
     
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   return (
@@ -84,25 +92,25 @@ export function OvertimeTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Global Placeholders:</b> These can be used anywhere in the sheet for the person generating the report.
                         <ul className="list-disc pl-5">
-                            <li>`{'{{employee_name}}'}` - The current user's full name.</li>
-                            <li>`{'{{group}}'}` - The current user's group name.</li>
-                            <li>`{'{{employee_signature}}'}` - The current user's digital signature image.</li>
-                            <li>`{'{{current_date}}'}` - The date the report was generated.</li>
+                            <li>`{{employee_name}}` - The current user's full name.</li>
+                            <li>`{{group}}` - The current user's group name.</li>
+                            <li>`{{employee_signature}}` - The current user's digital signature image.</li>
+                            <li>`{{current_date}}` - The date the report was generated.</li>
                         </ul>
                     </li>
                     <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each OT or ND entry.
                         <ul className="list-disc pl-5">
-                            <li>`{'{{SURNAME}}'}`</li>
-                            <li>`{'{{EMPLOYEE NAME}}'}`</li>
-                            <li>`{'{{TYPE}}'}` - (OT or ND)</li>
-                            <li>`{'{{PERSONNEL NUMBER}}'}`</li>
-                            <li>`{'{{TYPE CODE}}'}`</li>
-                            <li>`{'{{START TIME}}'}`</li>
-                            <li>`{'{{END TIME}}'}`</li>
-                            <li>`{'{{START DATE}}'}`</li>
-                            <li>`{'{{END DATE}}'}`</li>
-                            <li>`{'{{TOTAL HOURS}}'}`</li>
-                            <li>`{'{{REASONS/REMARKS}}'}`</li>
+                            <li>`{{SURNAME}}`</li>
+                            <li>`{{EMPLOYEE NAME}}`</li>
+                            <li>`{{TYPE}}` - (OT or ND)</li>
+                            <li>`{{PERSONNEL NUMBER}}`</li>
+                            <li>`{{TYPE CODE}}`</li>
+                            <li>`{{START TIME}}`</li>
+                            <li>`{{END TIME}}`</li>
+                            <li>`{{START DATE}}`</li>
+                            <li>`{{END DATE}}`</li>
+                            <li>`{{TOTAL HOURS}}`</li>
+                            <li>`{{REASONS/REMARKS}}`</li>
                         </ul>
                     </li>
                 </ul>

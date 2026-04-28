@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -45,11 +44,20 @@ export function WorkExtensionTemplateUploader({ isOpen, setIsOpen, onTemplateUpl
 
     reader.onload = (e) => {
         try {
-            const data = e.target?.result;
-            if (typeof data !== 'string') {
+            const data = e.target?.result as ArrayBuffer;
+            if (!data) {
                 throw new Error("Failed to read file data.");
             }
-            onTemplateUpload(data);
+            
+            // Convert to Base64
+            const base64String = btoa(
+                new Uint8Array(data).reduce(
+                    (data, byte) => data + String.fromCharCode(byte),
+                    ''
+                )
+            );
+
+            onTemplateUpload(base64String);
             toast({ title: 'Template Uploaded', description: 'The new work extension template has been saved.' });
             setIsOpen(false);
         } catch (error) {
@@ -66,7 +74,7 @@ export function WorkExtensionTemplateUploader({ isOpen, setIsOpen, onTemplateUpl
         toast({ title: 'File Read Error', description: 'Could not read the selected file.', variant: 'destructive' });
     };
     
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   return (
@@ -84,15 +92,15 @@ export function WorkExtensionTemplateUploader({ isOpen, setIsOpen, onTemplateUpl
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each Work Extension entry in the selected date range.
                         <ul className="list-disc pl-5">
-                            <li>`{'{{employee_name}}'}`</li>
-                            <li>`{'{{work_sched_date}}'}`</li>
-                            <li>`{'{{start_time}}'}`</li>
-                            <li>`{'{{end_time}}'}`</li>
-                            <li>`{'{{date_of_work_extended}}'}`</li>
-                            <li>`{'{{extended_start_time}}'}`</li>
-                            <li>`{'{{extended_end_time}}'}`</li>
-                            <li>`{'{{total_hours_extended}}'}`</li>
-                            <li>`{'{{reason}}'}`</li>
+                            <li>`{{employee_name}}`</li>
+                            <li>`{{work_sched_date}}`</li>
+                            <li>`{{start_time}}`</li>
+                            <li>`{{end_time}}`</li>
+                            <li>`{{date_of_work_extended}}`</li>
+                            <li>`{{extended_start_time}}`</li>
+                            <li>`{{extended_end_time}}`</li>
+                            <li>`{{total_hours_extended}}`</li>
+                            <li>`{{reason}}`</li>
                         </ul>
                     </li>
                 </ul>

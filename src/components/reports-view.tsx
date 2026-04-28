@@ -381,7 +381,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         
         try {
             const workbook = new ExcelJS.Workbook();
-            const buffer = Buffer.from(workScheduleTemplate, 'binary');
+            const buffer = Buffer.from(workScheduleTemplate, 'base64');
             await workbook.xlsx.load(buffer);
             const worksheet = workbook.worksheets[0];
             if (!worksheet) throw new Error("Template worksheet not found.");
@@ -531,7 +531,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         
         try {
             const workbook = new ExcelJS.Workbook();
-            const buffer = Buffer.from(attendanceTemplate, 'binary');
+            const buffer = Buffer.from(attendanceTemplate, 'base64');
             await workbook.xlsx.load(buffer);
 
             const worksheet = workbook.worksheets[0];
@@ -839,8 +839,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
                     let breakHours = 0;
                     if (dayData.shift.isUnpaidBreak && dayData.shift.breakStartTime && dayData.shift.breakEndTime) {
-                        const breakStart = parse(shift.breakStartTime, 'HH:mm', new Date());
-                        const breakEnd = parse(shift.breakEndTime, 'HH:mm', new Date());
+                        const breakStart = parse(dayData.shift.breakStartTime, 'HH:mm', new Date());
+                        const breakEnd = parse(dayData.shift.breakEndTime, 'HH:mm', new Date());
                         if (!isNaN(breakStart.getTime()) || !isNaN(breakEnd.getTime())) {
                            let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
                             if (breakDiff < 0) breakDiff += 24;
@@ -885,7 +885,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     
         try {
             const workbook = new ExcelJS.Workbook();
-            const buffer = Buffer.from(wfhCertTemplate, 'binary');
+            const buffer = Buffer.from(wfhCertTemplate, 'base64');
             await workbook.xlsx.load(buffer);
             const worksheet = workbook.worksheets[0];
             if (!worksheet) throw new Error("Template worksheet not found.");
@@ -1074,7 +1074,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         try {
             const workbook = new ExcelJS.Workbook();
-            const buffer = Buffer.from(workExtensionTemplate, 'binary');
+            const buffer = Buffer.from(workExtensionTemplate, 'base64');
             await workbook.xlsx.load(buffer);
             const worksheet = workbook.worksheets[0];
             if (!worksheet) throw new Error("Template worksheet not found.");
@@ -1260,7 +1260,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         try {
             const workbook = new ExcelJS.Workbook();
-            const buffer = Buffer.from(overtimeTemplate, 'binary');
+            const buffer = Buffer.from(overtimeTemplate, 'base64');
             await workbook.xlsx.load(buffer);
             const worksheet = workbook.worksheets[0];
             if (!worksheet) throw new Error("Template worksheet not found.");

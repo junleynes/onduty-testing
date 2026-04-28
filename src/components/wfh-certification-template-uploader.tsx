@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -45,11 +44,20 @@ export function WfhCertificationTemplateUploader({ isOpen, setIsOpen, onTemplate
 
     reader.onload = (e) => {
         try {
-            const data = e.target?.result;
-            if (typeof data !== 'string') {
+            const data = e.target?.result as ArrayBuffer;
+            if (!data) {
                 throw new Error("Failed to read file data.");
             }
-            onTemplateUpload(data);
+            
+            // Convert to Base64
+            const base64String = btoa(
+                new Uint8Array(data).reduce(
+                    (data, byte) => data + String.fromCharCode(byte),
+                    ''
+                )
+            );
+
+            onTemplateUpload(base64String);
             toast({ title: 'Template Uploaded', description: 'The new WFH certification template has been saved.' });
             setIsOpen(false);
         } catch (error) {
@@ -66,7 +74,7 @@ export function WfhCertificationTemplateUploader({ isOpen, setIsOpen, onTemplate
         toast({ title: 'File Read Error', description: 'Could not read the selected file.', variant: 'destructive' });
     };
     
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   return (
@@ -84,19 +92,19 @@ export function WfhCertificationTemplateUploader({ isOpen, setIsOpen, onTemplate
                 <ul className="list-disc pl-5 text-xs space-y-1 mt-2">
                     <li><b>Global Placeholders:</b> These can be used anywhere in the sheet.
                         <ul className="list-disc pl-5">
-                             <li>`{'{{first_day_of_month}}'}`</li>
-                             <li>`{'{{last_day_of_month}}'}`</li>
-                             <li>`{'{{employee_name}}'}`</li>
-                             <li>`{'{{reports_to_manager}}'}`</li>
-                              <li>`{'{{employee_signature}}'}` - Place this in the cell where you want the signature image to be inserted.</li>
+                             <li>`{{first_day_of_month}}`</li>
+                             <li>`{{last_day_of_month}}`</li>
+                             <li>`{{employee_name}}`</li>
+                             <li>`{{reports_to_manager}}`</li>
+                              <li>`{{employee_signature}}` - Place this in the cell where you want the signature image to be inserted.</li>
                         </ul>
                     </li>
                      <li><b>Row Placeholders:</b> Create one row in your template that contains these placeholders. The system will duplicate this row for each day in the selected month.
                         <ul className="list-disc pl-5">
-                            <li>`{'{{DATE}}'}` - The date for the specific row.</li>
-                            <li>`{'{{ATTENDANCE_RENDERED}}'}` - e.g., OFFICE-BASED, WFH, ON LEAVE</li>
-                            <li>`{'{{TOTAL_HRS_SPENT}}'}` - e.g., 8.00</li>
-                            <li>`{'{{REMARKS}}'}` - e.g., VL, SL</li>
+                            <li>`{{DATE}}` - The date for the specific row.</li>
+                            <li>`{{ATTENDANCE_RENDERED}}` - e.g., OFFICE-BASED, WFH, ON LEAVE</li>
+                            <li>`{{TOTAL_HRS_SPENT}}` - e.g., 8.00</li>
+                            <li>`{{REMARKS}}` - e.g., VL, SL</li>
                         </ul>
                      </li>
                 </ul>

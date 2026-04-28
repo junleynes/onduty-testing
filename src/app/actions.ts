@@ -251,7 +251,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
                     const button = form.getButton(field.getName());
                     button.setImage(image);
                 } catch (e) {
-                    console.warn(`Field ${field.getName()} matched signature target but is not a Push Button field.`);
+                    // This might happen if someone named a text field with a signature name
                 }
             }
         }
@@ -298,6 +298,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         };
 
         const allFormFields = form.getFields();
+        
+        // 1. Fill Text and Button Fields First
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
             let fieldSet = false;
             const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_]/g, ''));
@@ -314,14 +316,20 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
-        // Handle Leave Type (Checkbox or Radio Group)
+        // Handle Leave Type (Checkbox or Radio Group) with strict matching for short codes
         if (leaveRequest.type) {
             const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_]/g, '');
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[\s_]/g, '');
                 
-                // Try as Checkbox
-                if (currentFieldName === normalizedType || currentFieldName === `chk${normalizedType}` || currentFieldName.includes(normalizedType)) {
+                // STRICT CHECKBOX MATCHING: 
+                // Only allow .includes() for descriptive names (> 3 chars)
+                // Short codes like VL/SL must match exactly or with a 'chk' prefix.
+                const isTypeMatch = currentFieldName === normalizedType || 
+                                    currentFieldName === `chk${normalizedType}` ||
+                                    (normalizedType.length > 3 && currentFieldName.includes(normalizedType));
+
+                if (isTypeMatch) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
@@ -334,7 +342,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     const options = radioGroup.getOptions();
                     const matchingOption = options.find(opt => {
                         const normOpt = opt.toLowerCase().replace(/[\s_]/g, '');
-                        return normOpt === normalizedType || normOpt.includes(normalizedType);
+                        return normOpt === normalizedType || 
+                               (normalizedType.length > 3 && normOpt.includes(normalizedType));
                     });
                     if (matchingOption) {
                         radioGroup.select(matchingOption);
@@ -371,16 +380,14 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
 
-        // Generate visuals for standard fields before images
+        // 2. IMPORTANT: Generate visuals for standard fields BEFORE images
         form.updateFieldAppearances();
 
-        // Embed signatures
+        // 3. Embed signatures LAST to avoid them being overwritten by appearance updates
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
 
-        // IMPORTANT: Skip flattening if it causes corruption in Acrobat
-        // pdf-lib flattening is known to be problematic with image appearances
-
+        // Do NOT flatten. Flattening causes corruption in Acrobat when images are involved.
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
 
@@ -457,9 +464,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             }
         }
 
+        // Generate visuals for standard fields BEFORE images
         form.updateFieldAppearances();
 
-        // Embed signatures
+        // Embed signatures LAST
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
 

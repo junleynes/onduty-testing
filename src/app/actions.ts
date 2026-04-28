@@ -385,11 +385,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
 
+        // CRITICAL: Update appearances for standard fields BEFORE embedding images.
+        // This ensures text and radio buttons are correctly rendered in the PDF structure.
+        form.updateFieldAppearances();
+
+        // Now embed signatures (which manually set the appearance of their target buttons)
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
-
-        // CRITICAL: Update appearances for all fields before flattening to prevent Adobe Acrobat Error (18)
-        form.updateFieldAppearances();
 
         try { form.flatten(); } catch (e) {}
 
@@ -469,11 +471,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             }
         }
 
+        // CRITICAL: Update appearances for standard fields BEFORE embedding images.
+        form.updateFieldAppearances();
+
+        // Embed signatures
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
-
-        // CRITICAL: Update appearances for all fields before flattening to prevent Adobe Acrobat Error (18)
-        form.updateFieldAppearances();
 
         try { form.flatten(); } catch (e) {}
 

@@ -192,7 +192,7 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
                 db.prepare('DELETE FROM holidays').run();
                 break;
             case 'reportTemplates':
-                db.prepare("DELETE FROM key_value_store WHERE key LIKE '%Template'").run();
+                db.prepare("DELETE FROM key_value_store LIKE '%Template'").run();
                 break;
             case 'tasks':
                 db.prepare('DELETE FROM tasks').run();
@@ -444,7 +444,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
         };
 
         const allFormFields = form.getFields();

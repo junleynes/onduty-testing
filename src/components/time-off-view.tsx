@@ -24,6 +24,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { OffsetRequestDialog } from './offset-request-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Checkbox } from './ui/checkbox';
 
 type TimeOffViewProps = {
   leaveRequests: Leave[];
@@ -54,6 +55,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
 
@@ -129,6 +132,24 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     return Array.from(types).sort();
   }, [leaveTypes, leaveRequests]);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleSelectAll = (ids: string[], checked: boolean) => {
+    if (checked) {
+        setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
+    } else {
+        setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    setLeaveRequests(prev => prev.filter(r => !selectedIds.includes(r.id)));
+    setSelectedIds([]);
+    toast({ title: `${selectedIds.length} Request(s) Deleted`, variant: 'destructive' });
+  };
+
   const handleNewTimeOffRequest = () => {
     setEditingRequest(null);
     setIsRequestDialogOpen(true);
@@ -151,11 +172,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       setIsRequestDialogOpen(true);
     }
   }
-
-  const handleDeleteRequest = (requestId: string) => {
-    setLeaveRequests(prev => prev.filter(r => r.id !== requestId));
-    toast({ title: 'Request Deleted', variant: 'destructive' });
-  };
 
   const handleSaveRequest = (requestData: Partial<Leave>) => {
     if (editingRequest?.id) { 
@@ -300,7 +316,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     <div className="flex gap-2 justify-end">
                         <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4 mr-1" />Approve</Button>
                         <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4 mr-1" />Reject</Button>
-                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -310,7 +325,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
                         <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)}><Mail className="h-4 w-4 mr-1" />Email</Button>
-                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -319,7 +333,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                 return (
                     <div className="flex gap-2 justify-end">
                         <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>
-                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -328,14 +341,11 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
-                        <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
         }
-        return (
-            <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
-        );
+        return null;
     };
     
     return (
@@ -351,9 +361,15 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                 return (
                     <Card key={req.id}>
                         <CardHeader className="p-4 flex flex-row items-center justify-between">
-                            <div>
-                                {forManagerView && <CardTitle className="text-base">{employee ? getFullName(employee) : 'Unknown'}</CardTitle>}
-                                <CardDescription className="flex items-center gap-2"><Calendar className="h-4 w-4"/> {dateDisplay}</CardDescription>
+                            <div className="flex items-center gap-3">
+                                <Checkbox 
+                                  checked={selectedIds.includes(req.id)}
+                                  onCheckedChange={() => toggleSelect(req.id)}
+                                />
+                                <div>
+                                    {forManagerView && <CardTitle className="text-base">{employee ? getFullName(employee) : 'Unknown'}</CardTitle>}
+                                    <CardDescription className="flex items-center gap-2"><Calendar className="h-4 w-4"/> {dateDisplay}</CardDescription>
+                                </div>
                             </div>
                             <Badge variant={req.status === 'approved' ? 'default' : req.status === 'rejected' ? 'destructive' : 'secondary'}>{req.status}</Badge>
                         </CardHeader>
@@ -386,7 +402,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     <div className="flex gap-2 justify-end">
                         <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4" /></Button>
                         <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -396,7 +411,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline" title="View PDF"><Eye className="h-4 w-4" /></Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))} title="Download PDF"><FileDown className="h-4 w-4" /></Button>
                         <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)} title="Send via Email"><Mail className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)} title="Delete Request"><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -405,7 +419,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                 return (
                     <div className="flex gap-2 justify-end">
                         <Button size="sm" variant="outline" onClick={() => handleEditRequest(req)}>Edit</Button>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -414,14 +427,11 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     <div className="flex gap-2 justify-end">
                         <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
                         <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                 );
             }
         }
-        return (
-            <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteRequest(req.id)}><Trash2 className="h-4 w-4" /></Button>
-        );
+        return null;
     };
     
     return (
@@ -429,6 +439,12 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
          <Table>
             <TableHeader>
                 <TableRow>
+                <TableHead className="w-12">
+                   <Checkbox 
+                     checked={requests.length > 0 && requests.every(r => selectedIds.includes(r.id))}
+                     onCheckedChange={(checked) => handleSelectAll(requests.map(r => r.id), !!checked)}
+                   />
+                </TableHead>
                 {forManagerView && <SortableHeader tKey="employee">Employee</SortableHeader>}
                 <SortableHeader tKey="type">Type</SortableHeader>
                 <SortableHeader tKey="startDate">Dates</SortableHeader>
@@ -448,6 +464,12 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
                   return (
                     <TableRow key={req.id}>
+                        <TableCell>
+                            <Checkbox 
+                              checked={selectedIds.includes(req.id)}
+                              onCheckedChange={() => toggleSelect(req.id)}
+                            />
+                        </TableCell>
                         {forManagerView && <TableCell>{employee ? getFullName(employee) : 'Unknown'}</TableCell>}
                         <TableCell className="font-medium">{req.type}</TableCell>
                         <TableCell>{dateDisplay}</TableCell>
@@ -470,15 +492,37 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     <>
       <Card>
         <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
+          <div className="space-y-1">
             <CardTitle>Time Off Requests</CardTitle>
             <CardDescription>Manage your leave requests and offsets.</CardDescription>
           </div>
-           <div className="flex gap-2">
+           <div className="flex gap-2 flex-wrap items-center">
+                {selectedIds.length > 0 && (
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive">
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Selected ({selectedIds.length})
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will permanently delete {selectedIds.length} selected request(s). This action cannot be undone.
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                )}
                 {isManager && (
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isPurging}>
+                            <Button variant="destructive" disabled={isPurging} className={cn(selectedIds.length > 0 && "hidden md:flex")}>
                                 {isPurging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
                                 Clear All
                             </Button>

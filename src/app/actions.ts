@@ -433,10 +433,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const manager = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
         // Fetch the claimed work extension details
+        let weRequest: Leave | undefined = undefined;
+        let weManager: Employee | undefined = undefined;
         let weDate = 'N/A';
         let weHours = 'N/A';
+        
         if (leaveRequest.claimedWorkExtensionId) {
-            const weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as any;
+            weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as Leave | undefined;
             if (weRequest) {
                 weDate = format(new Date(weRequest.startDate), 'MM/dd/yyyy');
                 if (weRequest.startTime && weRequest.endTime) {
@@ -445,6 +448,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
                     if (diff < 0) diff += 24;
                     weHours = diff.toFixed(2);
+                }
+                
+                if (weRequest.managedBy) {
+                    weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
                 }
             }
         }
@@ -456,7 +463,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         let totalDaysValue = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
         if (leaveRequest.isAllDay === false && totalDaysValue === 1) totalDaysValue = 0.5;
 
-        const fields = {
+        const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group', 'office'],
@@ -467,6 +474,22 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
         };
+        
+        // Map Work Extension Details if present
+        if (weRequest) {
+            fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
+            fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
+            fields['we_date_filed'] = [weRequest.dateFiled ? format(new Date(weRequest.dateFiled), 'MM/dd/yyyy') : '', 'we_date_filed'];
+            fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
+            fields['we_date'] = [format(new Date(weRequest.startDate), 'MM/dd/yyyy'), 'we_date'];
+            fields['we_shift_from'] = [weRequest.originalStartTime || '', 'we_shift_from'];
+            fields['we_shift_to'] = [weRequest.originalEndTime || '', 'we_shift_to'];
+            fields['we_timein'] = [weRequest.startTime || '', 'we_timein'];
+            fields['we_timeout'] = [weRequest.endTime || '', 'we_timeout'];
+            fields['we_extend_from'] = [weRequest.startTime || '', 'we_extend_from'];
+            fields['we_extendto'] = [weRequest.endTime || '', 'we_extendto'];
+            fields['we_manager_name'] = [weManager ? getFullName(weManager) : '', 'we_manager_name'];
+        }
 
         const allFormFields = form.getFields();
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
@@ -493,6 +516,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         // Embed signatures LAST
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
+        
+        // Embed signatures from Original Work Extension
+        if (weRequest) {
+            await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image']);
+            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature, ['we_manager_signature_af_image']);
+        }
 
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;

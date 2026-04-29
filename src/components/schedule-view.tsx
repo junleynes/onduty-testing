@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react';
-import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDay, addMonths, isToday, getISOWeek, eachWeekOfInterval, lastDayOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear } from 'date-fns';
+import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDay, addMonths, isToday, getISOWeek, eachWeekOfInterval, lastDayOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Upload, Settings, Save, Send, MoreVertical, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, StickyNote, PartyPopper, Mail, Loader2, Trash2 } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Upload, Settings, Save, Send, MoreVertical, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, StickyNote, PartyPopper, Mail, Loader2, Trash2, FileSpreadsheet } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from './ui/calendar';
@@ -89,6 +89,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
 
   const [isImporterOpen, setIsImporterOpen] = useState(false);
   const [isTemplateImporterOpen, setIsTemplateImporterOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   
   const [weekTemplate, setWeekTemplate] = useState<Omit<Shift, 'id' | 'date'>[] | null>(null);
   const { toast } = useToast();
@@ -712,7 +713,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));
             const leaveEnd = startOfDay(new Date(l.endDate));
-            if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) return false;
+            if (isNaN(leaveStart.getTime()) || iZNaN(leaveEnd.getTime())) return false;
             
             return isWithinInterval(checkDay, { start: leaveStart, end: leaveEnd });
         }).map(l => {
@@ -875,6 +876,10 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
                                 <PartyPopper className="mr-2 h-4 w-4" />
                                 <span>Manage Holidays</span>
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)}>
+                                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                                <span>Export Semi-Monthly Excel</span>
+                            </DropdownMenuItem>
                         </DropdownMenuGroup>
                          <DropdownMenuSeparator />
                          <DropdownMenuGroup>
@@ -1014,6 +1019,217 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         setIsOpen={setIsTemplateImporterOpen}
         onImport={handleImportTemplates}
       />
+      <ScheduleExportDialog
+        isOpen={isExportDialogOpen}
+        setIsOpen={setIsExportDialogOpen}
+        employees={employees}
+        shifts={shifts}
+        leave={leave}
+        holidays={holidays}
+        monthlyEmployeeOrder={monthlyEmployeeOrder}
+      />
     </Card>
   );
+}
+
+type ScheduleExportDialogProps = {
+    isOpen: boolean;
+    setIsOpen: (open: boolean) => void;
+    employees: Employee[];
+    shifts: Shift[];
+    leave: Leave[];
+    holidays: Holiday[];
+    monthlyEmployeeOrder: Record<string, string[]>;
+};
+
+function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, holidays, monthlyEmployeeOrder }: ScheduleExportDialogProps) {
+    const [startMonth, setStartMonth] = useState<Date>(startOfMonth(new Date()));
+    const [endMonth, setEndMonth] = useState<Date>(startOfMonth(new Date()));
+    const [isExporting, setIsExporting] = useState(false);
+    const { toast } = useToast();
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const months = eachMonthOfInterval({ start: startMonth, end: endMonth });
+
+            for (const month of months) {
+                const monthKey = format(month, 'yyyy-MM');
+                const sheetName = format(month, 'MMMM yyyy');
+                const worksheet = workbook.addWorksheet(sheetName);
+
+                // Get employees in the preferred order for this specific month
+                const visibleEmployees = employees.filter(e => e.visibility?.schedule !== false);
+                const employeeMap = new Map(visibleEmployees.map(e => [e.id, e]));
+                let orderedEmps = [...visibleEmployees].sort((a,b) => a.lastName.localeCompare(b.lastName));
+                
+                if (monthlyEmployeeOrder[monthKey]) {
+                    const orderedSet = new Set(monthlyEmployeeOrder[monthKey]);
+                    const ordered = monthlyEmployeeOrder[monthKey].map(id => employeeMap.get(id)).filter((e): e is Employee => !!e);
+                    const unordered = orderedEmps.filter(e => !orderedSet.has(e.id));
+                    orderedEmps = [...ordered, ...unordered];
+                }
+
+                const findDataForDay = (day: Date, employee: Employee) => {
+                    const normalizedDay = startOfDay(day);
+                    const holidayOnDay = holidays.find(h => isSameDay(new Date(h.date), normalizedDay));
+                    if (holidayOnDay) return { text: 'HOL OFF' };
+
+                    const shiftOnDay = shifts.find(s => s.employeeId === employee.id && isSameDay(new Date(s.date), normalizedDay));
+                    if (shiftOnDay?.isHolidayOff) return { text: 'HOL OFF' };
+                    if (shiftOnDay?.isDayOff) return { text: 'OFF' };
+
+                    const leaveOnDay = leave.find(l => {
+                        if (l.employeeId !== employee.id || l.status !== 'approved' || !l.startDate || !l.endDate) return false;
+                        return isWithinInterval(normalizedDay, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
+                    });
+                    if (leaveOnDay) return { text: leaveOnDay.type.toUpperCase() };
+
+                    if (shiftOnDay) return { text: shiftOnDay.label.toUpperCase() };
+
+                    return { text: '' };
+                };
+
+                const renderTable = (startRow: number, days: Date[], title: string) => {
+                    worksheet.mergeCells(startRow, 1, startRow, days.length + 2);
+                    const titleCell = worksheet.getCell(startRow, 1);
+                    titleCell.value = title;
+                    titleCell.font = { bold: true, size: 14 };
+                    titleCell.alignment = { horizontal: 'center' };
+
+                    const headerRow = worksheet.getRow(startRow + 1);
+                    headerRow.getCell(1).value = 'Employee Name';
+                    headerRow.getCell(2).value = 'Position';
+                    days.forEach((day, i) => {
+                        const cell = headerRow.getCell(i + 3);
+                        cell.value = format(day, 'EEE d');
+                        cell.alignment = { horizontal: 'center' };
+                    });
+                    headerRow.font = { bold: true };
+                    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+                    orderedEmps.forEach((emp, empIdx) => {
+                        const row = worksheet.getRow(startRow + 2 + empIdx);
+                        row.getCell(1).value = getFullName(emp).toUpperCase();
+                        row.getCell(2).value = emp.position;
+                        days.forEach((day, dayIdx) => {
+                            const data = findDataForDay(day, emp);
+                            const cell = row.getCell(dayIdx + 3);
+                            cell.value = data.text;
+                            cell.alignment = { horizontal: 'center' };
+                            if (data.text === 'HOL OFF' || data.text === 'OFF') {
+                                cell.font = { color: { argb: 'FF808080' } };
+                            }
+                        });
+                    });
+
+                    // Auto-filter and freeze panes for better readability
+                    worksheet.columns[0].width = 30;
+                    worksheet.columns[1].width = 20;
+
+                    return startRow + orderedEmps.length + 4; // Return next available row
+                };
+
+                const monthStart = startOfMonth(month);
+                const day15 = addDays(monthStart, 14);
+                const firstHalfDays = eachDayOfInterval({ start: monthStart, end: day15 });
+
+                const day16 = addDays(monthStart, 15);
+                const monthEnd = endOfMonth(month);
+                const secondHalfDays = eachDayOfInterval({ start: day16, end: monthEnd });
+
+                let nextRow = renderTable(1, firstHalfDays, `Semi-Monthly Schedule: ${sheetName} (1-15)`);
+                renderTable(nextRow, secondHalfDays, `Semi-Monthly Schedule: ${sheetName} (16-${getDate(monthEnd)})`);
+            }
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, `Semi-Monthly Schedule Export - ${format(startMonth, 'MMM yyyy')} to ${format(endMonth, 'MMM yyyy')}.xlsx`);
+
+            toast({ title: 'Export Successful', description: 'Your schedule has been exported to Excel.' });
+            setIsOpen(false);
+        } catch (error) {
+            console.error(error);
+            toast({ variant: 'destructive', title: 'Export Failed', description: (error as Error).message });
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Export Schedule to Excel</DialogTitle>
+                    <DialogDescription>
+                        Generate a grid-view semi-monthly Excel report for the selected months.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Start Month</Label>
+                            <Select 
+                                value={format(startMonth, 'yyyy-MM')} 
+                                onValueChange={(v) => setStartMonth(parse(v, 'yyyy-MM', new Date()))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {eachMonthOfInterval({ 
+                                        start: subDays(new Date(), 365), 
+                                        end: addDays(new Date(), 365) 
+                                    }).map(m => (
+                                        <SelectItem key={format(m, 'yyyy-MM')} value={format(m, 'yyyy-MM')}>
+                                            {format(m, 'MMMM yyyy')}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>End Month</Label>
+                            <Select 
+                                value={format(endMonth, 'yyyy-MM')} 
+                                onValueChange={(v) => setEndMonth(parse(v, 'yyyy-MM', new Date()))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {eachMonthOfInterval({ 
+                                        start: startMonth, 
+                                        end: addDays(startMonth, 730) 
+                                    }).map(m => (
+                                        <SelectItem key={format(m, 'yyyy-MM')} value={format(m, 'yyyy-MM')}>
+                                            {format(m, 'MMMM yyyy')}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={() => {
+                            setStartMonth(startOfYear(new Date()));
+                            setEndMonth(endOfYear(new Date()));
+                        }}>Current Year</Button>
+                         <Button variant="outline" className="flex-1" onClick={() => {
+                            setStartMonth(startOfMonth(new Date()));
+                            setEndMonth(startOfMonth(new Date()));
+                        }}>Current Month</Button>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
+                    <Button onClick={handleExport} disabled={isExporting}>
+                        {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
+                        Export to Excel
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 }

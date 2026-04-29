@@ -483,6 +483,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
+            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group', 'office'],
             offset_dates: [offsetDatesDisplay, 'offset_dates', 'dates', 'period'],

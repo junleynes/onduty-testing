@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -90,7 +91,7 @@ export function AlafTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: Al
                     <p className="font-semibold underline">Required Field Names (Fuzzy matched):</p>
                     <ul className="list-disc pl-5 space-y-1">
                         <li><b>Signatures (Push Button/Image):</b> <code>employee_signature_af_image</code>, <code>manager_signature_af_image</code></li>
-                        <li><b>Text Fields:</b> <code>employee_name</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code>, <code>department</code>, <code>contact_info</code>, <code>leave_type</code></li>
+                        <li><b>Text Fields:</b> <code>employee_name</code>, <code>employee_id</code>, <code>date_filed</code>, <code>leave_dates</code>, <code>reason</code>, <code>manager_name</code>, <code>department</code>, <code>contact_info</code>, <code>leave_type</code></li>
                         <li><b>Checkboxes/Text:</b> Name them exactly like the leave type (e.g. <code>VL</code>, <code>SL</code>, <code>TARDY</code>) or <code>approved</code> / <code>rejected</code>.</li>
                     </ul>
                 </div>

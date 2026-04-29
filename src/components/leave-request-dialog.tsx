@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
@@ -34,6 +33,8 @@ const requestSchema = z.object({
       to: z.date().optional(),
   }),
   isAllDay: z.boolean(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
 });
 
 
@@ -49,7 +50,11 @@ type LeaveRequestDialogProps = {
 export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTypes, currentUser }: LeaveRequestDialogProps) {
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
-    defaultValues: {},
+    defaultValues: {
+        isAllDay: true,
+        startTime: '08:00',
+        endTime: '12:00'
+    },
   });
 
   const availableLeaveTypes = useMemo(() => 
@@ -66,17 +71,17 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
         reason: request?.reason || '',
         dateRange: { from: fromDate, to: toDate },
         isAllDay: request?.isAllDay ?? true,
+        startTime: request?.startTime || '08:00',
+        endTime: request?.endTime || '12:00',
       });
     }
   }, [request, isOpen, form, currentUser, availableLeaveTypes]);
 
   const onSubmit = (values: z.infer<typeof requestSchema>) => {
     const finalValues: Partial<Leave> = {
-      type: values.type,
-      reason: values.reason,
+      ...values,
       startDate: values.dateRange.from,
       endDate: values.dateRange.to || values.dateRange.from,
-      isAllDay: values.isAllDay,
     };
     onSave(finalValues);
   };
@@ -200,6 +205,32 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
                     </FormItem>
                 )}
             />
+
+            {!form.watch('isAllDay') && (
+                <div className="grid grid-cols-1 gap-4">
+                    <FormItem>
+                        <FormLabel>Time Slot</FormLabel>
+                        <Select 
+                            onValueChange={(value) => {
+                                const [start, end] = value.split('-');
+                                form.setValue('startTime', start);
+                                form.setValue('endTime', end);
+                            }}
+                            defaultValue={`${form.getValues('startTime')}-${form.getValues('endTime')}`}
+                        >
+                            <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select period" />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value="08:00-12:00">AM (08:00 - 12:00)</SelectItem>
+                                <SelectItem value="13:00-17:00">PM (13:00 - 17:00)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </FormItem>
+                </div>
+            )}
            
              <FormField
               control={form.control}

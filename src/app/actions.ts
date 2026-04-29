@@ -304,7 +304,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             leave_dates: [leaveDatesDisplay, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
             total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons', 'details'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile', 'cellphone'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile', 'cellphone', 'contactno', 'phoneno', 'telephoneno'],
             approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
             leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave', 'type', 'leavetype'],
@@ -339,6 +339,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
+                // Stricter matching for short codes to prevent VL matching AVL
                 const isTypeMatch = currentFieldName === normalizedType || 
                                     currentFieldName === `chk${normalizedType}` ||
                                     (normalizedType.length > 3 && (currentFieldName.includes(normalizedType) || currentFieldName.endsWith(normalizedType)));
@@ -372,13 +373,22 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
-        // Handle Approval Status
+        // Handle Approval Status (Checkbox, Radio, or Text)
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
+            const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
+
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey)) {
+                const isStatusMatch = currentFieldName === statusKey || 
+                                      currentFieldName.endsWith(statusKey) || 
+                                      currentFieldName === alternateKey || 
+                                      currentFieldName.endsWith(alternateKey) ||
+                                      currentFieldName === `chk${statusKey}` ||
+                                      currentFieldName === `chk${alternateKey}`;
+
+                if (isStatusMatch) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
@@ -395,7 +405,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     const options = radioGroup.getOptions();
                     const matchingOption = options.find(opt => {
                         const normOpt = opt.toLowerCase().replace(/[^a-z0-9]/g, '');
-                        return normOpt === statusKey || normOpt.endsWith(statusKey);
+                        return normOpt === statusKey || normOpt.endsWith(statusKey) || normOpt === alternateKey || normOpt.endsWith(alternateKey);
                     });
                     if (matchingOption) {
                         radioGroup.select(matchingOption);
@@ -478,6 +488,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             offset_dates: [offsetDatesDisplay, 'offset_dates', 'dates', 'period'],
             total_days: [String(totalDaysValue), 'total_days', 'no_of_days', 'days', 'totaldays'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'mobile', 'cellphone', 'contactno', 'phoneno'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
@@ -513,6 +524,28 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     try {
                         const textField = form.getTextField(field.getName());
                         textField.setText(value || '');
+                    } catch (e) {}
+                }
+            }
+        }
+        
+        // Handle Approval Status for Offset
+        if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
+            const statusKey = leaveRequest.status.toLowerCase();
+            const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
+            for (const field of allFormFields) {
+                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey) || 
+                    currentFieldName === alternateKey || currentFieldName.endsWith(alternateKey)) {
+                    try {
+                        const checkbox = form.getCheckBox(field.getName());
+                        checkbox.check();
+                    } catch (e) {}
+                    
+                    try {
+                        const textField = form.getTextField(field.getName());
+                        textField.setText('X');
                     } catch (e) {}
                 }
             }

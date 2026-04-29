@@ -242,11 +242,16 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
             try { image = await pdfDoc.embedPng(buffer); } catch (e) { return; }
         }
 
-        const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_\.]/g, ''));
+        const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
         for (const field of allFormFields) {
-            const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
-            if (normalizedTargets.includes(currentFieldName)) {
+            const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+            // Check for exact match or if the field name ends with one of our targets (for subform handling)
+            const isMatch = normalizedTargets.some(target => 
+                currentFieldName === target || currentFieldName.endsWith(target)
+            );
+
+            if (isMatch) {
                 try {
                     const button = form.getButton(field.getName());
                     button.setImage(image);
@@ -285,16 +290,16 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
         const fields = {
-            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name'],
+            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed', 'date'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept', 'group'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
             leave_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
             total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons', 'details'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile', 'cellphone'],
             approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
             leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave', 'type', 'leavetype'],
         };
 
@@ -302,13 +307,18 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         
         // 1. Fill Text and Button Fields First
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
-            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_\.]/g, ''));
+            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
-                if (normalizedTargets.includes(currentFieldName)) {
+                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                const isMatch = normalizedTargets.some(target => 
+                    currentFieldName === target || currentFieldName.endsWith(target)
+                );
+
+                if (isMatch) {
                     try {
                         const textField = form.getTextField(field.getName());
-                        textField.setText(value);
+                        textField.setText(value || '');
                     } catch (e) {}
                 }
             }
@@ -316,13 +326,16 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         
         // Handle Leave Type (Checkbox, Radio Group, or Text Field)
         if (leaveRequest.type) {
-            const normalizedType = leaveRequest.type.toLowerCase().replace(/[\s_\.]/g, '');
+            const rawType = leaveRequest.type.toLowerCase();
+            const normalizedType = rawType.replace(/[^a-z0-9]/g, '');
+            
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
+                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
                 const isTypeMatch = currentFieldName === normalizedType || 
                                     currentFieldName === `chk${normalizedType}` ||
-                                    (normalizedType.length > 3 && currentFieldName.includes(normalizedType));
+                                    (normalizedType.length > 3 && currentFieldName.includes(normalizedType)) ||
+                                    currentFieldName.endsWith(normalizedType);
 
                 if (isTypeMatch) {
                     // Try as Checkbox
@@ -336,19 +349,22 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                         const radioGroup = form.getRadioGroup(field.getName());
                         const options = radioGroup.getOptions();
                         const matchingOption = options.find(opt => {
-                            const normOpt = opt.toLowerCase().replace(/[\s_\.]/g, '');
+                            const normOpt = opt.toLowerCase().replace(/[^a-z0-9]/g, '');
                             return normOpt === normalizedType || 
-                                   (normalizedType.length > 3 && normOpt.includes(normalizedType));
+                                   (normalizedType.length > 3 && normOpt.includes(normalizedType)) ||
+                                   normOpt.endsWith(normalizedType);
                         });
                         if (matchingOption) {
                             radioGroup.select(matchingOption);
                         }
                     } catch (e) {}
 
-                    // Try as Text Field (Mark with X if it's the selected type)
+                    // Try as Text Field
                     try {
                         const textField = form.getTextField(field.getName());
-                        textField.setText('X');
+                        // SPECIAL CASE: For TARDY, the user requested the text "TARDY" instead of "X"
+                        const valueToSet = normalizedType === 'tardy' ? 'TARDY' : 'X';
+                        textField.setText(valueToSet);
                     } catch (e) {}
                 }
             }
@@ -358,9 +374,9 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
+                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                if (currentFieldName === statusKey) {
+                if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey)) {
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
@@ -375,9 +391,10 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 try {
                     const radioGroup = form.getRadioGroup(field.getName());
                     const options = radioGroup.getOptions();
-                    const matchingOption = options.find(opt => 
-                        opt.toLowerCase().replace(/[\s_\.]/g, '') === statusKey
-                    );
+                    const matchingOption = options.find(opt => {
+                        const normOpt = opt.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        return normOpt === statusKey || normOpt.endsWith(statusKey);
+                    });
                     if (matchingOption) {
                         radioGroup.select(matchingOption);
                     }
@@ -440,26 +457,31 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (leaveRequest.isAllDay === false && totalDaysValue === 1) totalDaysValue = 0.5;
 
         const fields = {
-            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name'],
+            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group', 'office'],
             offset_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'offset_dates', 'dates', 'period'],
-            total_days: [String(totalDaysValue), 'total_days', 'no_of_days', 'days'],
+            total_days: [String(totalDaysValue), 'total_days', 'no_of_days', 'days', 'totaldays'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
         };
 
         const allFormFields = form.getFields();
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
-            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[\s_\.]/g, ''));
+            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[\s_\.]/g, '');
-                if (normalizedTargets.includes(currentFieldName)) {
+                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                const isMatch = normalizedTargets.some(target => 
+                    currentFieldName === target || currentFieldName.endsWith(target)
+                );
+
+                if (isMatch) {
                     try {
                         const textField = form.getTextField(field.getName());
-                        textField.setText(value);
+                        textField.setText(value || '');
                     } catch (e) {}
                 }
             }

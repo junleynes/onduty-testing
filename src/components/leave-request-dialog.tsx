@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
@@ -170,6 +169,9 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
                                     selected={field.value}
                                     onSelect={field.onChange}
                                     numberOfMonths={2}
+                                    captionLayout="dropdown-buttons"
+                                    fromYear={2020}
+                                    toYear={new Date().getFullYear() + 1}
                                 />
                             </PopoverContent>
                         </Popover>

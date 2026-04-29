@@ -1,3 +1,4 @@
+
 'use server';
 
 import type { SmtpSettings, Employee, Shift, AppVisibility, Leave } from '@/types';
@@ -332,10 +333,11 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
+                // STRICT MATCHING: For short types like VL, SL, only allow exact match or chk prefix
+                // This prevents VL from matching AVL.
                 const isTypeMatch = currentFieldName === normalizedType || 
                                     currentFieldName === `chk${normalizedType}` ||
-                                    (normalizedType.length > 3 && currentFieldName.includes(normalizedType)) ||
-                                    currentFieldName.endsWith(normalizedType);
+                                    (normalizedType.length > 3 && (currentFieldName.includes(normalizedType) || currentFieldName.endsWith(normalizedType)));
 
                 if (isTypeMatch) {
                     // Try as Checkbox

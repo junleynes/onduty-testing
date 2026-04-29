@@ -193,6 +193,9 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                                     selected={field.value}
                                     onSelect={field.onChange}
                                     numberOfMonths={2}
+                                    captionLayout="dropdown-buttons"
+                                    fromYear={2020}
+                                    toYear={new Date().getFullYear() + 1}
                                 />
                             </PopoverContent>
                         </Popover>

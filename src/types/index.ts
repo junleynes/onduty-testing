@@ -74,6 +74,10 @@ export type Leave = {
   workExtensionStatus?: 'not-claimed' | 'claimed' | 'expired';
   claimedWorkExtensionId?: string;
 
+  // Metadata for custom filing
+  durationCategory?: 'whole' | 'half' | 'minutes';
+  totalMinutes?: number;
+
   // New fields for PDF generation
   dateFiled: Date;
   department?: string;

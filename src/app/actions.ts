@@ -285,16 +285,29 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         const pdfDoc = await PDFDocument.load(templateBytes);
         const form = pdfDoc.getForm();
 
-        let totalDaysValue = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
-        if (leaveRequest.isAllDay === false && totalDaysValue === 1) {
-            totalDaysValue = 0.5;
+        let totalDaysValue = "";
+        if (leaveRequest.durationCategory === 'minutes' && leaveRequest.totalMinutes) {
+            totalDaysValue = `${leaveRequest.totalMinutes} mins`;
+        } else {
+            let days = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
+            if (leaveRequest.isAllDay === false && days === 1) {
+                days = 0.5;
+            }
+            totalDaysValue = String(days);
         }
 
         const startDate = new Date(leaveRequest.startDate);
         const endDate = new Date(leaveRequest.endDate);
-        const leaveDatesDisplay = isSameDay(startDate, endDate)
+        let leaveDatesDisplay = isSameDay(startDate, endDate)
             ? format(startDate, 'MM/dd/yyyy')
             : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
+        
+        // Append specific times if it's not a whole day and not just a minute filing
+        if (!leaveRequest.isAllDay && leaveRequest.startTime && leaveRequest.endTime && leaveRequest.durationCategory !== 'minutes') {
+            leaveDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
+        } else if (leaveRequest.durationCategory === 'minutes' && leaveRequest.startTime) {
+            leaveDatesDisplay += ` @ ${leaveRequest.startTime}`;
+        }
 
         const fields = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
@@ -302,7 +315,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept', 'group'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
             leave_dates: [leaveDatesDisplay, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
-            total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
+            total_days: [totalDaysValue, 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons', 'details'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile', 'cellphone', 'contactno', 'phoneno', 'telephoneno'],
             approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
@@ -472,14 +485,28 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const pdfDoc = await PDFDocument.load(templateBytes);
         const form = pdfDoc.getForm();
 
-        let totalDaysValue = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
-        if (leaveRequest.isAllDay === false && totalDaysValue === 1) totalDaysValue = 0.5;
+        let totalDaysValue = "";
+        if (leaveRequest.durationCategory === 'minutes' && leaveRequest.totalMinutes) {
+            totalDaysValue = `${leaveRequest.totalMinutes} mins`;
+        } else {
+            let days = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
+            if (leaveRequest.isAllDay === false && days === 1) {
+                days = 0.5;
+            }
+            totalDaysValue = String(days);
+        }
 
         const startDate = new Date(leaveRequest.startDate);
         const endDate = new Date(leaveRequest.endDate);
-        const offsetDatesDisplay = isSameDay(startDate, endDate)
+        let offsetDatesDisplay = isSameDay(startDate, endDate)
             ? format(startDate, 'MM/dd/yyyy')
             : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
+
+        if (!leaveRequest.isAllDay && leaveRequest.startTime && leaveRequest.endTime && leaveRequest.durationCategory !== 'minutes') {
+            offsetDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
+        } else if (leaveRequest.durationCategory === 'minutes' && leaveRequest.startTime) {
+            offsetDatesDisplay += ` @ ${leaveRequest.startTime}`;
+        }
 
         const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
@@ -487,7 +514,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group', 'office'],
             offset_dates: [offsetDatesDisplay, 'offset_dates', 'dates', 'period'],
-            total_days: [String(totalDaysValue), 'total_days', 'no_of_days', 'days', 'totaldays'],
+            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days', 'totaldays'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'mobile', 'cellphone', 'contactno', 'phoneno'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],

@@ -18,7 +18,7 @@ type Attachment = {
 }
 
 export async function sendEmail(
-    { to, subject, htmlBody, attachments }: { to: string, subject: string, htmlBody: string, attachments?: Attachment[] },
+    { to, subject, htmlBody, attachments, fromName, fromEmail }: { to: string, subject: string, htmlBody: string, attachments?: Attachment[], fromName?: string, fromEmail?: string },
     smtpSettings: SmtpSettings
 ) {
     if (!smtpSettings.fromEmail || !smtpSettings.fromName) {
@@ -43,7 +43,7 @@ export async function sendEmail(
 
     try {
         await transporter.sendMail({
-            from: `"${smtpSettings.fromName}" <${smtpSettings.fromEmail}>`,
+            from: `"${fromName || smtpSettings.fromName}" <${fromEmail || smtpSettings.fromEmail}>`,
             to: to,
             subject: subject,
             html: htmlBody,

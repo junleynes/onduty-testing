@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -672,6 +673,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             leaveRequest={emailingRequest}
             smtpSettings={smtpSettings}
             employees={employees}
+            currentUser={currentUser}
         />
       )}
     </>
@@ -685,12 +687,15 @@ type EmailDialogProps = {
     leaveRequest: Leave;
     smtpSettings: SmtpSettings;
     employees: Employee[];
+    currentUser: Employee;
 };
 
-function EmailDialog({ isOpen, setIsOpen, leaveRequest, smtpSettings, employees }: EmailDialogProps) {
+function EmailDialog({ isOpen, setIsOpen, leaveRequest, smtpSettings, employees, currentUser }: EmailDialogProps) {
     const requester = employees.find(e => e.id === leaveRequest.employeeId);
-    const manager = employees.find(e => e.id === leaveRequest.managedBy);
+    const initialManager = employees.find(e => e.id === leaveRequest.managedBy);
 
+    const [senderName, setSenderName] = useState('');
+    const [senderEmail, setSenderEmail] = useState('');
     const [recipientName, setRecipientName] = useState('');
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
@@ -700,8 +705,8 @@ function EmailDialog({ isOpen, setIsOpen, leaveRequest, smtpSettings, employees 
 
     React.useEffect(() => {
         if (isOpen && requester) {
-            const initialRecipientName = manager ? getFullName(manager) : '';
-            const initialTo = manager ? manager.email : '';
+            const initialRecipientName = initialManager ? getFullName(initialManager) : '';
+            const initialTo = initialManager ? initialManager.email : '';
             
             const startDate = format(new Date(leaveRequest.startDate), 'MMM d, yyyy');
             const endDate = format(new Date(leaveRequest.endDate), 'MMM d, yyyy');
@@ -721,12 +726,14 @@ Details:
 Thank you,  
 Onduty Admin`;
             
+            setSenderName(getFullName(currentUser));
+            setSenderEmail(currentUser.email);
             setRecipientName(initialRecipientName);
             setTo(initialTo);
             setSubject(newSubject);
             setBody(newBody);
         }
-    }, [isOpen, leaveRequest, requester, manager]);
+    }, [isOpen, leaveRequest, requester, initialManager, currentUser]);
     
     const handleSend = async () => {
         if (!to) {
@@ -745,7 +752,14 @@ Onduty Admin`;
             };
 
             toast({ title: 'Sending email...', description: `Sending leave form to ${to}` });
-            const result = await sendEmail({ to, subject, htmlBody: body.replace(/\n/g, '<br>'), attachments: [attachment] }, smtpSettings);
+            const result = await sendEmail({ 
+                to, 
+                subject, 
+                htmlBody: body.replace(/\n/g, '<br>'), 
+                attachments: [attachment],
+                fromName: senderName,
+                fromEmail: senderEmail
+            }, smtpSettings);
 
             if (result.success) {
                 toast({ title: 'Email Sent!', description: 'The leave form has been sent successfully.' });
@@ -756,17 +770,30 @@ Onduty Admin`;
         });
     };
 
-    // Helper to update body when name changes
-    const updateBodyName = (newName: string) => {
-        setRecipientName(newName);
-        setBody(prev => {
-            const lines = prev.split('\n');
-            if (lines.length > 0 && lines[0].startsWith('Dear ')) {
-                lines[0] = `Dear ${newName || 'Recipient'},`;
-                return lines.join('\n');
-            }
-            return prev;
-        });
+    const handleSelectSender = (id: string) => {
+        const emp = employees.find(e => e.id === id);
+        if (emp) {
+            setSenderName(getFullName(emp));
+            setSenderEmail(emp.email);
+        }
+    };
+
+    const handleSelectRecipient = (id: string) => {
+        const emp = employees.find(e => e.id === id);
+        if (emp) {
+            const newName = getFullName(emp);
+            setRecipientName(newName);
+            setTo(emp.email);
+            // Update body salutation
+            setBody(prev => {
+                const lines = prev.split('\n');
+                if (lines.length > 0 && lines[0].startsWith('Dear ')) {
+                    lines[0] = `Dear ${newName || 'Recipient'},`;
+                    return lines.join('\n');
+                }
+                return prev;
+            });
+        }
     };
 
     return (
@@ -777,41 +804,72 @@ Onduty Admin`;
                     <DialogDescription>The approved ALAF will be sent as a PDF attachment.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-md border p-4 space-y-4">
+                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sender Information</Label>
                         <div className="space-y-2">
-                            <Label htmlFor="recipientName">Recipient Name</Label>
-                            <Input 
-                                id="recipientName" 
-                                value={recipientName} 
-                                onChange={(e) => updateBodyName(e.target.value)} 
-                                placeholder="e.g. John Doe" 
-                            />
+                             <Select onValueChange={handleSelectSender}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select sender from team..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {employees.map(e => (
+                                        <SelectItem key={e.id} value={e.id}>{getFullName(e)}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="recipientEmail">Recipient Email</Label>
-                            <Input 
-                                id="recipientEmail" 
-                                type="email" 
-                                value={to} 
-                                onChange={(e) => setTo(e.target.value)} 
-                                placeholder="recipient@example.com" 
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="senderName">Sender Name</Label>
+                                <Input id="senderName" value={senderName} onChange={(e) => setSenderName(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="senderEmail">Sender Email</Label>
+                                <Input id="senderEmail" type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} />
+                            </div>
                         </div>
                     </div>
+
+                    <div className="rounded-md border p-4 space-y-4">
+                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recipient Information</Label>
+                        <div className="space-y-2">
+                             <Select onValueChange={handleSelectRecipient}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select recipient from team..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {employees.map(e => (
+                                        <SelectItem key={e.id} value={e.id}>{getFullName(e)}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="recipientName">Recipient Name</Label>
+                                <Input id="recipientName" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="recipientEmail">Recipient Email</Label>
+                                <Input id="recipientEmail" type="email" value={to} onChange={(e) => setTo(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
                      <div className="space-y-2">
                         <Label>Subject</Label>
                         <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                         <Label>Body</Label>
-                        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} />
+                        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6} />
                     </div>
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
                     <Button onClick={handleSend} disabled={isSending}>
                         {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Send
+                        Send Email
                     </Button>
                 </DialogFooter>
             </DialogContent>

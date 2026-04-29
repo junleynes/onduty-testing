@@ -63,8 +63,9 @@ export async function getData() {
 
     const faqData = db.prepare("SELECT value FROM key_value_store WHERE key = 'faqs'").get() as { value: string } | undefined;
     const faqs: FaqItem[] = faqData ? JSON.parse(faqData.value) : [
-      { id: '1', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
-      { id: '2', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
+      { id: '1', question: 'What do the leave type codes stand for?', answer: 'Common leave codes include:\n- VL: Vacation Leave\n- SL: Sick Leave\n- EL: Emergency Leave\n- CTO: Compensatory Time Off (earned overtime used as leave)\n- OFFSET: Claiming an approved Work Extension\n- TARDY: Filing for specific instances of tardiness.' },
+      { id: '2', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
+      { id: '3', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
     ];
 
 

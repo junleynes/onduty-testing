@@ -48,7 +48,12 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         const employee = employees.find(e => e.id === req.employeeId);
         return getFullName(employee || {}).toLowerCase().includes(searchTerm.toLowerCase());
       })
-      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+      .sort((a, b) => {
+        // Sort by Date Filed descending
+        const dateA = new Date(a.dateFiled || a.requestedAt || 0).getTime();
+        const dateB = new Date(b.dateFiled || b.requestedAt || 0).getTime();
+        return dateB - dateA;
+      });
   };
 
   const myRequests = useMemo(() => 
@@ -95,11 +100,6 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
     setEditingRequest(request);
     setIsRequestDialogOpen(true);
   }
-
-  const handleDeleteRequest = (requestId: string) => {
-    setLeaveRequests(prev => prev.filter(r => r.id !== requestId));
-    toast({ title: 'Request Deleted', variant: 'destructive' });
-  };
 
   const handleSaveRequest = (requestData: Partial<Leave>) => {
     if (editingRequest?.id) { // Editing
@@ -183,6 +183,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         {requests.map(req => {
              const employee = employees.find(e => e.id === req.employeeId);
              const dateDisplay = req.originalShiftDate ? format(new Date(req.originalShiftDate), 'MMM d, yyyy') : 'N/A';
+             const filedDisplay = format(new Date(req.dateFiled || req.requestedAt || new Date()), 'MMM d, yyyy');
 
             return (
                 <Card key={req.id}>
@@ -200,6 +201,10 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
                         {getStatusBadge(req)}
                     </CardHeader>
                     <CardContent className="p-4 pt-0 space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock4 className="h-3 w-3" />
+                            <span>Filed: {filedDisplay}</span>
+                        </div>
                         <div className="flex items-center gap-2">
                             <Clock4 className="h-4 w-4 text-muted-foreground"/>
                             <span className="font-medium">{req.startTime} - {req.endTime}</span>
@@ -235,6 +240,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
                     onCheckedChange={(checked) => handleSelectAll(requests.map(r => r.id), !!checked)}
                 />
             </TableHead>
+            <TableHead>Date Filed</TableHead>
             {forManagerView && <TableHead>Employee</TableHead>}
             <TableHead>Original Shift Date</TableHead>
             <TableHead>Extension Time</TableHead>
@@ -247,6 +253,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
             {requests.map(req => {
               const employee = employees.find(e => e.id === req.employeeId);
               const dateDisplay = req.originalShiftDate ? format(new Date(req.originalShiftDate), 'MMM d, yyyy') : 'N/A';
+              const filedDisplay = format(new Date(req.dateFiled || req.requestedAt || new Date()), 'MMM d, yyyy');
 
               return (
                 <TableRow key={req.id}>
@@ -256,6 +263,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
                             onCheckedChange={() => toggleSelect(req.id)}
                         />
                     </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{filedDisplay}</TableCell>
                     {forManagerView && <TableCell>{employee ? getFullName(employee) : 'Unknown'}</TableCell>}
                     <TableCell>{dateDisplay}</TableCell>
                     <TableCell className="font-medium">{req.startTime} - {req.endTime}</TableCell>

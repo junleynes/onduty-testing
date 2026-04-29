@@ -149,7 +149,25 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   };
 
   const handleDeleteSelected = () => {
-    setLeaveRequests(prev => prev.filter(r => !selectedIds.includes(r.id)));
+    setLeaveRequests(prev => {
+        // Identify work extensions that need to be reset
+        const idsToReset = new Set<string>();
+        prev.forEach(req => {
+            if (selectedIds.includes(req.id) && req.type === 'Offset' && req.claimedWorkExtensionId) {
+                idsToReset.add(req.claimedWorkExtensionId);
+            }
+        });
+
+        // Perform filtering and reset status of linked extensions
+        return prev
+            .filter(r => !selectedIds.includes(r.id))
+            .map(r => {
+                if (idsToReset.has(r.id)) {
+                    return { ...r, workExtensionStatus: 'not-claimed' as const };
+                }
+                return r;
+            });
+    });
     setSelectedIds([]);
     toast({ title: `${selectedIds.length} Request(s) Deleted`, variant: 'destructive' });
   };
@@ -225,6 +243,17 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         };
 
         newLeaveRequests[requestIndex] = finalUpdatedRequest;
+
+        // If rejected offset, release the linked work extension
+        if (newStatus === 'rejected' && originalRequest.type === 'Offset' && originalRequest.claimedWorkExtensionId) {
+             const weIndex = newLeaveRequests.findIndex(r => r.id === originalRequest.claimedWorkExtensionId);
+             if (weIndex > -1) {
+                newLeaveRequests[weIndex] = {
+                    ...newLeaveRequests[weIndex],
+                    workExtensionStatus: 'not-claimed',
+                };
+            }
+        }
 
         if (newStatus === 'approved' && finalUpdatedRequest.type === 'Offset' && finalUpdatedRequest.claimedWorkExtensionId) {
             const weIndex = newLeaveRequests.findIndex(r => r.id === finalUpdatedRequest!.claimedWorkExtensionId);

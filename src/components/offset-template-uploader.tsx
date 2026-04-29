@@ -91,7 +91,7 @@ export function OffsetTemplateUploader({ isOpen, setIsOpen, onTemplateUpload }: 
                         <li><b>Signatures (Push Button/Image):</b> <code>employee_signature_af_image</code>, <code>manager_signature_af_image</code></li>
                         <li><b>Offset Details:</b> <code>employee_name</code>, <code>employee_id</code>, <code>date_filed</code>, <code>department</code>, <code>offset_dates</code>, <code>total_days</code>, <code>reason</code>, <code>manager_name</code></li>
                         <li><b>Work Extension (WE) Metadata:</b> <code>we_employee_name</code>, <code>we_department</code>, <code>we_date_filed</code>, <code>we_reason</code>, <code>we_manager_name</code></li>
-                        <li><b>WE Dates & Times:</b> <code>we_date</code>, <code>we_shift_from</code>, <code>we_shift_to</code>, <code>we_timein</code>, <code>we_timeout</code>, <code>we_extend_from</code>, <code>we_extendto</code></li>
+                        <li><b>WE Dates & Times:</b> <code>we_date</code>, <code>we_shiftfrom</code>, <code>we_shiftto</code>, <code>we_timein</code>, <code>we_timeout</code>, <code>we_extendfrom</code>, <code>we_extendto</code></li>
                         <li><b>WE Signatures:</b> <code>we_employee_signature_af_image</code>, <code>we_manager_signature_af_image</code></li>
                     </ul>
                 </div>

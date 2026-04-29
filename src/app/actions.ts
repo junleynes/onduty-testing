@@ -529,11 +529,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             fields['we_date_filed'] = [weRequest.dateFiled ? format(new Date(weRequest.dateFiled), 'MM/dd/yyyy') : '', 'we_date_filed'];
             fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
             fields['we_date'] = [format(new Date(weRequest.startDate), 'MM/dd/yyyy'), 'we_date'];
-            fields['we_shift_from'] = [weRequest.originalStartTime || '', 'we_shift_from'];
-            fields['we_shift_to'] = [weRequest.originalEndTime || '', 'we_shift_to'];
+            fields['we_shiftfrom'] = [weRequest.originalStartTime || '', 'we_shiftfrom'];
+            fields['we_shiftto'] = [weRequest.originalEndTime || '', 'we_shiftto'];
             fields['we_timein'] = [weRequest.startTime || '', 'we_timein'];
             fields['we_timeout'] = [weRequest.endTime || '', 'we_timeout'];
-            fields['we_extend_from'] = [weRequest.startTime || '', 'we_extend_from'];
+            fields['we_extendfrom'] = [weRequest.startTime || '', 'we_extendfrom'];
             fields['we_extendto'] = [weRequest.endTime || '', 'we_extendto'];
             fields['we_manager_name'] = [weManager ? getFullName(weManager) : '', 'we_manager_name'];
         }

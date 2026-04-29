@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -40,7 +39,7 @@ type TimeOffViewProps = {
   onUploadOffset: () => void;
 };
 
-type SortKey = 'employee' | 'type' | 'startDate' | 'status';
+type SortKey = 'employee' | 'type' | 'startDate' | 'status' | 'dateFiled';
 type SortDirection = 'asc' | 'desc';
 
 export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings, onUploadAlaf, onUploadOffset }: TimeOffViewProps) {
@@ -52,7 +51,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const [editingRequest, setEditingRequest] = useState<Partial<Leave> | null>(null);
   const [emailingRequest, setEmailingRequest] = useState<Leave | null>(null);
 
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'startDate', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'dateFiled', direction: 'desc' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -93,6 +92,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
           case 'startDate':
             aValue = new Date(a.startDate).getTime();
             bValue = new Date(b.startDate).getTime();
+            break;
+          case 'dateFiled':
+            aValue = new Date(a.dateFiled || a.requestedAt || 0).getTime();
+            bValue = new Date(b.dateFiled || b.requestedAt || 0).getTime();
             break;
           case 'status':
             aValue = a.status.toLowerCase();
@@ -379,6 +382,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                                 <Type className="h-4 w-4 text-muted-foreground"/>
                                 <span className="font-medium">{req.type}</span>
                             </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Clock4 className="h-3 w-3" />
+                                <span>Filed: {format(new Date(req.dateFiled || req.requestedAt || new Date()), 'MMM d, yyyy')}</span>
+                            </div>
                             <div className="flex items-start gap-2">
                                 <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5"/>
                                 <p className="text-muted-foreground">{req.reason}</p>
@@ -446,9 +453,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                      onCheckedChange={(checked) => handleSelectAll(requests.map(r => r.id), !!checked)}
                    />
                 </TableHead>
+                <SortableHeader tKey="dateFiled">Date Filed</SortableHeader>
                 {forManagerView && <SortableHeader tKey="employee">Employee</SortableHeader>}
                 <SortableHeader tKey="type">Type</SortableHeader>
-                <SortableHeader tKey="startDate">Dates</SortableHeader>
+                <SortableHeader tKey="startDate">Leave Dates</SortableHeader>
                 <TableHead>Reason</TableHead>
                 <SortableHeader tKey="status">Status</SortableHeader>
                 <TableHead className="text-right">Actions</TableHead>
@@ -470,6 +478,9 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                               checked={selectedIds.includes(req.id)}
                               onCheckedChange={() => toggleSelect(req.id)}
                             />
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                            {format(new Date(req.dateFiled || req.requestedAt || new Date()), 'MMM d, yyyy')}
                         </TableCell>
                         {forManagerView && <TableCell>{employee ? getFullName(employee) : 'Unknown'}</TableCell>}
                         <TableCell className="font-medium">{req.type}</TableCell>

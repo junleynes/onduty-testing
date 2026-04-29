@@ -7,7 +7,7 @@ import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { format, differenceInCalendarDays, parse, differenceInMinutes } from 'date-fns';
+import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { getFullName } from '@/lib/utils';
 
@@ -290,12 +290,18 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             totalDaysValue = 0.5;
         }
 
+        const startDate = new Date(leaveRequest.startDate);
+        const endDate = new Date(leaveRequest.endDate);
+        const leaveDatesDisplay = isSameDay(startDate, endDate)
+            ? format(startDate, 'MM/dd/yyyy')
+            : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
+
         const fields = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed', 'date'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept', 'group'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
-            leave_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
+            leave_dates: [leaveDatesDisplay, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
             total_days: [String(totalDaysValue), 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons', 'details'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile', 'cellphone'],
@@ -333,20 +339,16 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                // STRICT MATCHING: For short types like VL, SL, only allow exact match or chk prefix
-                // This prevents VL from matching AVL.
                 const isTypeMatch = currentFieldName === normalizedType || 
                                     currentFieldName === `chk${normalizedType}` ||
                                     (normalizedType.length > 3 && (currentFieldName.includes(normalizedType) || currentFieldName.endsWith(normalizedType)));
 
                 if (isTypeMatch) {
-                    // Try as Checkbox
                     try {
                         const checkbox = form.getCheckBox(field.getName());
                         checkbox.check();
                     } catch (e) {}
 
-                    // Try as Radio Group
                     try {
                         const radioGroup = form.getRadioGroup(field.getName());
                         const options = radioGroup.getOptions();
@@ -361,10 +363,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                         }
                     } catch (e) {}
 
-                    // Try as Text Field
                     try {
                         const textField = form.getTextField(field.getName());
-                        // SPECIAL CASE: For TARDY, the user requested the text "TARDY" instead of "X"
                         const valueToSet = normalizedType === 'tardy' ? 'TARDY' : 'X';
                         textField.setText(valueToSet);
                     } catch (e) {}
@@ -465,11 +465,17 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         let totalDaysValue = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
         if (leaveRequest.isAllDay === false && totalDaysValue === 1) totalDaysValue = 0.5;
 
+        const startDate = new Date(leaveRequest.startDate);
+        const endDate = new Date(leaveRequest.endDate);
+        const offsetDatesDisplay = isSameDay(startDate, endDate)
+            ? format(startDate, 'MM/dd/yyyy')
+            : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
+
         const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group', 'office'],
-            offset_dates: [`${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')} to ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}`, 'offset_dates', 'dates', 'period'],
+            offset_dates: [offsetDatesDisplay, 'offset_dates', 'dates', 'period'],
             total_days: [String(totalDaysValue), 'total_days', 'no_of_days', 'days', 'totaldays'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],

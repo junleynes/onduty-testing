@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react';
@@ -1037,6 +1038,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         leave={leave}
         holidays={holidays}
         monthlyEmployeeOrder={monthlyEmployeeOrder}
+        leaveTypes={leaveTypes}
       />
     </Card>
   );
@@ -1050,9 +1052,10 @@ type ScheduleExportDialogProps = {
     leave: Leave[];
     holidays: Holiday[];
     monthlyEmployeeOrder: Record<string, string[]>;
+    leaveTypes: LeaveTypeOption[];
 };
 
-function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, holidays, monthlyEmployeeOrder }: ScheduleExportDialogProps) {
+function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, holidays, monthlyEmployeeOrder, leaveTypes }: ScheduleExportDialogProps) {
     const [startMonth, setStartMonth] = useState<Date>(startOfMonth(new Date()));
     const [endMonth, setEndMonth] = useState<Date>(startOfMonth(new Date()));
     const [isExporting, setIsExporting] = useState(false);
@@ -1077,28 +1080,41 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                 if (monthlyEmployeeOrder[monthKey]) {
                     const orderedSet = new Set(monthlyEmployeeOrder[monthKey]);
                     const ordered = monthlyEmployeeOrder[monthKey].map(id => employeeMap.get(id)).filter((e): e is Employee => !!e);
-                    const unordered = orderedEmps.filter(e => !orderedSet.has(e.id));
+                    const unordered = orderedEmps.filter(e => !orderedSet.has(id));
                     orderedEmps = [...ordered, ...unordered];
                 }
 
                 const findDataForDay = (day: Date, employee: Employee) => {
                     const normalizedDay = startOfDay(day);
                     const holidayOnDay = holidays.find(h => isSameDay(new Date(h.date), normalizedDay));
-                    if (holidayOnDay) return { text: 'HOL OFF' };
+                    if (holidayOnDay) return { text: 'HOL OFF', color: '#ef4444', textColor: '#ffffff' };
 
                     const shiftOnDay = shifts.find(s => s.employeeId === employee.id && isSameDay(new Date(s.date), normalizedDay));
-                    if (shiftOnDay?.isHolidayOff) return { text: 'HOL OFF' };
-                    if (shiftOnDay?.isDayOff) return { text: 'OFF' };
+                    if (shiftOnDay?.isHolidayOff) return { text: 'HOL OFF', color: '#6b7280', textColor: '#ffffff' };
+                    if (shiftOnDay?.isDayOff) return { text: 'OFF', color: '#6b7280', textColor: '#ffffff' };
 
                     const leaveOnDay = leave.find(l => {
                         if (l.employeeId !== employee.id || l.status !== 'approved' || !l.startDate || !l.endDate) return false;
                         return isWithinInterval(normalizedDay, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
                     });
-                    if (leaveOnDay) return { text: leaveOnDay.type.toUpperCase() };
+                    if (leaveOnDay) {
+                        const leaveTypeDetails = leaveTypes.find(lt => lt.type === leaveOnDay.type);
+                        return { 
+                            text: leaveOnDay.type.toUpperCase(), 
+                            color: leaveTypeDetails?.color || leaveOnDay.color || '#f39c12',
+                            textColor: '#ffffff'
+                        };
+                    }
 
-                    if (shiftOnDay) return { text: shiftOnDay.label.toUpperCase() };
+                    if (shiftOnDay) {
+                        return { 
+                            text: `${shiftOnDay.startTime}-${shiftOnDay.endTime}`, 
+                            color: shiftOnDay.color || '#3b82f6',
+                            textColor: shiftOnDay.color === '#ffffff' ? '#000000' : '#ffffff'
+                        };
+                    }
 
-                    return { text: '' };
+                    return { text: '', color: null, textColor: null };
                 };
 
                 const renderTable = (startRow: number, days: Date[], title: string) => {
@@ -1127,16 +1143,32 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                             const data = findDataForDay(day, emp);
                             const cell = row.getCell(dayIdx + 3);
                             cell.value = data.text;
-                            cell.alignment = { horizontal: 'center' };
-                            if (data.text === 'HOL OFF' || data.text === 'OFF') {
-                                cell.font = { color: { argb: 'FF808080' } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            
+                            if (data.color) {
+                                cell.fill = {
+                                    type: 'pattern',
+                                    pattern: 'solid',
+                                    fgColor: { argb: data.color.replace('#', 'FF').toUpperCase() }
+                                };
+                                cell.font = {
+                                    color: { argb: (data.textColor || '#ffffff').replace('#', 'FF').toUpperCase() },
+                                    bold: true,
+                                    size: 9
+                                };
+                            } else {
+                                if (data.text === 'HOL OFF' || data.text === 'OFF') {
+                                    cell.font = { color: { argb: 'FF808080' } };
+                                }
                             }
                         });
                     });
 
-                    // Auto-filter and freeze panes for better readability
                     worksheet.columns[0].width = 30;
                     worksheet.columns[1].width = 20;
+                    for(let i = 0; i < days.length; i++) {
+                        worksheet.getColumn(i + 3).width = 12;
+                    }
 
                     return startRow + orderedEmps.length + 4; // Return next available row
                 };

@@ -1080,7 +1080,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                 if (monthlyEmployeeOrder[monthKey]) {
                     const orderedSet = new Set(monthlyEmployeeOrder[monthKey]);
                     const ordered = monthlyEmployeeOrder[monthKey].map(id => employeeMap.get(id)).filter((e): e is Employee => !!e);
-                    const unordered = orderedEmps.filter(e => !orderedSet.has(id));
+                    const unordered = orderedEmps.filter(e => !orderedSet.has(e.id));
                     orderedEmps = [...ordered, ...unordered];
                 }
 

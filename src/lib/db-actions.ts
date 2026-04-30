@@ -1,4 +1,3 @@
-
 'use server';
 
 import { getDb } from './db';
@@ -55,12 +54,15 @@ export async function getData() {
     const templatesMap: Record<string, string | null> = {};
     let monthlyOrderData = '{}';
     let faqData = '[]';
+    let avlLockData = '{}';
 
     keyValuePairs.forEach(row => {
       if (row.key === 'monthlyEmployeeOrder') {
         monthlyOrderData = row.value;
       } else if (row.key === 'faqs') {
         faqData = row.value;
+      } else if (row.key === 'avlLocks') {
+        avlLockData = row.value;
       } else {
         templatesMap[row.key] = row.value;
       }
@@ -72,6 +74,7 @@ export async function getData() {
       { id: '2', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
       { id: '3', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
     ]);
+    const avlLocksValue = safeParseJSON(avlLockData, {});
     
     const permissionsData = db.prepare('SELECT * FROM permissions').all() as { role: 'admin' | 'manager' | 'member', allowed_views: string }[];
     const permissionsMap: RolePermissions = permissionsData.reduce((acc, { role, allowed_views }) => {
@@ -186,6 +189,7 @@ export async function getData() {
         monthlyEmployeeOrder: monthlyEmployeeOrderValue,
         faqs: faqsValue,
         preferredAvl: processedPreferredAvl,
+        avlLocks: avlLocksValue,
       }
     };
   } catch (error) {
@@ -213,6 +217,7 @@ export async function saveAllData({
   monthlyEmployeeOrder,
   faqs,
   preferredAvl,
+  avlLocks,
 }: {
   employees: Employee[];
   shifts: Shift[];
@@ -231,6 +236,7 @@ export async function saveAllData({
   monthlyEmployeeOrder: Record<string, string[]>;
   faqs: FaqItem[];
   preferredAvl: PreferredAvl[];
+  avlLocks: Record<string, boolean>;
 }): Promise<{ success: boolean; error?: string }> {
   const db = getDb();
   
@@ -393,6 +399,7 @@ export async function saveAllData({
         }
         templateStmt.run({ key: 'monthlyEmployeeOrder', value: JSON.stringify(monthlyEmployeeOrder) });
         templateStmt.run({ key: 'faqs', value: JSON.stringify(faqs) });
+        templateStmt.run({ key: 'avlLocks', value: JSON.stringify(avlLocks) });
         
         const permissionsStmt = db.prepare('INSERT INTO permissions (role, allowed_views) VALUES (@role, @allowed_views) ON CONFLICT(role) DO UPDATE SET allowed_views=excluded.allowed_views');
         for (const [role, allowed_views] of Object.entries(permissions)) {

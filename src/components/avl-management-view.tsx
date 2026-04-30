@@ -8,13 +8,14 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn, getFullName } from '@/lib/utils';
-import { Save, Calendar, Check, X, Pencil, MoreVertical } from 'lucide-react';
+import { Save, Calendar, Check, X, Pencil, MoreVertical, Lock, Unlock } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { Badge } from './ui/badge';
 
 type AvlManagementViewProps = {
   currentUser: Employee;
@@ -22,6 +23,8 @@ type AvlManagementViewProps = {
   setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
   preferredAvl: PreferredAvl[];
   setPreferredAvl: React.Dispatch<React.SetStateAction<PreferredAvl[]>>;
+  avlLocks: Record<string, boolean>;
+  setAvlLocks: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 };
 
 const MONTHS = [
@@ -29,7 +32,7 @@ const MONTHS = [
   'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
 ];
 
-export default function AvlManagementView({ currentUser, employees, setEmployees, preferredAvl, setPreferredAvl }: AvlManagementViewProps) {
+export default function AvlManagementView({ currentUser, employees, setEmployees, preferredAvl, setPreferredAvl, avlLocks, setAvlLocks }: AvlManagementViewProps) {
   const { toast } = useToast();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [isPlotDialogOpen, setIsPlotDialogOpen] = useState(false);
@@ -38,6 +41,8 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   const [plotIsClaimed, setPlotIsClaimed] = useState(false);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
+  const lockKey = `${currentUser.group}-${selectedYear}`;
+  const isLocked = !!avlLocks[lockKey];
 
   const groupEmployees = useMemo(() => 
     employees
@@ -57,6 +62,13 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   };
 
   const handleOpenPlot = (employeeId: string, month: number) => {
+    // If locked, only managers can edit
+    if (isLocked && !isManager) {
+        toast({ variant: 'destructive', title: 'Editing Locked', description: 'This year has been locked for editing by a manager.' });
+        return;
+    }
+    
+    // Normal permission check
     if (!isManager && employeeId !== currentUser.id) return;
     
     const existing = getCellData(employeeId, month);
@@ -98,15 +110,38 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, [field]: num } : e));
   };
 
+  const toggleLock = () => {
+    setAvlLocks(prev => ({
+        ...prev,
+        [lockKey]: !isLocked
+    }));
+    toast({ 
+        title: isLocked ? "Grid Unlocked" : "Grid Locked", 
+        description: isLocked ? "Users can now edit their preferred dates." : "Regular users are now restricted from editing."
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Preferred AVL Management</h2>
-          <p className="text-muted-foreground">Annual preferred vacation leave planning grid.</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Preferred AVL Management</h2>
+            <p className="text-muted-foreground">Annual preferred vacation leave planning grid.</p>
+          </div>
+          {isLocked && (
+            <Badge variant="destructive" className="flex items-center gap-1">
+                <Lock className="h-3 w-3" /> Locked
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
-           <Label className="text-sm font-bold">YEAR:</Label>
+           {isManager && (
+              <Button variant={isLocked ? "outline" : "secondary"} onClick={toggleLock}>
+                {isLocked ? <><Unlock className="h-4 w-4 mr-2" /> Unlock</> : <><Lock className="h-4 w-4 mr-2" /> Lock for Members</>}
+              </Button>
+           )}
+           <Label className="text-sm font-bold ml-2">YEAR:</Label>
            <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(parseInt(v))}>
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -140,53 +175,56 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groupEmployees.map(emp => (
-                <TableRow key={emp.id} className="h-10">
-                  <TableCell className="border border-border p-0">
-                    <Input 
-                      type="number" 
-                      step="0.1"
-                      className="border-0 h-full rounded-none text-center text-xs focus-visible:ring-1" 
-                      value={emp.avlBeginningBalance || 0}
-                      readOnly={!isManager}
-                      onChange={e => handleUpdateEmployee(emp.id, 'avlBeginningBalance', e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell className="border border-border p-0">
-                    <Input 
-                      type="number" 
-                      step="0.1"
-                      className="border-0 h-full rounded-none text-center text-xs focus-visible:ring-1" 
-                      value={emp.avlAllotted || 0}
-                      readOnly={!isManager}
-                      onChange={e => handleUpdateEmployee(emp.id, 'avlAllotted', e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell className="border border-border font-bold bg-muted/20 px-2">
-                    {getFullName(emp).toUpperCase()}
-                  </TableCell>
-                  {MONTHS.map((_, mIdx) => {
-                    const data = getCellData(emp.id, mIdx);
-                    const canEdit = isManager || emp.id === currentUser.id;
-                    return (
-                      <TableCell 
-                        key={mIdx} 
-                        className={cn(
-                          "border border-border text-center p-1 cursor-pointer transition-colors",
-                          canEdit && "hover:bg-primary/10",
-                          data?.isClaimed && "bg-green-50 text-green-700 font-bold"
-                        )}
-                        onClick={() => handleOpenPlot(emp.id, mIdx)}
-                      >
-                        {data?.dayNumbers.join(', ')}
-                      </TableCell>
-                    );
-                  })}
-                  <TableCell className="border border-border text-center font-bold text-lg bg-primary/5">
-                    {calculateTotalScheduled(emp.id)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {groupEmployees.map(emp => {
+                const canEditRow = isManager || (emp.id === currentUser.id && !isLocked);
+                return (
+                  <TableRow key={emp.id} className="h-10">
+                    <TableCell className="border border-border p-0">
+                      <Input 
+                        type="number" 
+                        step="0.1"
+                        className="border-0 h-full rounded-none text-center text-xs focus-visible:ring-1" 
+                        value={emp.avlBeginningBalance || 0}
+                        readOnly={!isManager}
+                        onChange={e => handleUpdateEmployee(emp.id, 'avlBeginningBalance', e.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell className="border border-border p-0">
+                      <Input 
+                        type="number" 
+                        step="0.1"
+                        className="border-0 h-full rounded-none text-center text-xs focus-visible:ring-1" 
+                        value={emp.avlAllotted || 0}
+                        readOnly={!isManager}
+                        onChange={e => handleUpdateEmployee(emp.id, 'avlAllotted', e.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell className="border border-border font-bold bg-muted/20 px-2">
+                      {getFullName(emp).toUpperCase()}
+                    </TableCell>
+                    {MONTHS.map((_, mIdx) => {
+                      const data = getCellData(emp.id, mIdx);
+                      const isClickable = isManager || (emp.id === currentUser.id && !isLocked);
+                      return (
+                        <TableCell 
+                          key={mIdx} 
+                          className={cn(
+                            "border border-border text-center p-1 transition-colors",
+                            isClickable ? "cursor-pointer hover:bg-primary/10" : "cursor-not-allowed bg-muted/5",
+                            data?.isClaimed && "bg-green-50 text-green-700 font-bold"
+                          )}
+                          onClick={() => handleOpenPlot(emp.id, mIdx)}
+                        >
+                          {data?.dayNumbers.join(', ')}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="border border-border text-center font-bold text-lg bg-primary/5">
+                      {calculateTotalScheduled(emp.id)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

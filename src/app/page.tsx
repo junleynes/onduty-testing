@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -75,6 +74,7 @@ function AppContent() {
   const [monthlyEmployeeOrder, setMonthlyEmployeeOrder] = useState<Record<string, string[]>>({});
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [preferredAvl, setPreferredAvl] = useState<PreferredAvl[]>([]);
+  const [avlLocks, setAvlLocks] = useState<Record<string, boolean>>({});
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -124,6 +124,7 @@ function AppContent() {
         monthlyEmployeeOrder,
         faqs,
         preferredAvl,
+        avlLocks,
     };
 
     const saveData = async () => {
@@ -151,7 +152,7 @@ function AppContent() {
     const timeoutId = setTimeout(saveData, 1500); // Debounce saves
     return () => clearTimeout(timeoutId);
 
-  }, [initialDataLoaded, isLoading, toast, employees, shifts, leave, notes, holidays, tasks, allowances, groups, smtpSettings, tardyRecords, templates, shiftTemplates, leaveTypes, permissions, monthlyEmployeeOrder, faqs, preferredAvl]);
+  }, [initialDataLoaded, isLoading, toast, employees, shifts, leave, notes, holidays, tasks, allowances, groups, smtpSettings, tardyRecords, templates, shiftTemplates, leaveTypes, permissions, monthlyEmployeeOrder, faqs, preferredAvl, avlLocks]);
 
   // Load initial data from DB and check for user
   useEffect(() => {
@@ -204,6 +205,7 @@ function AppContent() {
         setMonthlyEmployeeOrder(result.data.monthlyEmployeeOrder);
         setFaqs(result.data.faqs);
         setPreferredAvl(result.data.preferredAvl);
+        setAvlLocks(result.data.avlLocks || {});
         
         // If it wasn't the special admin, find the user from the DB
         if (!userToSet) {
@@ -753,6 +755,8 @@ function AppContent() {
                   setEmployees={setEmployees}
                   preferredAvl={preferredAvl}
                   setPreferredAvl={setPreferredAvl}
+                  avlLocks={avlLocks}
+                  setAvlLocks={setAvlLocks}
                 />;
         case 'work-extensions':
         return <WorkExtensionsView
@@ -829,7 +833,7 @@ function AppContent() {
             </Card>
         );
     }
-  }, [activeView, employees, shifts, leave, notes, holidays, tasks, allowances, smtpSettings, tardyRecords, templates, shiftTemplates, leaveForView, currentUser, groups, shiftsForView, addNotification, router, toast, initialDataLoaded, leaveTypes, permissions, monthlyEmployeeOrder, faqs, preferredAvl]);
+  }, [activeView, employees, shifts, leave, notes, holidays, tasks, allowances, smtpSettings, tardyRecords, templates, shiftTemplates, leaveForView, currentUser, groups, shiftsForView, addNotification, router, toast, initialDataLoaded, leaveTypes, permissions, monthlyEmployeeOrder, faqs, preferredAvl, avlLocks]);
 
   if (!initialDataLoaded || !currentUser) {
       return (

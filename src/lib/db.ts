@@ -75,18 +75,19 @@ function initializeDatabase() {
 
     runMigration("ALTER TABLE tasks ADD COLUMN acknowledgedAt TEXT;", "Added 'acknowledgedAt' to 'tasks'");
 
-    // Preferred AVL Table
+    // Preferred AVL Table Migration
     runMigration(`
       CREATE TABLE IF NOT EXISTS preferred_avl (
         id TEXT PRIMARY KEY,
         employeeId TEXT,
         year INTEGER,
         month INTEGER,
-        dayNumbers TEXT,
-        isClaimed INTEGER DEFAULT 0,
+        plottedDays TEXT,
         FOREIGN KEY (employeeId) REFERENCES employees(id) ON DELETE CASCADE
       );
     `, "Created 'preferred_avl' table");
+
+    runMigration("ALTER TABLE preferred_avl ADD COLUMN plottedDays TEXT;", "Added 'plottedDays' column to 'preferred_avl'");
 
     return db;
 }

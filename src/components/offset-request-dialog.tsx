@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
@@ -22,8 +23,9 @@ import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { cn, getInitialState } from '@/lib/utils';
-import { format, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
+import { format, addDays, startOfDay, differenceInCalendarDays, isSameDay } from 'date-fns';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
+import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 
 const requestSchema = z.object({
   claimedWorkExtensionId: z.string().min(1, { message: 'You must select a work extension to claim.'}),
@@ -36,7 +38,9 @@ const requestSchema = z.object({
       to: z.date().optional(),
   }).optional(),
   durationCategory: z.enum(['whole', 'half', 'minutes']),
-  timeSlot: z.string().optional(),
+  originalStartTime: z.string().optional(),
+  originalEndTime: z.string().optional(),
+  halfDaySegment: z.enum(['first', 'second']).optional(),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   totalMinutes: z.coerce.number().optional(),
@@ -48,6 +52,14 @@ const requestSchema = z.object({
 }, {
     message: "Please select date(s).",
     path: ["singleDate"]
+}).refine(data => {
+    if (data.durationCategory === 'half' && data.selectionMode === 'single') {
+        return !!data.originalStartTime && !!data.originalEndTime && !!data.halfDaySegment;
+    }
+    return true;
+}, {
+    message: "Please provide original schedule and select a segment.",
+    path: ["halfDaySegment"]
 });
 
 
@@ -68,11 +80,11 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
     defaultValues: {
         selectionMode: 'single',
         durationCategory: 'whole',
-        timeSlot: '08:00-12:00',
         startTime: '08:00',
         endTime: '12:00',
         totalMinutes: 0,
         multipleDates: [],
+        halfDaySegment: 'first',
     },
   });
   
@@ -105,10 +117,12 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
         multipleDates: request?.startDate ? [new Date(request.startDate)] : [],
         dateRange: { from: fromDate, to: toDate },
         durationCategory: request?.durationCategory || (request?.isAllDay === false ? 'half' : 'whole'),
+        originalStartTime: request?.originalStartTime || '',
+        originalEndTime: request?.originalEndTime || '',
+        halfDaySegment: request?.halfDaySegment || 'first',
         startTime: request?.startTime || '08:00',
         endTime: request?.endTime || '12:00',
         totalMinutes: request?.totalMinutes || 0,
-        timeSlot: request?.startTime && request?.endTime ? `${request.startTime}-${request.endTime}` : '08:00-12:00',
       });
     }
   }, [request, isOpen, form, currentUser]);
@@ -118,7 +132,6 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
   const multipleDates = form.watch('multipleDates') || [];
   const dateRange = form.watch('dateRange');
   const durationCategory = form.watch('durationCategory');
-  const timeSlot = form.watch('timeSlot');
 
   const totalDays = useMemo(() => {
     if (durationCategory === 'minutes') return 0;
@@ -217,7 +230,10 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
 
             <div className="space-y-2">
                 <FormLabel>Dates of Offset</FormLabel>
-                <Tabs value={selectionMode} onValueChange={(v) => form.setValue('selectionMode', v as any)}>
+                <Tabs value={selectionMode} onValueChange={(v) => {
+                    form.setValue('selectionMode', v as any);
+                    if (v !== 'single') form.setValue('durationCategory', 'whole');
+                }}>
                     <TabsList className="grid w-full grid-cols-3 mb-2">
                         <TabsTrigger value="single">Single</TabsTrigger>
                         <TabsTrigger value="multiple">Multiple</TabsTrigger>
@@ -285,7 +301,7 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel>Leave Duration</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                         <SelectTrigger>
                             <SelectValue />
@@ -293,8 +309,8 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                         </FormControl>
                         <SelectContent>
                             <SelectItem value="whole">Whole day</SelectItem>
-                            <SelectItem value="half">Half day</SelectItem>
-                            <SelectItem value="minutes">Minutes / Tardy</SelectItem>
+                            {selectionMode === 'single' && <SelectItem value="half">Half day</SelectItem>}
+                            {selectionMode === 'single' && <SelectItem value="minutes">Minutes / Tardy</SelectItem>}
                         </SelectContent>
                     </Select>
                     <FormMessage />
@@ -302,67 +318,61 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                 )}
             />
 
-            {durationCategory === 'half' && (
-                <div className="space-y-4">
+            {durationCategory === 'half' && selectionMode === 'single' && (
+                <div className="space-y-4 p-4 border rounded-md bg-muted/20">
+                    <p className="text-sm font-semibold">Half Day Offset Details</p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                            control={form.control}
+                            name="originalStartTime"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="text-xs">Orig. Sched Start</FormLabel>
+                                    <Input type="time" {...field} />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="originalEndTime"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="text-xs">Orig. Sched End</FormLabel>
+                                    <Input type="time" {...field} />
+                                </FormItem>
+                            )}
+                        />
+                    </div>
                     <FormField
                         control={form.control}
-                        name="timeSlot"
+                        name="halfDaySegment"
                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Time Slot</FormLabel>
-                                <Select 
-                                    onValueChange={(value) => {
-                                        field.onChange(value);
-                                        if (value !== 'custom') {
-                                            const [start, end] = value.split('-');
-                                            form.setValue('startTime', start);
-                                            form.setValue('endTime', end);
-                                        }
-                                    }}
-                                    defaultValue={field.value}
-                                >
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select period" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="08:00-12:00">AM (08:00 - 12:00)</SelectItem>
-                                        <SelectItem value="13:00-17:00">PM (13:00 - 17:00)</SelectItem>
-                                        <SelectItem value="custom">Custom Time</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                            <FormItem className="space-y-3">
+                                <FormLabel>Which half are you filing?</FormLabel>
+                                <FormControl>
+                                    <RadioGroup
+                                        onValueChange={field.onChange}
+                                        defaultValue={field.value}
+                                        className="flex gap-4"
+                                    >
+                                        <FormItem className="flex items-center space-x-2 space-y-0">
+                                            <FormControl><RadioGroupItem value="first" /></FormControl>
+                                            <FormLabel className="font-normal">First Half</FormLabel>
+                                        </FormItem>
+                                        <FormItem className="flex items-center space-x-2 space-y-0">
+                                            <FormControl><RadioGroupItem value="second" /></FormControl>
+                                            <FormLabel className="font-normal">Second Half</FormLabel>
+                                        </FormItem>
+                                    </RadioGroup>
+                                </FormControl>
+                                <FormMessage />
                             </FormItem>
                         )}
                     />
-                    {timeSlot === 'custom' && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                                control={form.control}
-                                name="startTime"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Start Time</FormLabel>
-                                        <Input type="time" {...field} />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="endTime"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>End Time</FormLabel>
-                                        <Input type="time" {...field} />
-                                    </FormItem>
-                                )}
-                            />
-                        </div>
-                    )}
                 </div>
             )}
 
-            {durationCategory === 'minutes' && (
+            {durationCategory === 'minutes' && selectionMode === 'single' && (
                 <div className="grid grid-cols-2 gap-4">
                      <FormField
                         control={form.control}

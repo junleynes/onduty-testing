@@ -67,6 +67,7 @@ function initializeDatabase() {
         { name: 'workExtensionStatus', type: 'TEXT' },
         { name: 'claimedWorkExtensionId', type: 'TEXT' },
         { name: 'isAvlClaimed', type: 'INTEGER DEFAULT 0' },
+        { name: 'halfDaySegment', type: 'TEXT' },
     ];
     
     leaveColumns.forEach(col => {

@@ -73,6 +73,7 @@ export type Leave = {
   originalShiftDate?: Date;
   originalStartTime?: string;
   originalEndTime?: string;
+  halfDaySegment?: 'first' | 'second';
   workExtensionStatus?: 'not-claimed' | 'claimed' | 'expired';
   claimedWorkExtensionId?: string;
   isAvlClaimed?: boolean;

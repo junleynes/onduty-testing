@@ -61,23 +61,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
 
-  const avlSummary = useMemo(() => {
-    const allotted = currentUser.avlAllotted || 0;
-    const used = leaveRequests
-        .filter(req => req.employeeId === currentUser.id && req.type.toUpperCase() === 'AVL' && req.status === 'approved')
-        .reduce((sum, req) => {
-            if (req.isAllDay) {
-                return sum + (differenceInCalendarDays(new Date(req.endDate), new Date(req.startDate)) + 1);
-            }
-            if (req.durationCategory === 'half') {
-                return sum + 0.5;
-            }
-            return sum;
-        }, 0);
-    
-    return { allotted, used, remaining: allotted - used };
-  }, [leaveRequests, currentUser]);
-
   const handleSort = (key: SortKey) => {
     setSortConfig(prev => ({
       key,
@@ -550,32 +533,6 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   return (
     <>
       <div className="space-y-6">
-        <Card className="bg-primary/5 border-primary/20">
-            <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                    <Palmtree className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">Annual Vacation Leave Balance</CardTitle>
-                </div>
-                <CardDescription>Your allotted leave days for the current year.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="p-4 bg-background rounded-lg border shadow-sm">
-                        <p className="text-sm text-muted-foreground">Total Allotted</p>
-                        <p className="text-2xl font-bold">{avlSummary.allotted.toFixed(1)} Days</p>
-                    </div>
-                    <div className="p-4 bg-background rounded-lg border shadow-sm">
-                        <p className="text-sm text-muted-foreground">Used / Approved</p>
-                        <p className="text-2xl font-bold text-orange-600">{avlSummary.used.toFixed(1)} Days</p>
-                    </div>
-                    <div className="p-4 bg-background rounded-lg border shadow-sm border-primary/50 ring-1 ring-primary/20">
-                        <p className="text-sm text-muted-foreground font-semibold">Remaining Balance</p>
-                        <p className="text-2xl font-bold text-primary">{avlSummary.remaining.toFixed(1)} Days</p>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-
         <Card>
             <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1">

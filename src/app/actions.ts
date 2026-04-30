@@ -303,8 +303,12 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
         
         // Append specific times if it's not a whole day and not just a minute filing
-        if (!leaveRequest.isAllDay && leaveRequest.startTime && leaveRequest.endTime && leaveRequest.durationCategory !== 'minutes') {
-            leaveDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
+        if (!leaveRequest.isAllDay && leaveRequest.durationCategory !== 'minutes') {
+            if (leaveRequest.durationCategory === 'half' && leaveRequest.originalStartTime && leaveRequest.originalEndTime) {
+                leaveDatesDisplay += ` (Half Day: ${leaveRequest.halfDaySegment === 'first' ? '1st Half' : '2nd Half'} of ${leaveRequest.originalStartTime}-${leaveRequest.originalEndTime})`;
+            } else if (leaveRequest.startTime && leaveRequest.endTime) {
+                leaveDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
+            }
         } else if (leaveRequest.durationCategory === 'minutes' && leaveRequest.startTime) {
             leaveDatesDisplay += ` @ ${leaveRequest.startTime}`;
         }
@@ -502,8 +506,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             ? format(startDate, 'MM/dd/yyyy')
             : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
 
-        if (!leaveRequest.isAllDay && leaveRequest.startTime && leaveRequest.endTime && leaveRequest.durationCategory !== 'minutes') {
-            offsetDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
+        if (!leaveRequest.isAllDay && leaveRequest.durationCategory !== 'minutes') {
+             if (leaveRequest.durationCategory === 'half' && leaveRequest.originalStartTime && leaveRequest.originalEndTime) {
+                offsetDatesDisplay += ` (Half Day: ${leaveRequest.halfDaySegment === 'first' ? '1st Half' : '2nd Half'} of ${leaveRequest.originalStartTime}-${leaveRequest.originalEndTime})`;
+            } else if (leaveRequest.startTime && leaveRequest.endTime) {
+                offsetDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
+            }
         } else if (leaveRequest.durationCategory === 'minutes' && leaveRequest.startTime) {
             offsetDatesDisplay += ` @ ${leaveRequest.startTime}`;
         }

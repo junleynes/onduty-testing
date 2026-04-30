@@ -288,8 +288,8 @@ export async function saveAllData({
         }
 
         const leaveInsertStmt = db.prepare(`
-        INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId, isAvlClaimed) 
-        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId, @isAvlClaimed)
+        INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, halfDaySegment, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId, isAvlClaimed) 
+        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @halfDaySegment, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId, @isAvlClaimed)
         `);
         
         for(const l of leave) {
@@ -311,6 +311,7 @@ export async function saveAllData({
                 originalShiftDate: l.originalShiftDate?.toISOString(),
                 originalStartTime: l.originalStartTime,
                 originalEndTime: l.originalEndTime,
+                halfDaySegment: l.halfDaySegment || null,
                 dateFiled: l.dateFiled?.toISOString(),
                 department: l.department,
                 idNumber: l.idNumber,

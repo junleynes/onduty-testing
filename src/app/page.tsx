@@ -48,6 +48,7 @@ import FaqView from '@/components/faq-view';
 import { AlafTemplateUploader } from '@/components/alaf-template-uploader';
 import { OffsetTemplateUploader } from '@/components/offset-template-uploader';
 import WorkExtensionsView from '@/components/work-extensions-view';
+import AvlManagementView from '@/components/avl-management-view';
 
 
 export type NavItem = NavItemKey;
@@ -742,6 +743,15 @@ function AppContent() {
                   onUploadAlaf={() => setIsAlafUploaderOpen(true)}
                   onUploadOffset={() => setIsOffsetUploaderOpen(true)}
                />;
+        case 'avl-management':
+          return <AvlManagementView
+                  leaveRequests={leave}
+                  setLeaveRequests={setLeave}
+                  currentUser={currentUser}
+                  employees={employees}
+                  setEmployees={setEmployees}
+                  leaveTypes={leaveTypes}
+                />;
         case 'work-extensions':
         return <WorkExtensionsView
                   leaveRequests={leave}

@@ -61,7 +61,7 @@ export async function getData() {
     }, { admin: [], manager: [], member: [] } as RolePermissions);
 
     const monthlyOrderData = db.prepare("SELECT value FROM key_value_store WHERE key = 'monthlyEmployeeOrder'").get() as { value: string } | undefined;
-    const monthlyEmployeeOrder = monthlyOrderData ? JSON.parse(monthlyOrderData.value) : {};
+    const monthlyEmployeeOrder = monthlyOrderData ? JSON.parse(monthlyEmployeeOrder.value) : {};
 
     const faqData = db.prepare("SELECT value FROM key_value_store WHERE key = 'faqs'").get() as { value: string } | undefined;
     const faqs: FaqItem[] = faqData ? JSON.parse(faqData.value) : [
@@ -101,6 +101,7 @@ export async function getData() {
       managedAt: l.managedAt ? new Date(l.managedAt) : undefined,
       originalShiftDate: l.originalShiftDate ? new Date(l.originalShiftDate) : undefined,
       dateFiled: l.dateFiled ? new Date(l.dateFiled) : new Date(),
+      isAvlClaimed: l.isAvlClaimed === 1,
     }));
     
     const processedNotes: Note[] = notes.map(n => ({
@@ -241,6 +242,9 @@ export async function saveAllData({
             const deleteStmt = db.prepare(`DELETE FROM employees WHERE id IN (${employeesToDelete.map(() => '?').join(',')})`);
             deleteStmt.run(...employeesToDelete);
         }
+
+        const employeeUpdateStmt = db.prepare(`UPDATE employees SET avlAllotted = ? WHERE id = ?`);
+        employees.forEach(e => employeeUpdateStmt.run(e.avlAllotted || 0, e.id));
         
         // --- GROUPS ---
         const dbGroups = new Set(db.prepare('SELECT name FROM groups').all().map((g: any) => g.name));
@@ -267,8 +271,8 @@ export async function saveAllData({
 
         // --- LEAVE ---
         const leaveInsertStmt = db.prepare(`
-        INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId) 
-        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId)
+        INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId, isAvlClaimed) 
+        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId, @isAvlClaimed)
         `);
         
         for(const l of leave) {
@@ -298,7 +302,8 @@ export async function saveAllData({
                 managerSignature: l.managerSignature,
                 pdfDataUri: l.pdfDataUri,
                 workExtensionStatus: l.workExtensionStatus || null,
-                claimedWorkExtensionId: l.claimedWorkExtensionId || null
+                claimedWorkExtensionId: l.claimedWorkExtensionId || null,
+                isAvlClaimed: l.isAvlClaimed ? 1 : 0
             });
         }
 

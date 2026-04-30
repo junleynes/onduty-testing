@@ -65,6 +65,7 @@ function initializeDatabase() {
         { name: 'pdfDataUri', type: 'TEXT' },
         { name: 'workExtensionStatus', type: 'TEXT' },
         { name: 'claimedWorkExtensionId', type: 'TEXT' },
+        { name: 'isAvlClaimed', type: 'INTEGER DEFAULT 0' },
     ];
     
     leaveColumns.forEach(col => {

@@ -74,6 +74,7 @@ export type Leave = {
   originalEndTime?: string;
   workExtensionStatus?: 'not-claimed' | 'claimed' | 'expired';
   claimedWorkExtensionId?: string;
+  isAvlClaimed?: boolean;
 
   // Metadata for custom filing
   durationCategory?: 'whole' | 'half' | 'minutes';
@@ -163,7 +164,7 @@ export type FaqItem = {
 
 export type NavItemKey = 
   | 'dashboard' | 'my-schedule' | 'my-tasks'
-  | 'schedule' | 'onduty' | 'time-off' | 'work-extensions' | 'allowance' | 'task-manager'
+  | 'schedule' | 'onduty' | 'time-off' | 'avl-management' | 'work-extensions' | 'allowance' | 'task-manager'
   | 'team' | 'org-chart' | 'celebrations' | 'holidays'
   | 'faq'
   | 'reports'

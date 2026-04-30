@@ -1,11 +1,10 @@
 
-
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import type { NavItemKey, RolePermissions, UserRole, Employee } from '@/types';
 import { Button } from './ui/button';
-import { CalendarDays, ClipboardCheck, Clock, Users, Plane, Gift, PartyPopper, Smartphone, Calendar } from 'lucide-react';
+import { CalendarDays, ClipboardCheck, Clock, Users, Plane, Gift, PartyPopper, Smartphone, Calendar, Palmtree } from 'lucide-react';
 import type { NavItem } from '@/app/page';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { getBackgroundColor, getFullName, getInitials } from '@/lib/utils';
@@ -17,6 +16,7 @@ const iconMap: Record<string, { icon: React.ElementType, color: string }> = {
     'onduty': { icon: Clock, color: 'bg-blue-100 text-blue-700' },
     'team': { icon: Users, color: 'bg-purple-100 text-purple-700' },
     'time-off': { icon: Plane, color: 'bg-cyan-100 text-cyan-700' },
+    'avl-management': { icon: Palmtree, color: 'bg-emerald-100 text-emerald-700' },
     'celebrations': { icon: Gift, color: 'bg-pink-100 text-pink-700' },
     'holidays': { icon: PartyPopper, color: 'bg-yellow-100 text-yellow-700' },
     'allowance': { icon: Smartphone, color: 'bg-teal-100 text-teal-700' },
@@ -28,6 +28,7 @@ const QUICK_LINKS: { view: NavItemKey; label: string; }[] = [
     { view: 'onduty', label: 'On Duty' },
     { view: 'team', label: 'Team' },
     { view: 'time-off', label: 'Time Off' },
+    { view: 'avl-management', label: 'AVL Manager' },
     { view: 'celebrations', label: 'Celebrations' },
     { view: 'holidays', label: 'Holidays' },
     { view: 'allowance', label: 'Mobile Load' },

@@ -49,27 +49,34 @@ export async function getData() {
     }
 
     const keyValuePairs = db.prepare('SELECT * FROM key_value_store').all() as {key: string, value: string}[];
-    const templates = keyValuePairs.reduce((acc, { key, value }) => {
-        acc[key] = value;
-        return acc;
-    }, {} as Record<string, string | null>);
+    
+    // Separate specialized JSON stores from general templates
+    const templatesMap: Record<string, string | null> = {};
+    let monthlyOrderData = '{}';
+    let faqData = '[]';
+
+    keyValuePairs.forEach(row => {
+      if (row.key === 'monthlyEmployeeOrder') {
+        monthlyOrderData = row.value;
+      } else if (row.key === 'faqs') {
+        faqData = row.value;
+      } else {
+        templatesMap[row.key] = row.value;
+      }
+    });
+
+    const monthlyEmployeeOrder = safeParseJSON(monthlyOrderData, {});
+    const faqs: FaqItem[] = safeParseJSON(faqData, [
+      { id: '1', question: 'What do the leave type codes stand for?', answer: 'Common leave codes include:\n- AVL: Annual Vacation Leave (Yearly allotted pool)\n- VL: Vacation Leave (General)\n- SL: Sick Leave\n- EL: Emergency Leave\n- CTO: Compensatory Time Off (earned overtime used as leave)\n- OFFSET: Claiming an approved Work Extension\n- TARDY: Filing for specific instances of tardiness.' },
+      { id: '2', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
+      { id: '3', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
+    ]);
     
     const permissionsData = db.prepare('SELECT * FROM permissions').all() as { role: 'admin' | 'manager' | 'member', allowed_views: string }[];
     const permissions: RolePermissions = permissionsData.reduce((acc, { role, allowed_views }) => {
         acc[role] = JSON.parse(allowed_views);
         return acc;
     }, { admin: [], manager: [], member: [] } as RolePermissions);
-
-    const monthlyOrderData = db.prepare("SELECT value FROM key_value_store WHERE key = 'monthlyEmployeeOrder'").get() as { value: string } | undefined;
-    const monthlyEmployeeOrder = monthlyOrderData ? JSON.parse(monthlyEmployeeOrder.value) : {};
-
-    const faqData = db.prepare("SELECT value FROM key_value_store WHERE key = 'faqs'").get() as { value: string } | undefined;
-    const faqs: FaqItem[] = faqData ? JSON.parse(faqData.value) : [
-      { id: '1', question: 'What do the leave type codes stand for?', answer: 'Common leave codes include:\n- AVL: Annual Vacation Leave (Yearly allotted pool)\n- VL: Vacation Leave (General)\n- SL: Sick Leave\n- EL: Emergency Leave\n- CTO: Compensatory Time Off (earned overtime used as leave)\n- OFFSET: Claiming an approved Work Extension\n- TARDY: Filing for specific instances of tardiness.' },
-      { id: '2', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
-      { id: '3', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
-    ];
-
 
     const processedEmployees: Employee[] = employees.map(e => ({
       ...e,
@@ -152,7 +159,6 @@ export async function getData() {
         processedEmployees.push(adminUser);
     }
 
-
     return {
       success: true,
       data: {
@@ -166,7 +172,7 @@ export async function getData() {
         groups,
         smtpSettings,
         tardyRecords: processedTardyRecords,
-        templates,
+        templates: templatesMap,
         shiftTemplates: processedShiftTemplates,
         leaveTypes,
         permissions,
@@ -219,11 +225,9 @@ export async function saveAllData({
   const db = getDb();
   
   const saveTransaction = db.transaction(() => {
-    // 1. Disable FK checks to prevent ordering issues during mass replacement
     db.prepare('PRAGMA foreign_keys = OFF').run();
 
     try {
-        // 2. Clear core data
         db.prepare('DELETE FROM communication_allowances').run();
         db.prepare('DELETE FROM tasks').run();
         db.prepare('DELETE FROM shifts').run();
@@ -234,7 +238,6 @@ export async function saveAllData({
         db.prepare('DELETE FROM shift_templates').run();
         db.prepare('DELETE FROM leave_types').run();
         
-        // --- EMPLOYEES ---
         const allDbEmployeeIds = new Set(db.prepare('SELECT id from employees').all().map((row: any) => row.id));
         const employeeIdsInState = new Set(employees.map(e => e.id));
         const employeesToDelete = [...allDbEmployeeIds].filter(id => !employeeIdsInState.has(id) && id !== 'emp-admin-01');
@@ -246,7 +249,6 @@ export async function saveAllData({
         const employeeUpdateStmt = db.prepare(`UPDATE employees SET avlAllotted = ? WHERE id = ?`);
         employees.forEach(e => employeeUpdateStmt.run(e.avlAllotted || 0, e.id));
         
-        // --- GROUPS ---
         const dbGroups = new Set(db.prepare('SELECT name FROM groups').all().map((g: any) => g.name));
         const stateGroups = new Set(groups);
         const groupsToAdd = [...stateGroups].filter(g => !dbGroups.has(g));
@@ -263,13 +265,11 @@ export async function saveAllData({
             groupsToDelete.forEach(g => deleteGroupStmt.run(g));
         }
         
-        // --- SHIFTS ---
         const shiftStmt = db.prepare('INSERT INTO shifts (id, employeeId, label, startTime, endTime, date, color, isDayOff, isHolidayOff, status, breakStartTime, breakEndTime, isUnpaidBreak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         for(const shift of shifts) {
             shiftStmt.run(shift.id, shift.employeeId, shift.label, shift.startTime, shift.endTime, new Date(shift.date).toISOString().split('T')[0], shift.color, shift.isDayOff ? 1 : 0, shift.isHolidayOff ? 1 : 0, shift.status, shift.breakStartTime, shift.breakEndTime, shift.isUnpaidBreak ? 1 : 0);
         }
 
-        // --- LEAVE ---
         const leaveInsertStmt = db.prepare(`
         INSERT INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId, isAvlClaimed) 
         VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId, @isAvlClaimed)
@@ -307,31 +307,26 @@ export async function saveAllData({
             });
         }
 
-        // --- NOTES ---
         const noteStmt = db.prepare('INSERT INTO notes (id, date, title, description) VALUES (?, ?, ?, ?)');
         notes.forEach(note => {
             noteStmt.run(note.id, new Date(note.date).toISOString().split('T')[0], note.title, note.description);
         });
 
-        // --- HOLIDAYS ---
         const holidayInsertStmt = db.prepare('INSERT INTO holidays (id, date, title) VALUES (@id, @date, @title)');
         for(const holiday of holidays) {
             holidayInsertStmt.run({id: holiday.id, date: new Date(holiday.date).toISOString().split('T')[0], title: holiday.title});
         }
 
-        // --- TASKS ---
         const taskStmt = db.prepare('INSERT INTO tasks (id, shiftId, assigneeId, scope, title, description, status, acknowledgedAt, completedAt, dueDate, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         for(const task of tasks) {
             taskStmt.run(task.id, task.shiftId, task.assigneeId, task.scope, task.title, task.description, task.status, task.acknowledgedAt?.toISOString(), task.completedAt?.toISOString(), task.dueDate?.toISOString(), task.createdBy);
         }
 
-        // --- ALLOWANCES ---
         const allowanceStmt = db.prepare('INSERT INTO communication_allowances (id, employeeId, year, month, balance, asOfDate, screenshot) VALUES (?, ?, ?, ?, ?, ?, ?)');
         for(const allowance of allowances) {
             allowanceStmt.run(allowance.id, allowance.employeeId, allowance.year, allowance.month, allowance.balance, allowance.asOfDate ? new Date(allowance.asOfDate).toISOString() : null, allowance.screenshot);
         }
         
-        // --- SMTP SETTINGS ---
         if (smtpSettings && smtpSettings.host) {
             const smtpStmt = db.prepare(`
             INSERT INTO smtp_settings (id, host, port, secure, user, pass, fromEmail, fromName)
@@ -351,13 +346,11 @@ export async function saveAllData({
             });
         }
 
-        // --- TARDY RECORDS ---
         const tardyStmt = db.prepare('INSERT INTO tardy_records (employeeId, employeeName, date, schedule, timeIn, timeOut, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)');
         for(const record of tardyRecords) {
             tardyStmt.run(record.employeeId, record.employeeName, new Date(record.date).toISOString().split('T')[0], record.schedule, record.timeIn, record.timeOut, record.remarks);
         }
         
-        // --- SHIFT TEMPLATES ---
         const shiftTemplateInsertStmt = db.prepare('INSERT INTO shift_templates (id, name, label, startTime, endTime, color, breakStartTime, breakEndTime, isUnpaidBreak) VALUES (@id, @name, @label, @startTime, @endTime, @color, @breakStartTime, @breakEndTime, @isUnpaidBreak)');
         for(const tpl of shiftTemplates) {
             shiftTemplateInsertStmt.run({
@@ -373,7 +366,6 @@ export async function saveAllData({
             });
         }
 
-        // --- LEAVE TYPES ---
         const leaveTypeInsertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (@type, @color)');
         for(const lt of leaveTypes) {
             leaveTypeInsertStmt.run({
@@ -382,7 +374,6 @@ export async function saveAllData({
             });
         }
 
-        // --- KEY-VALUE STORE ---
         const templateStmt = db.prepare('INSERT INTO key_value_store (key, value) VALUES (@key, @value) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
         for(const [key, value] of Object.entries(templates)) {
             if (value) {
@@ -392,14 +383,12 @@ export async function saveAllData({
         templateStmt.run({ key: 'monthlyEmployeeOrder', value: JSON.stringify(monthlyEmployeeOrder) });
         templateStmt.run({ key: 'faqs', value: JSON.stringify(faqs) });
         
-        // --- PERMISSIONS ---
         const permissionsStmt = db.prepare('INSERT INTO permissions (role, allowed_views) VALUES (@role, @allowed_views) ON CONFLICT(role) DO UPDATE SET allowed_views=excluded.allowed_views');
         for (const [role, allowed_views] of Object.entries(permissions)) {
             permissionsStmt.run({ role, allowed_views: JSON.stringify(allowed_views) });
         }
 
     } finally {
-        // 3. Re-enable FK checks
         db.prepare('PRAGMA foreign_keys = ON').run();
     }
   });

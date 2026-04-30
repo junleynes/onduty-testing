@@ -2,7 +2,7 @@
 'use server';
 
 import { getDb } from './db';
-import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey, FaqItem } from '@/types';
+import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey, FaqItem, PreferredAvl } from '@/types';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
 
@@ -28,6 +28,7 @@ export async function getData() {
     const groups = db.prepare('SELECT name FROM groups').all().map((g: any) => g.name) as string[];
     const smtpSettings: SmtpSettings = db.prepare('SELECT * FROM smtp_settings WHERE id = 1').get() as any || {};
     const tardyRecords = db.prepare('SELECT * FROM tardy_records').all() as any[];
+    const preferredAvl = db.prepare('SELECT * FROM preferred_avl').all() as any[];
     
     const shiftTemplates = db.prepare('SELECT * FROM shift_templates').all() as any[];
     let leaveTypes = db.prepare('SELECT * FROM leave_types').all() as any[];
@@ -65,15 +66,15 @@ export async function getData() {
       }
     });
 
-    const monthlyEmployeeOrder = safeParseJSON(monthlyOrderData, {});
-    const faqs: FaqItem[] = safeParseJSON(faqData, [
+    const monthlyEmployeeOrderValue = safeParseJSON(monthlyOrderData, {});
+    const faqsValue: FaqItem[] = safeParseJSON(faqData, [
       { id: '1', question: 'What do the leave type codes stand for?', answer: 'Common leave codes include:\n- AVL: Annual Vacation Leave (Yearly allotted pool)\n- VL: Vacation Leave (General)\n- SL: Sick Leave\n- EL: Emergency Leave\n- CTO: Compensatory Time Off (earned overtime used as leave)\n- OFFSET: Claiming an approved Work Extension\n- TARDY: Filing for specific instances of tardiness.' },
       { id: '2', question: 'How do I request time off?', answer: 'Navigate to the "Time Off" section from the sidebar. Click the "New Request" button, fill in the required details such as leave type and dates, and submit your request. Your manager will be notified to review it.' },
       { id: '3', question: 'Where can I see my schedule for the upcoming week?', answer: 'You can view your personal schedule by clicking on "My Schedule" in the sidebar. This will show you all your assigned shifts for the selected period.' },
     ]);
     
     const permissionsData = db.prepare('SELECT * FROM permissions').all() as { role: 'admin' | 'manager' | 'member', allowed_views: string }[];
-    const permissions: RolePermissions = permissionsData.reduce((acc, { role, allowed_views }) => {
+    const permissionsMap: RolePermissions = permissionsData.reduce((acc, { role, allowed_views }) => {
         acc[role] = JSON.parse(allowed_views);
         return acc;
     }, { admin: [], manager: [], member: [] } as RolePermissions);
@@ -144,6 +145,12 @@ export async function getData() {
         date: new Date(t.date),
     }));
 
+    const processedPreferredAvl: PreferredAvl[] = preferredAvl.map(p => ({
+        ...p,
+        dayNumbers: safeParseJSON(p.dayNumbers, []),
+        isClaimed: p.isClaimed === 1,
+    }));
+
     if (processedEmployees.length === 0) {
         const adminUser: Employee = {
             id: "emp-admin-01",
@@ -175,9 +182,10 @@ export async function getData() {
         templates: templatesMap,
         shiftTemplates: processedShiftTemplates,
         leaveTypes,
-        permissions,
-        monthlyEmployeeOrder,
-        faqs,
+        permissions: permissionsMap,
+        monthlyEmployeeOrder: monthlyEmployeeOrderValue,
+        faqs: faqsValue,
+        preferredAvl: processedPreferredAvl,
       }
     };
   } catch (error) {
@@ -204,6 +212,7 @@ export async function saveAllData({
   permissions,
   monthlyEmployeeOrder,
   faqs,
+  preferredAvl,
 }: {
   employees: Employee[];
   shifts: Shift[];
@@ -221,6 +230,7 @@ export async function saveAllData({
   permissions: RolePermissions;
   monthlyEmployeeOrder: Record<string, string[]>;
   faqs: FaqItem[];
+  preferredAvl: PreferredAvl[];
 }): Promise<{ success: boolean; error?: string }> {
   const db = getDb();
   
@@ -237,6 +247,7 @@ export async function saveAllData({
         db.prepare('DELETE FROM tardy_records').run();
         db.prepare('DELETE FROM shift_templates').run();
         db.prepare('DELETE FROM leave_types').run();
+        db.prepare('DELETE FROM preferred_avl').run();
         
         const allDbEmployeeIds = new Set(db.prepare('SELECT id from employees').all().map((row: any) => row.id));
         const employeeIdsInState = new Set(employees.map(e => e.id));
@@ -246,8 +257,8 @@ export async function saveAllData({
             deleteStmt.run(...employeesToDelete);
         }
 
-        const employeeUpdateStmt = db.prepare(`UPDATE employees SET avlAllotted = ? WHERE id = ?`);
-        employees.forEach(e => employeeUpdateStmt.run(e.avlAllotted || 0, e.id));
+        const employeeUpdateStmt = db.prepare(`UPDATE employees SET avlAllotted = ?, avlBeginningBalance = ? WHERE id = ?`);
+        employees.forEach(e => employeeUpdateStmt.run(e.avlAllotted || 0, e.avlBeginningBalance || 0, e.id));
         
         const dbGroups = new Set(db.prepare('SELECT name FROM groups').all().map((g: any) => g.name));
         const stateGroups = new Set(groups);
@@ -386,6 +397,11 @@ export async function saveAllData({
         const permissionsStmt = db.prepare('INSERT INTO permissions (role, allowed_views) VALUES (@role, @allowed_views) ON CONFLICT(role) DO UPDATE SET allowed_views=excluded.allowed_views');
         for (const [role, allowed_views] of Object.entries(permissions)) {
             permissionsStmt.run({ role, allowed_views: JSON.stringify(allowed_views) });
+        }
+
+        const preferredAvlStmt = db.prepare('INSERT INTO preferred_avl (id, employeeId, year, month, dayNumbers, isClaimed) VALUES (?, ?, ?, ?, ?, ?)');
+        for(const p of preferredAvl) {
+            preferredAvlStmt.run(p.id, p.employeeId, p.year, p.month, JSON.stringify(p.dayNumbers), p.isClaimed ? 1 : 0);
         }
 
     } finally {

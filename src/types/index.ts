@@ -27,7 +27,8 @@ export type Employee = {
   avatar?: string;
   signature?: string;
   loadAllocation?: number;
-  avlAllotted?: number; // Total AVL days for the year
+  avlAllotted?: number; // Repurposed for "To be Scheduled"
+  avlBeginningBalance?: number; 
   reportsTo?: string | null;
   visibility?: AppVisibility;
   gender?: 'Male' | 'Female';
@@ -88,6 +89,15 @@ export type Leave = {
   employeeSignature?: string; // base64
   managerSignature?: string; // base64
   pdfDataUri?: string; // base64
+};
+
+export type PreferredAvl = {
+  id: string;
+  employeeId: string;
+  year: number;
+  month: number; // 0-11
+  dayNumbers: number[];
+  isClaimed: boolean;
 };
 
 export type Notification = {

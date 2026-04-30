@@ -44,7 +44,7 @@ function initializeDatabase() {
             db.exec(query);
             console.log(`Migration successful: ${description}`);
         } catch (e: any) {
-            if (!e.message.includes('duplicate column name')) {
+            if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
                 console.error(`Error running migration (${description}):`, e.message);
             }
         }
@@ -54,6 +54,7 @@ function initializeDatabase() {
     runMigration("ALTER TABLE employees ADD COLUMN employeeClassification TEXT;", "Added 'employeeClassification' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN personnelNumber TEXT;", "Added 'personnelNumber' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN avlAllotted REAL DEFAULT 0;", "Added 'avlAllotted' to 'employees'");
+    runMigration("ALTER TABLE employees ADD COLUMN avlBeginningBalance REAL DEFAULT 0;", "Added 'avlBeginningBalance' to 'employees'");
     
     const leaveColumns = [
         { name: 'dateFiled', type: 'TEXT' },
@@ -73,6 +74,19 @@ function initializeDatabase() {
     });
 
     runMigration("ALTER TABLE tasks ADD COLUMN acknowledgedAt TEXT;", "Added 'acknowledgedAt' to 'tasks'");
+
+    // Preferred AVL Table
+    runMigration(`
+      CREATE TABLE IF NOT EXISTS preferred_avl (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT,
+        year INTEGER,
+        month INTEGER,
+        dayNumbers TEXT,
+        isClaimed INTEGER DEFAULT 0,
+        FOREIGN KEY (employeeId) REFERENCES employees(id) ON DELETE CASCADE
+      );
+    `, "Created 'preferred_avl' table");
 
     return db;
 }

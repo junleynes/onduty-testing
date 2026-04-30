@@ -1,3 +1,4 @@
+
 'use server';
 
 import { getDb } from './db';
@@ -150,8 +151,7 @@ export async function getData() {
 
     const processedPreferredAvl: PreferredAvl[] = preferredAvl.map(p => ({
         ...p,
-        dayNumbers: safeParseJSON(p.dayNumbers, []),
-        isClaimed: p.isClaimed === 1,
+        plottedDays: safeParseJSON(p.plottedDays || p.dayNumbers, []),
     }));
 
     if (processedEmployees.length === 0) {
@@ -406,9 +406,9 @@ export async function saveAllData({
             permissionsStmt.run({ role, allowed_views: JSON.stringify(allowed_views) });
         }
 
-        const preferredAvlStmt = db.prepare('INSERT INTO preferred_avl (id, employeeId, year, month, dayNumbers, isClaimed) VALUES (?, ?, ?, ?, ?, ?)');
+        const preferredAvlStmt = db.prepare('INSERT INTO preferred_avl (id, employeeId, year, month, plottedDays) VALUES (?, ?, ?, ?, ?)');
         for(const p of preferredAvl) {
-            preferredAvlStmt.run(p.id, p.employeeId, p.year, p.month, JSON.stringify(p.dayNumbers), p.isClaimed ? 1 : 0);
+            preferredAvlStmt.run(p.id, p.employeeId, p.year, p.month, JSON.stringify(p.plottedDays));
         }
 
     } finally {

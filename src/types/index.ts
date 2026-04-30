@@ -91,13 +91,17 @@ export type Leave = {
   pdfDataUri?: string; // base64
 };
 
+export type PreferredAvlDay = {
+  day: number;
+  isClaimed: boolean;
+};
+
 export type PreferredAvl = {
   id: string;
   employeeId: string;
   year: number;
   month: number; // 0-11
-  dayNumbers: number[];
-  isClaimed: boolean;
+  plottedDays: PreferredAvlDay[];
 };
 
 export type Notification = {

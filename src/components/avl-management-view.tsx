@@ -1,21 +1,23 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import type { Employee, PreferredAvl } from '@/types';
+import type { Employee, PreferredAvl, PreferredAvlDay } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn, getFullName } from '@/lib/utils';
-import { Save, Calendar, Check, X, Pencil, MoreVertical, Lock, Unlock } from 'lucide-react';
+import { Save, Lock, Unlock, Check, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
+import { ScrollArea } from './ui/scroll-area';
 
 type AvlManagementViewProps = {
   currentUser: Employee;
@@ -32,13 +34,14 @@ const MONTHS = [
   'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
 ];
 
+const CALENDAR_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+
 export default function AvlManagementView({ currentUser, employees, setEmployees, preferredAvl, setPreferredAvl, avlLocks, setAvlLocks }: AvlManagementViewProps) {
   const { toast } = useToast();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [isPlotDialogOpen, setIsPlotDialogOpen] = useState(false);
   const [editingCell, setEditingCell] = useState<{ employeeId: string; month: number } | null>(null);
-  const [plotDays, setPlotPlotDays] = useState<string>('');
-  const [plotIsClaimed, setPlotIsClaimed] = useState(false);
+  const [tempPlottedDays, setTempPlottedDays] = useState<PreferredAvlDay[]>([]);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
   const lockKey = `${currentUser.group}-${selectedYear}`;
@@ -58,45 +61,54 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   const calculateTotalScheduled = (employeeId: string) => {
     return preferredAvl
       .filter(p => p.employeeId === employeeId && p.year === selectedYear)
-      .reduce((sum, p) => sum + p.dayNumbers.length, 0);
+      .reduce((sum, p) => sum + p.plottedDays.length, 0);
   };
 
   const handleOpenPlot = (employeeId: string, month: number) => {
-    // If locked, only managers can edit
     if (isLocked && !isManager) {
         toast({ variant: 'destructive', title: 'Editing Locked', description: 'This year has been locked for editing by a manager.' });
         return;
     }
     
-    // Normal permission check
     if (!isManager && employeeId !== currentUser.id) return;
     
     const existing = getCellData(employeeId, month);
     setEditingCell({ employeeId, month });
-    setPlotPlotDays(existing ? existing.dayNumbers.join(', ') : '');
-    setPlotIsClaimed(existing ? existing.isClaimed : false);
+    setTempPlottedDays(existing ? [...existing.plottedDays] : []);
     setIsPlotDialogOpen(true);
+  };
+
+  const toggleDaySelection = (day: number) => {
+    setTempPlottedDays(prev => {
+        const exists = prev.find(d => d.day === day);
+        if (exists) {
+            return prev.filter(d => d.day !== day);
+        }
+        return [...prev, { day, isClaimed: false }];
+    });
+  };
+
+  const toggleDayClaimed = (day: number) => {
+    if (!isManager) return;
+    setTempPlottedDays(prev => prev.map(d => 
+        d.day === day ? { ...d, isClaimed: !d.isClaimed } : d
+    ));
   };
 
   const handleSavePlot = () => {
     if (!editingCell) return;
 
-    const days = plotDays.split(',')
-      .map(d => parseInt(d.trim()))
-      .filter(d => !isNaN(d) && d >= 1 && d <= 31);
-
     const existing = getCellData(editingCell.employeeId, editingCell.month);
 
     if (existing) {
-      setPreferredAvl(prev => prev.map(p => p.id === existing.id ? { ...p, dayNumbers: days, isClaimed: plotIsClaimed } : p));
+      setPreferredAvl(prev => prev.map(p => p.id === existing.id ? { ...p, plottedDays: tempPlottedDays } : p));
     } else {
       const newAvl: PreferredAvl = {
         id: uuidv4(),
         employeeId: editingCell.employeeId,
         year: selectedYear,
         month: editingCell.month,
-        dayNumbers: days,
-        isClaimed: plotIsClaimed
+        plottedDays: tempPlottedDays
       };
       setPreferredAvl(prev => [...prev, newAvl]);
     }
@@ -107,7 +119,17 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
 
   const handleUpdateEmployee = (id: string, field: 'avlBeginningBalance' | 'avlAllotted', value: string) => {
     const num = parseFloat(value) || 0;
-    setEmployees(prev => prev.map(e => e.id === id ? { ...e, [field]: num } : e));
+    setEmployees(prev => prev.map(e => {
+        if (e.id === id) {
+            const updated = { ...e, [field]: num };
+            // Auto-calculate "to be scheduled" as 50% of beginning balance
+            if (field === 'avlBeginningBalance') {
+                updated.avlAllotted = num / 2;
+            }
+            return updated;
+        }
+        return e;
+    }));
   };
 
   const toggleLock = () => {
@@ -176,7 +198,6 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
             </TableHeader>
             <TableBody>
               {groupEmployees.map(emp => {
-                const canEditRow = isManager || (emp.id === currentUser.id && !isLocked);
                 return (
                   <TableRow key={emp.id} className="h-10">
                     <TableCell className="border border-border p-0">
@@ -211,11 +232,16 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                           className={cn(
                             "border border-border text-center p-1 transition-colors",
                             isClickable ? "cursor-pointer hover:bg-primary/10" : "cursor-not-allowed bg-muted/5",
-                            data?.isClaimed && "bg-green-50 text-green-700 font-bold"
                           )}
                           onClick={() => handleOpenPlot(emp.id, mIdx)}
                         >
-                          {data?.dayNumbers.join(', ')}
+                          <div className="flex flex-wrap justify-center gap-0.5">
+                            {data?.plottedDays.sort((a,b) => a.day - b.day).map((pd, i) => (
+                                <span key={pd.day} className={cn(pd.isClaimed && "text-green-600 font-bold underline")}>
+                                    {pd.day}{i < data.plottedDays.length - 1 ? ',' : ''}
+                                </span>
+                            ))}
+                          </div>
                         </TableCell>
                       );
                     })}
@@ -231,40 +257,70 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
       </Card>
 
       <Dialog open={isPlotDialogOpen} onOpenChange={setIsPlotDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Plot Preferred Dates</DialogTitle>
             <DialogDescription>
-              Enter day numbers separated by commas for {editingCell ? MONTHS[editingCell.month] : ''} {selectedYear}.
+              Select dates for {editingCell ? MONTHS[editingCell.month] : ''} {selectedYear}. {isManager && "Toggle 'Claimed' status for individual days below."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="days">Days (e.g. 8, 9, 10)</Label>
-              <Input 
-                id="days" 
-                value={plotDays} 
-                onChange={e => setPlotPlotDays(e.target.value)}
-                placeholder="1, 15, 20"
-              />
+          <div className="space-y-6 py-4">
+            <div className="grid grid-cols-7 gap-2">
+                {CALENDAR_DAYS.map(day => {
+                    const isSelected = !!tempPlottedDays.find(d => d.day === day);
+                    const isClaimed = !!tempPlottedDays.find(d => d.day === day && d.isClaimed);
+                    return (
+                        <Button
+                            key={day}
+                            variant={isSelected ? "default" : "outline"}
+                            className={cn(
+                                "h-10 w-full p-0",
+                                isClaimed && "bg-green-600 hover:bg-green-700 text-white border-green-800"
+                            )}
+                            onClick={() => toggleDaySelection(day)}
+                        >
+                            {day}
+                        </Button>
+                    )
+                })}
             </div>
-            {isManager && (
-              <div className="flex items-center space-x-2 border p-3 rounded-md">
-                <Checkbox 
-                  id="claimed" 
-                  checked={plotIsClaimed} 
-                  onCheckedChange={(v) => setPlotIsClaimed(!!v)}
-                />
-                <div className="grid gap-1.5 leading-none">
-                  <label htmlFor="claimed" className="text-sm font-medium">Mark as Claimed</label>
-                  <p className="text-xs text-muted-foreground">Claimed dates will be highlighted in green.</p>
-                </div>
-              </div>
-            )}
+            
+            <Separator />
+            
+            <div className="space-y-3">
+                <Label className="text-sm font-bold">Selected Dates & Status</Label>
+                <ScrollArea className="h-40 border rounded-md p-3">
+                    {tempPlottedDays.length > 0 ? (
+                        <div className="space-y-2">
+                            {tempPlottedDays.sort((a,b) => a.day - b.day).map(pd => (
+                                <div key={pd.day} className="flex items-center justify-between p-2 border rounded-sm bg-muted/30">
+                                    <span className="font-bold text-sm">Day {pd.day}</span>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-2">
+                                            <Checkbox 
+                                                id={`claimed-${pd.day}`} 
+                                                checked={pd.isClaimed}
+                                                disabled={!isManager}
+                                                onCheckedChange={() => toggleDayClaimed(pd.day)}
+                                            />
+                                            <Label htmlFor={`claimed-${pd.day}`} className="text-xs cursor-pointer">Claimed</Label>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleDaySelection(pd.day)}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-center text-muted-foreground text-xs py-8 italic">No dates selected yet. Click the numbers above to plot.</p>
+                    )}
+                </ScrollArea>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsPlotDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSavePlot}>Save Dates</Button>
+            <Button onClick={handleSavePlot}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

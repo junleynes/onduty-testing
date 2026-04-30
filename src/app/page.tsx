@@ -8,7 +8,7 @@ import Header from '@/components/header';
 import SidebarNav from '@/components/sidebar-nav';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/hooks/use-notifications';
-import { isSameDay, getMonth, getDate, getYear, format, differenceInYears, addDays, isBefore } from 'date-fns';
+import { isSameDay, getMonth, getDate, getYear, format, differenceInYears, addDays, isBefore, startOfDay, isWithinInterval } from 'date-fns';
 import { getData, saveAllData } from '@/lib/db-actions';
 import { addEmployee, updateEmployee } from '@/app/employee-actions';
 import { useToast } from '@/hooks/use-toast';

@@ -453,9 +453,19 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
     
     const remainingLeave = leave.filter(l => {
         if (!l.employeeId || !l.startDate || !l.endDate) return true;
-        const daysOfLeave = eachDayOfInterval({ start: new Date(l.startDate), end: new Date(l.endDate) });
-        const isOverwritten = daysOfLeave.some(day => cellsToOverwrite.has(`${l.employeeId}-${format(day, 'yyyy-MM-dd')}`));
-        return !isOverwritten;
+        
+        const start = new Date(l.startDate);
+        const end = new Date(l.endDate);
+        
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return true;
+        
+        try {
+            const daysOfLeave = eachDayOfInterval({ start, end });
+            const isOverwritten = daysOfLeave.some(day => cellsToOverwrite.has(`${l.employeeId}-${format(day, 'yyyy-MM-dd')}`));
+            return !isOverwritten;
+        } catch (e) {
+            return true;
+        }
     });
 
     const shiftsWithStatus = importedShifts.map(s => ({ ...s, status: 'draft' as const }));
@@ -713,7 +723,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));
             const leaveEnd = startOfDay(new Date(l.endDate));
-            if (isNaN(leaveStart.getTime()) || iZNaN(leaveEnd.getTime())) return false;
+            if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) return false;
             
             return isWithinInterval(checkDay, { start: leaveStart, end: leaveEnd });
         }).map(l => {
@@ -1144,7 +1154,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
             }
 
             const buffer = await workbook.xlsx.writeBuffer();
-            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
             saveAs(blob, `Semi-Monthly Schedule Export - ${format(startMonth, 'MMM yyyy')} to ${format(endMonth, 'MMM yyyy')}.xlsx`);
 
             toast({ title: 'Export Successful', description: 'Your schedule has been exported to Excel.' });

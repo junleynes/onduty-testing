@@ -53,6 +53,7 @@ function initializeDatabase() {
     runMigration("ALTER TABLE employees ADD COLUMN gender TEXT;", "Added 'gender' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN employeeClassification TEXT;", "Added 'employeeClassification' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN personnelNumber TEXT;", "Added 'personnelNumber' to 'employees'");
+    runMigration("ALTER TABLE employees ADD COLUMN avlAllotted REAL DEFAULT 0;", "Added 'avlAllotted' to 'employees'");
     
     const leaveColumns = [
         { name: 'dateFiled', type: 'TEXT' },

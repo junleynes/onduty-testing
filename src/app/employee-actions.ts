@@ -25,6 +25,7 @@ const employeeSchema = z.object({
   avatar: z.string().optional().nullable(),
   signature: z.string().optional().nullable(),
   loadAllocation: z.coerce.number().optional(),
+  avlAllotted: z.coerce.number().optional(),
   reportsTo: z.string().optional().nullable(),
   visibility: z.object({
       schedule: z.boolean().optional(),
@@ -94,8 +95,8 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
         };
 
         const stmt = db.prepare(`
-            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber)
-            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber)
+            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, avlAllotted, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber)
+            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @avlAllotted, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber)
         `);
 
         stmt.run({
@@ -113,6 +114,7 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             group: newEmployee.group || null,
             avatar: newEmployee.avatar,
             loadAllocation: newEmployee.loadAllocation || 0,
+            avlAllotted: newEmployee.avlAllotted || 0,
             birthDate: newEmployee.birthDate ? new Date(newEmployee.birthDate).toISOString() : null,
             startDate: newEmployee.startDate ? new Date(newEmployee.startDate).toISOString() : null,
             signature: newEmployee.signature,
@@ -188,6 +190,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
                 "group" = @group,
                 avatar = @avatar,
                 loadAllocation = @loadAllocation,
+                avlAllotted = @avlAllotted,
                 birthDate = @birthDate,
                 startDate = @startDate,
                 signature = @signature,
@@ -214,6 +217,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             group: updatedEmployee.group || null,
             avatar: updatedEmployee.avatar || null,
             loadAllocation: updatedEmployee.loadAllocation || 0,
+            avlAllotted: updatedEmployee.avlAllotted || 0,
             birthDate: updatedEmployee.birthDate ? new Date(updatedEmployee.birthDate).toISOString() : null,
             startDate: updatedEmployee.startDate ? new Date(updatedEmployee.startDate).toISOString() : null,
             signature: updatedEmployee.signature || null,

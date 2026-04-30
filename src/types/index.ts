@@ -27,6 +27,7 @@ export type Employee = {
   avatar?: string;
   signature?: string;
   loadAllocation?: number;
+  avlAllotted?: number; // Total AVL days for the year
   reportsTo?: string | null;
   visibility?: AppVisibility;
   gender?: 'Male' | 'Female';

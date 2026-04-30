@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -45,6 +44,7 @@ const employeeSchema = z.object({
   avatar: z.string().optional().nullable(),
   signature: z.string().optional().nullable(),
   loadAllocation: z.coerce.number().optional(),
+  avlAllotted: z.coerce.number().optional(),
   reportsTo: z.string().optional().nullable(),
   visibility: z.object({
       schedule: z.boolean().optional(),
@@ -118,6 +118,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
             avatar: '',
             signature: '',
             loadAllocation: 0,
+            avlAllotted: 0,
             reportsTo: null,
             visibility: {
               schedule: true,
@@ -134,6 +135,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
             startDate: employee.startDate ? new Date(employee.startDate) : undefined,
             lastPromotionDate: employee.lastPromotionDate ? new Date(employee.lastPromotionDate) : undefined,
             loadAllocation: employee.loadAllocation ?? 0,
+            avlAllotted: employee.avlAllotted ?? 0,
             visibility: {
               schedule: employee.visibility?.schedule ?? true,
               onDuty: employee.visibility?.onDuty ?? true,
@@ -514,7 +516,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                 )}
                             />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <FormField
                                     control={form.control}
                                     name="lastPromotionDate"
@@ -542,6 +544,19 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                         <FormLabel>Load Allocation</FormLabel>
                                         <FormControl>
                                             <Input type="number" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="avlAllotted"
+                                    render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>AVL Allotted (Days)</FormLabel>
+                                        <FormControl>
+                                            <Input type="number" step="0.5" {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>

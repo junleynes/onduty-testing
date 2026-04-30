@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useTransition } from 'react';
@@ -6,9 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { format, isSameDay, isWithinInterval, startOfDay, eachDayOfInterval } from 'date-fns';
+import { format, isSameDay, isWithinInterval, startOfDay, eachDayOfInterval, differenceInCalendarDays } from 'date-fns';
 import { getFullName, getInitialState, cn } from '@/lib/utils';
-import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter } from 'lucide-react';
+import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter, Palmtree } from 'lucide-react';
 import { LeaveRequestDialog } from './leave-request-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -59,6 +60,23 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
+
+  const avlSummary = useMemo(() => {
+    const allotted = currentUser.avlAllotted || 0;
+    const used = leaveRequests
+        .filter(req => req.employeeId === currentUser.id && req.type.toUpperCase() === 'AVL' && req.status === 'approved')
+        .reduce((sum, req) => {
+            if (req.isAllDay) {
+                return sum + (differenceInCalendarDays(new Date(req.endDate), new Date(req.startDate)) + 1);
+            }
+            if (req.durationCategory === 'half') {
+                return sum + 0.5;
+            }
+            return sum;
+        }, 0);
+    
+    return { allotted, used, remaining: allotted - used };
+  }, [leaveRequests, currentUser]);
 
   const handleSort = (key: SortKey) => {
     setSortConfig(prev => ({
@@ -531,162 +549,190 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
   return (
     <>
-      <Card>
-        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <CardTitle>Time Off Requests</CardTitle>
-            <CardDescription>Manage your leave requests and offsets.</CardDescription>
-          </div>
-           <div className="flex gap-2 flex-wrap items-center">
-                {selectedIds.length > 0 && (
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive">
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete Selected ({selectedIds.length})
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This will permanently delete {selectedIds.length} selected request(s). This action cannot be undone.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
-                {isManager && (
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isPurging} className={cn(selectedIds.length > 0 && "hidden md:flex")}>
-                                {isPurging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-                                Clear All
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This action will permanently delete all standard time off requests for your team. This cannot be undone.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleClearAllRequests}>Continue</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
-                {isManager && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline">
-                                <Settings className="h-4 w-4 mr-2" />
-                                Manage Templates
-                                <ChevronsUpDown className="h-4 w-4 ml-2" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={onUploadAlaf}>
-                                <Upload className="h-4 w-4 mr-2" />
-                                ALAF Template (Leave Form)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={onUploadOffset}>
-                                <Upload className="h-4 w-4 mr-2" />
-                                Offset Request Template
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-               <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                      <Button>
-                          <PlusCircle className="h-4 w-4 mr-2" />
-                          New Request
-                          <ChevronsUpDown className="h-4 w-4 ml-2" />
-                      </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handleNewTimeOffRequest}>
-                          Time Off Request
-                      </DropdownMenuItem>
-                       <DropdownMenuItem onClick={handleNewOffsetRequest}>
-                          Offset Request
-                      </DropdownMenuItem>
-                  </DropdownMenuContent>
-              </DropdownMenu>
-           </div>
-        </CardHeader>
-        <CardContent>
-            <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search team members..." 
-                  className="pl-10"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-2 w-full md:w-auto">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <Filter className="h-4 w-4 mr-2 opacity-50" />
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <Type className="h-4 w-4 mr-2 opacity-50" />
-                    <SelectValue placeholder="Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    {uniqueTypesForFilter.map(typeName => (
-                      <SelectItem key={typeName} value={typeName}>{typeName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+      <div className="space-y-6">
+        <Card className="bg-primary/5 border-primary/20">
+            <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                    <Palmtree className="h-5 w-5 text-primary" />
+                    <CardTitle className="text-lg">Annual Vacation Leave Balance</CardTitle>
+                </div>
+                <CardDescription>Your allotted leave days for the current year.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="p-4 bg-background rounded-lg border shadow-sm">
+                        <p className="text-sm text-muted-foreground">Total Allotted</p>
+                        <p className="text-2xl font-bold">{avlSummary.allotted.toFixed(1)} Days</p>
+                    </div>
+                    <div className="p-4 bg-background rounded-lg border shadow-sm">
+                        <p className="text-sm text-muted-foreground">Used / Approved</p>
+                        <p className="text-2xl font-bold text-orange-600">{avlSummary.used.toFixed(1)} Days</p>
+                    </div>
+                    <div className="p-4 bg-background rounded-lg border shadow-sm border-primary/50 ring-1 ring-primary/20">
+                        <p className="text-sm text-muted-foreground font-semibold">Remaining Balance</p>
+                        <p className="text-2xl font-bold text-primary">{avlSummary.remaining.toFixed(1)} Days</p>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
 
-            <Tabs defaultValue={isManager ? "team-requests" : "my-requests"} className="w-full">
-                <TabsList className="mb-4">
-                    <TabsTrigger value="my-requests">My Requests ({myRequests.length})</TabsTrigger>
-                    {isManager && <TabsTrigger value="team-requests">Team Requests ({teamRequests.length})</TabsTrigger>}
-                </TabsList>
-                <TabsContent value="my-requests">
-                    {myRequests.length > 0 ? (
-                        <>
-                           <RequestTable requests={myRequests} />
-                           <RequestList requests={myRequests} />
-                        </>
-                     ) : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">No matching requests found.</p>}
-                </TabsContent>
-                {isManager && (
-                    <TabsContent value="team-requests">
-                        {teamRequests.length > 0 ? (
+        <Card>
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+                <CardTitle>Time Off Requests</CardTitle>
+                <CardDescription>Manage your leave requests and offsets.</CardDescription>
+            </div>
+            <div className="flex gap-2 flex-wrap items-center">
+                    {selectedIds.length > 0 && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive">
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Selected ({selectedIds.length})
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This will permanently delete {selectedIds.length} selected request(s). This action cannot be undone.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
+                    {isManager && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" disabled={isPurging} className={cn(selectedIds.length > 0 && "hidden md:flex")}>
+                                    {isPurging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                                    Clear All
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action will permanently delete all standard time off requests for your team. This cannot be undone.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleClearAllRequests}>Continue</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
+                    {isManager && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline">
+                                    <Settings className="h-4 w-4 mr-2" />
+                                    Manage Templates
+                                    <ChevronsUpDown className="h-4 w-4 ml-2" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={onUploadAlaf}>
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    ALAF Template (Leave Form)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={onUploadOffset}>
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    Offset Request Template
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button>
+                            <PlusCircle className="h-4 w-4 mr-2" />
+                            New Request
+                            <ChevronsUpDown className="h-4 w-4 ml-2" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleNewTimeOffRequest}>
+                            Time Off Request
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleNewOffsetRequest}>
+                            Offset Request
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+            </CardHeader>
+            <CardContent>
+                <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
+                <div className="relative flex-1 w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                    placeholder="Search team members..." 
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <div className="flex gap-2 w-full md:w-auto">
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-[140px]">
+                        <Filter className="h-4 w-4 mr-2 opacity-50" />
+                        <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                    </Select>
+                    <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger className="w-[140px]">
+                        <Type className="h-4 w-4 mr-2 opacity-50" />
+                        <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        {uniqueTypesForFilter.map(typeName => (
+                        <SelectItem key={typeName} value={typeName}>{typeName}</SelectItem>
+                        ))}
+                    </SelectContent>
+                    </Select>
+                </div>
+                </div>
+
+                <Tabs defaultValue={isManager ? "team-requests" : "my-requests"} className="w-full">
+                    <TabsList className="mb-4">
+                        <TabsTrigger value="my-requests">My Requests ({myRequests.length})</TabsTrigger>
+                        {isManager && <TabsTrigger value="team-requests">Team Requests ({teamRequests.length})</TabsTrigger>}
+                    </TabsList>
+                    <TabsContent value="my-requests">
+                        {myRequests.length > 0 ? (
                             <>
-                                <RequestTable requests={teamRequests} forManagerView />
-                                <RequestList requests={teamRequests} forManagerView />
+                            <RequestTable requests={myRequests} />
+                            <RequestList requests={myRequests} />
                             </>
-                        ) : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">No matching team requests found.</p>}
+                        ) : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">No matching requests found.</p>}
                     </TabsContent>
-                )}
-            </Tabs>
-        </CardContent>
-      </Card>
+                    {isManager && (
+                        <TabsContent value="team-requests">
+                            {teamRequests.length > 0 ? (
+                                <>
+                                    <RequestTable requests={teamRequests} forManagerView />
+                                    <RequestList requests={teamRequests} forManagerView />
+                                </>
+                            ) : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">No matching team requests found.</p>}
+                        </TabsContent>
+                    )}
+                </Tabs>
+            </CardContent>
+        </Card>
+      </div>
       
       <LeaveRequestDialog 
         isOpen={isRequestDialogOpen}

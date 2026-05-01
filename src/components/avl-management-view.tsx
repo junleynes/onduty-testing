@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -33,8 +32,6 @@ const MONTHS = [
   'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 
   'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
 ];
-
-const CALENDAR_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 export default function AvlManagementView({ currentUser, employees, setEmployees, preferredAvl, setPreferredAvl, avlLocks, setAvlLocks }: AvlManagementViewProps) {
   const { toast } = useToast();
@@ -98,7 +95,6 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   const currentAnnualTotal = useMemo(() => {
     if (!editingCell) return 0;
     
-    // Sum of all OTHER months
     const otherMonthsTotal = preferredAvl
         .filter(p => p.employeeId === editingCell.employeeId && p.year === selectedYear && p.month !== editingCell.month)
         .reduce((sum, p) => sum + p.plottedDays.length, 0);
@@ -113,7 +109,6 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   const handleSavePlot = () => {
     if (!editingCell || !targetEmployee) return;
 
-    // Validation: prevent exceeding allotted days
     const allotted = targetEmployee.avlAllotted || 0;
     if (currentAnnualTotal > allotted) {
         toast({ 
@@ -148,7 +143,6 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
     setEmployees(prev => prev.map(e => {
         if (e.id === id) {
             const updated = { ...e, [field]: num };
-            // Auto-calculate "to be scheduled" as 50% of beginning balance
             if (field === 'avlBeginningBalance') {
                 updated.avlAllotted = Math.floor(num / 2);
             }
@@ -168,6 +162,13 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
         description: isLocked ? "Users can now edit their preferred dates." : "Regular users are now restricted from editing."
     });
   };
+
+  // Calculate valid calendar days for the current editing cell month
+  const calendarDays = useMemo(() => {
+    if (!editingCell) return [];
+    const daysInMonth = new Date(selectedYear, editingCell.month + 1, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  }, [editingCell, selectedYear]);
 
   return (
     <div className="space-y-6">
@@ -250,7 +251,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                       />
                     </TableCell>
                     <TableCell className="border border-border font-bold bg-muted/20 px-2">
-                      {getFullName(emp).toUpperCase()}
+                      {getFullName(emp)}
                     </TableCell>
                     {MONTHS.map((_, mIdx) => {
                       const data = getCellData(emp.id, mIdx);
@@ -305,7 +306,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
             </div>
 
             <div className="grid grid-cols-7 gap-2">
-                {CALENDAR_DAYS.map(day => {
+                {calendarDays.map(day => {
                     const isSelected = !!tempPlottedDays.find(d => d.day === day);
                     const isClaimed = !!tempPlottedDays.find(d => d.day === day && d.isClaimed);
                     return (

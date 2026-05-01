@@ -17,6 +17,17 @@ import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { ScrollArea } from './ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type AvlManagementViewProps = {
   currentUser: Employee;
@@ -163,6 +174,17 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
     });
   };
 
+  const handleClearAll = () => {
+    const groupEmployeeIds = new Set(groupEmployees.map(e => e.id));
+    setPreferredAvl(prev => prev.filter(p => 
+      !(p.year === selectedYear && groupEmployeeIds.has(p.employeeId))
+    ));
+    toast({ 
+      title: "Grid Cleared", 
+      description: `All plotted dates for your group in ${selectedYear} have been removed.` 
+    });
+  };
+
   // Calculate valid calendar days for the current editing cell month
   const calendarDays = useMemo(() => {
     if (!editingCell) return [];
@@ -186,9 +208,32 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
         </div>
         <div className="flex items-center gap-2">
            {isManager && (
-              <Button variant={isLocked ? "outline" : "secondary"} onClick={toggleLock}>
-                {isLocked ? <><Unlock className="h-4 w-4 mr-2" /> Unlock</> : <><Lock className="h-4 w-4 mr-2" /> Lock for Members</>}
-              </Button>
+              <>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive">
+                      <Trash2 className="h-4 w-4 mr-2" /> Clear All
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear All Plotted Dates?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete ALL plotted preferred leave dates for the year {selectedYear} for everyone in your group. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleClearAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Clear Grid
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button variant={isLocked ? "outline" : "secondary"} onClick={toggleLock}>
+                  {isLocked ? <><Unlock className="h-4 w-4 mr-2" /> Unlock</> : <><Lock className="h-4 w-4 mr-2" /> Lock for Members</>}
+                </Button>
+              </>
            )}
            <Label className="text-sm font-bold ml-2">YEAR:</Label>
            <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(parseInt(v))}>

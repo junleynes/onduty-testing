@@ -19,6 +19,9 @@ function initializeDatabase() {
     }
 
     const db = new Database(DB_PATH);
+    
+    // Enable WAL mode for better concurrency
+    db.pragma('journal_mode = WAL');
 
     // Run schema to create tables if they don't exist
     const schemaPath = path.join(process.cwd(), 'src', 'lib', 'schema.sql');

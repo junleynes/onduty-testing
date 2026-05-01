@@ -95,8 +95,34 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
     ));
   };
 
+  const currentAnnualTotal = useMemo(() => {
+    if (!editingCell) return 0;
+    
+    // Sum of all OTHER months
+    const otherMonthsTotal = preferredAvl
+        .filter(p => p.employeeId === editingCell.employeeId && p.year === selectedYear && p.month !== editingCell.month)
+        .reduce((sum, p) => sum + p.plottedDays.length, 0);
+    
+    return otherMonthsTotal + tempPlottedDays.length;
+  }, [editingCell, preferredAvl, selectedYear, tempPlottedDays]);
+
+  const targetEmployee = useMemo(() => 
+    editingCell ? groupEmployees.find(e => e.id === editingCell.employeeId) : null,
+  [editingCell, groupEmployees]);
+
   const handleSavePlot = () => {
-    if (!editingCell) return;
+    if (!editingCell || !targetEmployee) return;
+
+    // Validation: prevent exceeding allotted days
+    const allotted = targetEmployee.avlAllotted || 0;
+    if (currentAnnualTotal > allotted) {
+        toast({ 
+            variant: 'destructive', 
+            title: 'Limit Exceeded', 
+            description: `Your limit is ${allotted} days, but you are trying to schedule ${currentAnnualTotal} days total for the year.` 
+        });
+        return;
+    }
 
     const existing = getCellData(editingCell.employeeId, editingCell.month);
 
@@ -124,7 +150,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
             const updated = { ...e, [field]: num };
             // Auto-calculate "to be scheduled" as 50% of beginning balance
             if (field === 'avlBeginningBalance') {
-                updated.avlAllotted = num / 2;
+                updated.avlAllotted = Math.floor(num / 2);
             }
             return updated;
         }
@@ -198,6 +224,9 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
             </TableHeader>
             <TableBody>
               {groupEmployees.map(emp => {
+                const totalScheduled = calculateTotalScheduled(emp.id);
+                const isOverLimit = totalScheduled > (emp.avlAllotted || 0);
+
                 return (
                   <TableRow key={emp.id} className="h-10">
                     <TableCell className="border border-border p-0">
@@ -245,8 +274,11 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                         </TableCell>
                       );
                     })}
-                    <TableCell className="border border-border text-center font-bold text-lg bg-primary/5">
-                      {calculateTotalScheduled(emp.id)}
+                    <TableCell className={cn(
+                        "border border-border text-center font-bold text-lg",
+                        isOverLimit ? "bg-destructive/10 text-destructive" : "bg-primary/5"
+                    )}>
+                      {totalScheduled}
                     </TableCell>
                   </TableRow>
                 );
@@ -261,10 +293,17 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
           <DialogHeader>
             <DialogTitle>Plot Preferred Dates</DialogTitle>
             <DialogDescription>
-              Select dates for {editingCell ? MONTHS[editingCell.month] : ''} {selectedYear}. {isManager && "Toggle 'Claimed' status for individual days below."}
+              Select dates for {editingCell ? MONTHS[editingCell.month] : ''} {selectedYear}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
+            <div className="flex items-center justify-between px-1">
+                <span className="text-sm font-medium">Monthly Selection</span>
+                <Badge variant={currentAnnualTotal > (targetEmployee?.avlAllotted || 0) ? "destructive" : "secondary"}>
+                    Total Scheduled: {currentAnnualTotal} / {targetEmployee?.avlAllotted || 0} days
+                </Badge>
+            </div>
+
             <div className="grid grid-cols-7 gap-2">
                 {CALENDAR_DAYS.map(day => {
                     const isSelected = !!tempPlottedDays.find(d => d.day === day);
@@ -320,7 +359,12 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsPlotDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSavePlot}>Save Changes</Button>
+            <Button 
+                onClick={handleSavePlot}
+                disabled={currentAnnualTotal > (targetEmployee?.avlAllotted || 0)}
+            >
+                Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

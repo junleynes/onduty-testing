@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
@@ -20,6 +19,7 @@ import type { Leave, Employee } from '@/types';
 import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { Calendar } from './ui/calendar';
+import { DatePicker } from './ui/date-picker';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { cn, getInitialState } from '@/lib/utils';

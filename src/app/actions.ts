@@ -1,8 +1,8 @@
-
 'use server';
 
 import type { SmtpSettings, Employee, Shift, AppVisibility, Leave } from '@/types';
 import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
@@ -31,14 +31,18 @@ export async function sendEmail(
     const transporter = nodemailer.createTransport({
         host: smtpSettings.host,
         port: smtpSettings.port,
-        secure: smtpSettings.port === 465, // Use SSL for port 465, otherwise STARTTLS
+        secure: smtpSettings.port === 465 || smtpSettings.secure,
         auth: {
             user: smtpSettings.user,
             pass: smtpSettings.pass,
         },
         tls: {
-            rejectUnauthorized: false // Often required for cloud environments
-        }
+            rejectUnauthorized: false, // Essential for many self-hosted environments
+            minVersion: 'TLSv1.2'
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 30000,
     });
 
     try {
@@ -49,50 +53,35 @@ export async function sendEmail(
             html: htmlBody,
             attachments: attachments?.map(att => ({
                 filename: att.filename,
-                content: Buffer.from(att.content, 'base64'), // Decode base64 to buffer
+                content: Buffer.from(att.content, 'base64'),
             }))
         });
         return { success: true };
     } catch (error) {
-        console.error('Email sending with nodemailer failed:', error);
+        console.error('Email sending failed:', error);
         return { success: false, error: (error as Error).message };
     }
 }
 
 
 export async function verifyUser(email: string, password: string): Promise<{ success: boolean; user?: Employee; error?: string; }> {
-    // Hardcode check for the default admin user to bypass any potential DB issues.
-    if (email.toLowerCase() === 'admin@onduty.local') {
-        if (password === 'P@ssw0rd') {
-            const adminUser: Employee = {
-                id: "emp-admin-01",
-                employeeNumber: "001",
-                firstName: "Super",
-                lastName: "Admin",
-                email: "admin@onduty.local",
-                password: "P@ssw0rd", // Ensure password is included in the returned object
-                phone: "123-456-7890",
-                position: "System Administrator",
-                role: "admin",
-                group: "Administration",
-            };
-            return { success: true, user: adminUser };
-        } else {
-            return { success: false, error: 'Invalid email or password.' };
-        }
-    }
-
-    // Continue with database check for all other users.
     const db = getDb();
     try {
-        const stmt = db.prepare('SELECT * FROM employees WHERE email = ?');
-        const userRow = stmt.get(email);
+        // Find user by email
+        const userRow = db.prepare('SELECT * FROM employees WHERE email = ?').get(email.toLowerCase()) as any;
 
         if (userRow) {
-            // Ensure we are working with a plain object
             const user = JSON.parse(JSON.stringify(userRow)) as Employee;
             
-            if (user.password === password) {
+            // Check hashed password
+            if (user.password && user.password.startsWith('$2')) {
+                const isMatch = await bcrypt.compare(password, user.password);
+                if (isMatch) {
+                    return { success: true, user: user };
+                }
+            } 
+            // Fallback for legacy plain text passwords (including the default admin)
+            else if (user.password === password) {
                 return { success: true, user: user };
             }
         }
@@ -158,13 +147,10 @@ export async function getPublicData(): Promise<{
 export async function resetToFactorySettings(): Promise<{ success: boolean; error?: string }> {
     const dbPath = path.join(process.cwd(), 'local.db');
     
-    // Close the database connection if it's open.
     const dbModule = require('@/lib/db');
     if (dbModule.dbInstance && dbModule.dbInstance.open) {
         dbModule.dbInstance.close();
     }
-    
-    // Invalidate the singleton instance in db.ts
     dbModule.dbInstance = null;
 
     try {
@@ -193,7 +179,7 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
                 db.prepare('DELETE FROM holidays').run();
                 break;
             case 'reportTemplates':
-                db.prepare("DELETE FROM key_value_store LIKE '%Template'").run();
+                db.prepare("DELETE FROM key_value_store WHERE key LIKE '%Template'").run();
                 break;
             case 'tasks':
                 db.prepare('DELETE FROM tasks').run();
@@ -239,7 +225,6 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
         } else if (sigData.includes('image/png')) {
             image = await pdfDoc.embedPng(buffer);
         } else {
-            // Fallback to PNG if type is ambiguous
             try { image = await pdfDoc.embedPng(buffer); } catch (e) { return; }
         }
 
@@ -247,7 +232,6 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
         for (const field of allFormFields) {
             const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-            // Check for exact match or if the field name ends with one of our targets (for subform handling)
             const isMatch = normalizedTargets.some(target => 
                 currentFieldName === target || currentFieldName.endsWith(target)
             );
@@ -256,9 +240,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
                 try {
                     const button = form.getButton(field.getName());
                     button.setImage(image);
-                } catch (e) {
-                    // This might happen if someone named a text field with a signature name
-                }
+                } catch (e) {}
             }
         }
     } catch (sigErr) {
@@ -302,7 +284,6 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             ? format(startDate, 'MM/dd/yyyy')
             : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
         
-        // Append specific times if it's not a whole day and not just a minute filing
         if (!leaveRequest.isAllDay && leaveRequest.durationCategory !== 'minutes') {
             if (leaveRequest.durationCategory === 'half' && leaveRequest.originalStartTime && leaveRequest.originalEndTime) {
                 leaveDatesDisplay += ` (Half Day: ${leaveRequest.halfDaySegment === 'first' ? '1st Half' : '2nd Half'} of ${leaveRequest.originalStartTime}-${leaveRequest.originalEndTime})`;
@@ -329,16 +310,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const allFormFields = form.getFields();
         
-        // 1. Fill Text and Button Fields First
         for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
             const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                
                 const isMatch = normalizedTargets.some(target => 
                     currentFieldName === target || currentFieldName.endsWith(target)
                 );
-
                 if (isMatch) {
                     try {
                         const textField = form.getTextField(field.getName());
@@ -348,75 +326,40 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
-        // Handle Leave Type (Checkbox, Radio Group, or Text Field)
         if (leaveRequest.type) {
             const rawType = leaveRequest.type.toLowerCase();
             const normalizedType = rawType.replace(/[^a-z0-9]/g, '');
-            
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                
-                // Stricter matching for short codes to prevent VL matching AVL
                 const isTypeMatch = currentFieldName === normalizedType || 
                                     currentFieldName === `chk${normalizedType}` ||
                                     (normalizedType.length > 3 && (currentFieldName.includes(normalizedType) || currentFieldName.endsWith(normalizedType)));
-
                 if (isTypeMatch) {
-                    try {
-                        const checkbox = form.getCheckBox(field.getName());
-                        checkbox.check();
-                    } catch (e) {}
-
+                    try { form.getCheckBox(field.getName()).check(); } catch (e) {}
                     try {
                         const radioGroup = form.getRadioGroup(field.getName());
                         const options = radioGroup.getOptions();
                         const matchingOption = options.find(opt => {
                             const normOpt = opt.toLowerCase().replace(/[^a-z0-9]/g, '');
-                            return normOpt === normalizedType || 
-                                   (normalizedType.length > 3 && normOpt.includes(normalizedType)) ||
-                                   normOpt.endsWith(normalizedType);
+                            return normOpt === normalizedType || (normalizedType.length > 3 && normOpt.includes(normalizedType)) || normOpt.endsWith(normalizedType);
                         });
-                        if (matchingOption) {
-                            radioGroup.select(matchingOption);
-                        }
+                        if (matchingOption) radioGroup.select(matchingOption);
                     } catch (e) {}
-
-                    try {
-                        const textField = form.getTextField(field.getName());
-                        const valueToSet = normalizedType === 'tardy' ? 'TARDY' : 'X';
-                        textField.setText(valueToSet);
-                    } catch (e) {}
+                    try { form.getTextField(field.getName()).setText(normalizedType === 'tardy' ? 'TARDY' : 'X'); } catch (e) {}
                 }
             }
         }
         
-        // Handle Approval Status (Checkbox, Radio, or Text)
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
             const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
-
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                
-                const isStatusMatch = currentFieldName === statusKey || 
-                                      currentFieldName.endsWith(statusKey) || 
-                                      currentFieldName === alternateKey || 
-                                      currentFieldName.endsWith(alternateKey) ||
-                                      currentFieldName === `chk${statusKey}` ||
-                                      currentFieldName === `chk${alternateKey}`;
-
+                const isStatusMatch = currentFieldName === statusKey || currentFieldName.endsWith(statusKey) || currentFieldName === alternateKey || currentFieldName.endsWith(alternateKey) || currentFieldName === `chk${statusKey}` || currentFieldName === `chk${alternateKey}`;
                 if (isStatusMatch) {
-                    try {
-                        const checkbox = form.getCheckBox(field.getName());
-                        checkbox.check();
-                    } catch (e) {}
-                    
-                    try {
-                        const textField = form.getTextField(field.getName());
-                        textField.setText('X');
-                    } catch (e) {}
+                    try { form.getCheckBox(field.getName()).check(); } catch (e) {}
+                    try { form.getTextField(field.getName()).setText('X'); } catch (e) {}
                 }
-
                 try {
                     const radioGroup = form.getRadioGroup(field.getName());
                     const options = radioGroup.getOptions();
@@ -424,17 +367,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                         const normOpt = opt.toLowerCase().replace(/[^a-z0-9]/g, '');
                         return normOpt === statusKey || normOpt.endsWith(statusKey) || normOpt === alternateKey || normOpt.endsWith(alternateKey);
                     });
-                    if (matchingOption) {
-                        radioGroup.select(matchingOption);
-                    }
+                    if (matchingOption) radioGroup.select(matchingOption);
                 } catch (e) {}
             }
         }
 
-        // 2. IMPORTANT: Generate visuals for standard fields BEFORE images
         form.updateFieldAppearances();
 
-        // 3. Embed signatures LAST
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
 
@@ -461,7 +400,6 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         const manager = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
-        // Fetch the claimed work extension details
         let weRequest: Leave | undefined = undefined;
         let weManager: Employee | undefined = undefined;
         let weDate = 'N/A';
@@ -478,7 +416,6 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     if (diff < 0) diff += 24;
                     weHours = diff.toFixed(2);
                 }
-                
                 if (weRequest.managedBy) {
                     weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
                 }
@@ -530,7 +467,6 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
         };
         
-        // Map Work Extension Details if present
         if (weRequest) {
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
@@ -551,50 +487,32 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                
                 const isMatch = normalizedTargets.some(target => 
                     currentFieldName === target || currentFieldName.endsWith(target)
                 );
-
                 if (isMatch) {
-                    try {
-                        const textField = form.getTextField(field.getName());
-                        textField.setText(value || '');
-                    } catch (e) {}
+                    try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }
             }
         }
         
-        // Handle Approval Status for Offset
         if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
             const statusKey = leaveRequest.status.toLowerCase();
             const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                
-                if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey) || 
-                    currentFieldName === alternateKey || currentFieldName.endsWith(alternateKey)) {
-                    try {
-                        const checkbox = form.getCheckBox(field.getName());
-                        checkbox.check();
-                    } catch (e) {}
-                    
-                    try {
-                        const textField = form.getTextField(field.getName());
-                        textField.setText('X');
-                    } catch (e) {}
+                if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey) || currentFieldName === alternateKey || currentFieldName.endsWith(alternateKey)) {
+                    try { form.getCheckBox(field.getName()).check(); } catch (e) {}
+                    try { form.getTextField(field.getName()).setText('X'); } catch (e) {}
                 }
             }
         }
 
-        // Generate visuals for standard fields BEFORE images
         form.updateFieldAppearances();
 
-        // Embed signatures LAST
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'mgr_sig', 'signature_2']);
         
-        // Embed signatures from Original Work Extension
         if (weRequest) {
             await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image']);
             await embedSignatureToPdf(pdfDoc, weRequest.managerSignature, ['we_manager_signature_af_image']);
@@ -616,8 +534,6 @@ export async function sendPasswordResetLink(email: string, origin: string, smtpS
     try {
         const employee = db.prepare('SELECT * FROM employees WHERE email = ?').get(email) as Employee | undefined;
         if (!employee) {
-            // Don't reveal if the user exists or not for security reasons.
-            // We'll just return success as if an email was sent.
             return { success: true };
         }
 
@@ -658,7 +574,7 @@ export async function sendActivationLink(employeeId: string, origin: string, smt
         db.prepare('INSERT INTO password_reset_tokens (token, employeeId, expiresAt) VALUES (?, ?, ?)')
           .run(token, employee.id, expiresAt.toISOString());
 
-        const activationLink = `${origin}/reset-password?token=${token}`; // Re-use the reset page for activation
+        const activationLink = `${origin}/reset-password?token=${token}`;
 
         const subject = 'Activate Your OnDuty Account';
         const htmlBody = `
@@ -711,10 +627,8 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
              return { success: false, error: 'Invalid or expired token.' };
         }
 
-        // Update the password
-        db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(newPassword, tokenRecord.employeeId);
-        
-        // Invalidate the token
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashedPassword, tokenRecord.employeeId);
         db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
 
         return { success: true };

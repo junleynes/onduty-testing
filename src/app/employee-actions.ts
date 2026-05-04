@@ -1,10 +1,10 @@
-
 'use server';
 
 import { getDb } from '@/lib/db';
 import type { Employee } from '@/types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
 
 const employeeSchema = z.object({
   id: z.string().optional(),
@@ -26,6 +26,7 @@ const employeeSchema = z.object({
   signature: z.string().optional().nullable(),
   loadAllocation: z.coerce.number().optional(),
   avlAllotted: z.coerce.number().optional(),
+  avlBeginningBalance: z.coerce.number().optional(),
   reportsTo: z.string().optional().nullable(),
   visibility: z.object({
       schedule: z.boolean().optional(),
@@ -36,15 +37,10 @@ const employeeSchema = z.object({
   gender: z.enum(['Male', 'Female']).optional().nullable(),
   employeeClassification: z.enum(['Rank-and-File', 'Confidential', 'Managerial']).optional().nullable(),
 }).refine(data => {
-    // If it's a new user (no ID), password can be blank (to send activation link)
-    if (!data.id) {
-      return true;
-    }
-    // If it's an existing user, password is optional. But if provided, it must be at least 6 chars.
+    if (!data.id) return true;
     if (data.password && data.password.length > 0) {
       return data.password.length >= 6;
     }
-    // If password is not provided for an existing user, it's valid.
     return true;
   }, {
     message: 'Password must be at least 6 characters long.',
@@ -52,16 +48,13 @@ const employeeSchema = z.object({
 });
 
 
-// Helper to check for email uniqueness
 async function isEmailUnique(email: string, currentId?: string): Promise<boolean> {
     const db = getDb();
     if (currentId) {
-        // Correctly check for emails on OTHER records
-        const row = db.prepare('SELECT id FROM employees WHERE email = ? AND id != ?').get(email, currentId);
+        const row = db.prepare('SELECT id FROM employees WHERE email = ? AND id != ?').get(email.toLowerCase(), currentId);
         return !row;
     } else {
-        // Check for any record with this email when creating a new user
-        const row = db.prepare('SELECT id FROM employees WHERE email = ?').get(email);
+        const row = db.prepare('SELECT id FROM employees WHERE email = ?').get(email.toLowerCase());
         return !row;
     }
 }
@@ -80,23 +73,28 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
 
     const db = getDb();
     try {
+        let hashedPassword = null;
+        if (data.password) {
+            hashedPassword = await bcrypt.hash(data.password, 10);
+        }
+
         const newEmployee: Employee = {
             id: uuidv4(),
             firstName: data.firstName,
             lastName: data.lastName,
-            email: data.email,
+            email: data.email.toLowerCase(),
             role: data.role || 'member',
             phone: data.phone || '',
             position: data.position || '',
             ...data,
-            password: data.password || null, // Can be null if activation link is used
+            password: hashedPassword,
             avatar: data.avatar || null,
             signature: data.signature || null,
         };
 
         const stmt = db.prepare(`
-            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, avlAllotted, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber)
-            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @avlAllotted, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber)
+            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, avlAllotted, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber, avlBeginningBalance)
+            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @avlAllotted, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlBeginningBalance)
         `);
 
         stmt.run({
@@ -115,6 +113,7 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             avatar: newEmployee.avatar,
             loadAllocation: newEmployee.loadAllocation || 0,
             avlAllotted: newEmployee.avlAllotted || 0,
+            avlBeginningBalance: newEmployee.avlBeginningBalance || 0,
             birthDate: newEmployee.birthDate ? new Date(newEmployee.birthDate).toISOString() : null,
             startDate: newEmployee.startDate ? new Date(newEmployee.startDate).toISOString() : null,
             signature: newEmployee.signature,
@@ -159,21 +158,16 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             return { success: false, error: 'Employee not found.' };
         }
         
-        // Merge incoming data with existing data
         const updatedEmployee = { ...existingEmployee, ...data };
 
-        // If password is not being updated, keep the old one
-        if (!data.password || data.password.trim() === '') {
+        if (data.password && data.password.trim() !== '') {
+            updatedEmployee.password = await bcrypt.hash(data.password, 10);
+        } else {
             updatedEmployee.password = existingEmployee.password;
         }
 
-        // Preserve existing images if the form sends an empty value (no new file uploaded)
-        if (!data.avatar) {
-            updatedEmployee.avatar = existingEmployee.avatar;
-        }
-        if (!data.signature) {
-            updatedEmployee.signature = existingEmployee.signature;
-        }
+        if (!data.avatar) updatedEmployee.avatar = existingEmployee.avatar;
+        if (!data.signature) updatedEmployee.signature = existingEmployee.signature;
 
         const stmt = db.prepare(`
             UPDATE employees SET
@@ -191,6 +185,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
                 avatar = @avatar,
                 loadAllocation = @loadAllocation,
                 avlAllotted = @avlAllotted,
+                avlBeginningBalance = @avlBeginningBalance,
                 birthDate = @birthDate,
                 startDate = @startDate,
                 signature = @signature,
@@ -209,7 +204,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             firstName: updatedEmployee.firstName,
             lastName: updatedEmployee.lastName,
             middleInitial: updatedEmployee.middleInitial || null,
-            email: updatedEmployee.email,
+            email: updatedEmployee.email.toLowerCase(),
             phone: updatedEmployee.phone || null,
             password: updatedEmployee.password,
             position: updatedEmployee.position || null,
@@ -218,6 +213,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             avatar: updatedEmployee.avatar || null,
             loadAllocation: updatedEmployee.loadAllocation || 0,
             avlAllotted: updatedEmployee.avlAllotted || 0,
+            avlBeginningBalance: updatedEmployee.avlBeginningBalance || 0,
             birthDate: updatedEmployee.birthDate ? new Date(updatedEmployee.birthDate).toISOString() : null,
             startDate: updatedEmployee.startDate ? new Date(updatedEmployee.startDate).toISOString() : null,
             signature: updatedEmployee.signature || null,
@@ -232,9 +228,6 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
 
     } catch (error) {
         console.error('Failed to update employee:', error);
-        if ((error as any).code === 'SQLITE_CONSTRAINT_UNIQUE') {
-            return { success: false, error: 'Another user is already using this email address.' };
-        }
         return { success: false, error: (error as Error).message };
     }
 }

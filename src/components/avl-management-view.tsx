@@ -176,16 +176,26 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
 
   const handleClearAll = () => {
     const groupEmployeeIds = new Set(groupEmployees.map(e => e.id));
+    
+    // Clear Plotted Dates
     setPreferredAvl(prev => prev.filter(p => 
       !(p.year === selectedYear && groupEmployeeIds.has(p.employeeId))
     ));
+    
+    // Clear Balances
+    setEmployees(prev => prev.map(e => {
+      if (groupEmployeeIds.has(e.id)) {
+        return { ...e, avlBeginningBalance: 0, avlAllotted: 0 };
+      }
+      return e;
+    }));
+
     toast({ 
-      title: "Grid Cleared", 
-      description: `All plotted dates for your group in ${selectedYear} have been removed.` 
+      title: "Grid & Balances Cleared", 
+      description: `All plotted dates and AVL balances for your group in ${selectedYear} have been removed.` 
     });
   };
 
-  // Calculate valid calendar days for the current editing cell month
   const calendarDays = useMemo(() => {
     if (!editingCell) return [];
     const daysInMonth = new Date(selectedYear, editingCell.month + 1, 0).getDate();
@@ -217,15 +227,15 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Clear All Plotted Dates?</AlertDialogTitle>
+                      <AlertDialogTitle>Clear All Plotted Dates & Balances?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will permanently delete ALL plotted preferred leave dates for the year {selectedYear} for everyone in your group. This action cannot be undone.
+                        This will permanently delete ALL plotted preferred leave dates AND reset everyone's VL balances to zero for the year {selectedYear} in your group. This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction onClick={handleClearAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                        Clear Grid
+                        Clear Grid & Balances
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>

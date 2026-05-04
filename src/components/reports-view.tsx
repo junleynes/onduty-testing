@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState, useMemo, useTransition } from 'react';
 import type { Employee, Shift, Leave, Holiday, TardyRecord, RolePermissions, SmtpSettings } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
@@ -8,6 +8,7 @@ import { Download, Upload, Calendar as CalendarIcon, Eye, Settings, Send, Loader
 import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Calendar } from './ui/calendar';
+import { DatePicker } from './ui/date-picker';
 import { cn, getFullName, getInitialState } from '@/lib/utils';
 import { format, eachDayOfInterval, isSameDay, getDate, startOfWeek, endOfWeek, parse, isWithinInterval, startOfMonth, endOfMonth, addMonths, getMonth, startOfDay, differenceInMinutes, set, addDays, endOfDay } from 'date-fns';
 import { ReportTemplateUploader } from './report-template-uploader';
@@ -104,56 +105,59 @@ const ALL_CLASSIFICATIONS = ['Rank-and-File', 'Confidential', 'Managerial'];
 
 export default function ReportsView({ employees, shifts, leave, holidays, currentUser, tardyRecords, setTardyRecords, templates, setTemplates, shiftTemplates, leaveTypes, permissions, smtpSettings }: ReportsViewProps) {
     const { toast } = useToast();
-    const [selectedReportType, setSelectedReportType] = React.useState<ReportType>('workSchedule');
+    const [selectedReportType, setSelectedReportType] = useState<ReportType>('workSchedule');
     
-    // Date states
-    const [workScheduleDateRange, setWorkScheduleDateRange] = React.useState<DateRange | undefined>();
-    const [attendanceWeek, setAttendanceWeek] = React.useState<Date | undefined>();
-    const [summaryDateRange, setSummaryDateRange] = React.useState<DateRange | undefined>();
-    const [tardyDateRange, setTardyDateRange] = React.useState<DateRange | undefined>();
-    const [wfhCertMonth, setWfhCertMonth] = React.useState<Date | undefined>();
-    const [workExtensionWeek, setWorkExtensionWeek] = React.useState<Date | undefined>();
-    const [workExtensionRange, setWorkExtensionRange] = React.useState<DateRange | undefined>();
-    const [workExtensionSelectionMode, setWorkExtensionSelectionMode] = React.useState<'week' | 'range'>('week');
-    const [overtimeDateRange, setOvertimeDateRange] = React.useState<DateRange | undefined>();
+    const [workScheduleDateRange, setWorkScheduleDateRange] = useState<DateRange | undefined>();
+    const [attendanceWeek, setAttendanceWeek] = useState<Date | undefined>();
+    const [summaryDateRange, setSummaryDateRange] = useState<DateRange | undefined>();
+    const [tardyDateRange, setTardyDateRange] = useState<DateRange | undefined>();
+    const [wfhCertMonth, setWfhCertMonth] = useState<Date | undefined>();
+    const [workExtensionWeek, setWorkExtensionWeek] = useState<Date | undefined>();
+    const [workExtensionRange, setWorkExtensionRange] = useState<DateRange | undefined>();
+    const [workExtensionSelectionMode, setWorkExtensionSelectionMode] = useState<'week' | 'range'>('week');
+    const [overtimeDateRange, setOvertimeDateRange] = useState<DateRange | undefined>();
 
-    // Settings states
-    const [ndStartTime, setNdStartTime] = React.useState<string>(() => getInitialState('ndStartTime', '20:00'));
-    const [ndEndTime, setNdEndTime] = React.useState<string>(() => getInitialState('ndEndTime', '06:00'));
-    const [ndClassifications, setNdClassifications] = React.useState<string[]>(() => getInitialState('ndClassifications', ['Rank-and-File']));
-    const [otTypeCode, setOtTypeCode] = React.useState<string>(() => getInitialState('otTypeCode', '801'));
-    const [ndTypeCode, setNdTypeCode] = React.useState<string>(() => getInitialState('ndTypeCode', '803'));
+    const [ndStartTime, setNdStartTime] = useState<string>('20:00');
+    const [ndEndTime, setNdEndTime] = useState<string>('06:00');
+    const [ndClassifications, setNdClassifications] = useState<string[]>(['Rank-and-File']);
+    const [otTypeCode, setOtTypeCode] = useState<string>('801');
+    const [ndTypeCode, setNdTypeCode] = useState<string>('803');
 
+    useEffect(() => {
+      setNdStartTime(getInitialState('ndStartTime', '20:00'));
+      setNdEndTime(getInitialState('ndEndTime', '06:00'));
+      setNdClassifications(getInitialState('ndClassifications', ['Rank-and-File']));
+      setOtTypeCode(getInitialState('otTypeCode', '801'));
+      setNdTypeCode(getInitialState('ndTypeCode', '803'));
+    }, []);
 
-    // Dialog states
-    const [isWorkScheduleUploaderOpen, setIsWorkScheduleUploaderOpen] = React.useState(false);
-    const [isAttendanceUploaderOpen, setIsAttendanceUploaderOpen] = React.useState(false);
-    const [isWfhCertUploaderOpen, setIsWfhCertUploaderOpen] = React.useState(false);
-    const [isTardyImporterOpen, setIsTardyImporterOpen] = React.useState(false);
-    const [isWorkExtensionUploaderOpen, setIsWorkExtensionUploaderOpen] = React.useState(false);
-    const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = React.useState(false);
-    const [isOvertimeSettingsOpen, setIsOvertimeSettingsOpen] = React.useState(false);
-    const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
-    const [isEmailDialogOpen, setIsEmailDialogOpen] = React.useState(false);
+    const [isWorkScheduleUploaderOpen, setIsWorkScheduleUploaderOpen] = useState(false);
+    const [isAttendanceUploaderOpen, setIsAttendanceUploaderOpen] = useState(false);
+    const [isWfhCertUploaderOpen, setIsWfhCertUploaderOpen] = useState(false);
+    const [isTardyImporterOpen, setIsTardyImporterOpen] = useState(false);
+    const [isWorkExtensionUploaderOpen, setIsWorkExtensionUploaderOpen] = useState(false);
+    const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = useState(false);
+    const [isOvertimeSettingsOpen, setIsOvertimeSettingsOpen] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
     
-    // Preview states
-    const [previewData, setPreviewData] = React.useState<ReportData | null>(null);
-    const [reportGenerator, setReportGenerator] = React.useState<(() => Promise<void>) | null>(null);
-    const [reportTitle, setReportTitle] = React.useState('');
-    const [emailGenerator, setEmailGenerator] = React.useState<(() => Promise<Buffer | null>) | null>(null);
+    const [previewData, setPreviewData] = useState<ReportData | null>(null);
+    const [reportGenerator, setReportGenerator] = useState<(() => Promise<void>) | null>(null);
+    const [reportTitle, setReportTitle] = useState('');
+    const [emailGenerator, setEmailGenerator] = useState<(() => Promise<Buffer | null>) | null>(null);
 
 
     const userPermissions = permissions[currentUser.role] || [];
 
 
-    const attendanceDateRange = React.useMemo(() => {
+    const attendanceDateRange = useMemo(() => {
         if (!attendanceWeek) return undefined;
         const start = startOfWeek(attendanceWeek, { weekStartsOn: 1 });
         const end = endOfWeek(attendanceWeek, { weekStartsOn: 1 });
         return { from: start, to: end };
     }, [attendanceWeek]);
 
-    const workExtensionDateRange = React.useMemo(() => {
+    const workExtensionDateRange = useMemo(() => {
         if (workExtensionSelectionMode === 'week') {
             if (!workExtensionWeek) return undefined;
             const start = startOfWeek(workExtensionWeek, { weekStartsOn: 1 });
@@ -163,15 +167,13 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         return workExtensionRange;
     }, [workExtensionWeek, workExtensionRange, workExtensionSelectionMode]);
 
-    const wfhCertDateRange = React.useMemo(() => {
+    const wfhCertDateRange = useMemo(() => {
         if (!wfhCertMonth) return undefined;
         const start = startOfMonth(wfhCertMonth);
         const end = endOfMonth(wfhCertMonth);
         return { from: start, to: end };
     }, [wfhCertMonth]);
 
-    // --- Data Generation Functions ---
-    
     const getScheduleFromTemplate = (template: ShiftTemplate | undefined) => {
         if (!template) {
              return { schedule_start: '', schedule_end: '', unpaidbreak_start: '', unpaidbreak_end: '', paidbreak_start: '', paidbreak_end: '' };
@@ -187,7 +189,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     };
     
     const getDefaultShiftTemplate = (employee: Employee): ShiftTemplate | undefined => {
-        // 1. Calculate the employee's common shift duration
         const empShifts = shifts.filter(s => s.employeeId === employee.id && !s.isDayOff && !s.isHolidayOff);
         let commonDuration = 0;
         
@@ -207,7 +208,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             commonDuration = Number(Object.keys(counts).reduce((a, b) => counts[Number(a)] > counts[Number(b)] ? a : b));
         }
 
-        // 2. Apply specific duration-based rules
         let preferred: ShiftTemplate | undefined;
         if (commonDuration === 11) {
             preferred = shiftTemplates.find(t => t.name.toLowerCase().includes("10hour manager shift1"));
@@ -217,7 +217,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         if (preferred) return preferred;
 
-        // 3. Fallback to existing role-based search
         const isMgr = employee.role === 'manager' || employee.role === 'admin';
         const preferredName = isMgr ? "manager shift" : "mid shift";
         preferred = shiftTemplates.find(t => t.name.toLowerCase().includes(preferredName));
@@ -227,15 +226,24 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
     const findDataForDay = (day: Date, employee: Employee) => {
         const normalizedDay = startOfDay(day);
+        const shiftOnDay = shifts.find(s => s.employeeId === employee.id && isSameDay(new Date(s.date), normalizedDay));
         
-        // Priority 1: Holiday
+        if (shiftOnDay && !shiftOnDay.isDayOff && !shiftOnDay.isHolidayOff) {
+            const shiftLabel = shiftOnDay.label?.trim().toUpperCase();
+            if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
+                 return { status: 'WFH', shift: shiftOnDay, leave: null };
+            }
+            if (shiftLabel?.includes('10H')) {
+                return { status: 'SKE-10', shift: shiftOnDay, leave: null };
+            }
+            return { status: 'SKE', shift: shiftOnDay, leave: null };
+        }
+
         const holidayOnDay = holidays.find(h => isSameDay(new Date(h.date), normalizedDay));
         if (holidayOnDay) {
             return { status: 'HOL OFF', shift: null, leave: null };
         }
 
-        // Priority 2: Specific Shift Statuses (Day Off, Holiday Off)
-        const shiftOnDay = shifts.find(s => s.employeeId === employee.id && isSameDay(new Date(s.date), normalizedDay));
         if (shiftOnDay?.isHolidayOff) {
             return { status: 'HOL OFF', shift: shiftOnDay, leave: null };
         }
@@ -243,7 +251,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             return { status: 'FREE', shift: shiftOnDay, leave: null };
         }
 
-        // Priority 3: Any Leave Request
         const leaveOnDay = leave.find(l => {
             if (l.employeeId !== employee.id) return false;
             if (l.status !== 'approved') return false;
@@ -256,19 +263,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             return { status: leaveOnDay.type.toUpperCase(), shift: shiftOnDay, leave: leaveOnDay };
         }
 
-        // Priority 4: Regular Shift
-        if (shiftOnDay) {
-            const shiftLabel = shiftOnDay.label?.trim().toUpperCase();
-            if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
-                 return { status: 'WFH', shift: shiftOnDay, leave: null };
-            }
-            if (shiftLabel?.includes('10H')) {
-                return { status: 'SKE-10', shift: shiftOnDay, leave: null };
-            }
-            return { status: 'SKE', shift: shiftOnDay, leave: null };
-        }
-
-        // Default: If no activity found, it's a FREE day
         return { status: 'FREE', shift: null, leave: null };
     };
 
@@ -306,13 +300,10 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
                 if (dayData.status === 'FREE') {
                     day_status = 'FREE';
-                    // Times remain empty as initialized
                 } else {
-                    // It's a working day or "other timeoff" (Leave, HOL OFF)
-                    day_status = ''; // Hidden per requirement for leaves and holidays
+                    day_status = ''; 
 
                     if (dayData.shift && (dayData.status === 'SKE' || dayData.status === 'WFH' || dayData.status === 'SKE-10')) {
-                        // Actual scheduled working shift
                         schedule_start = dayData.shift.startTime;
                         schedule_end = dayData.shift.endTime;
                         unpaidbreak_start = dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
@@ -320,7 +311,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                         paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                         paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
                     } else {
-                        // "Other timeoff" (Leave or HOL OFF) -> show default duration but no label
                         schedule_start = templateSched.schedule_start;
                         schedule_end = templateSched.schedule_end;
                         unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -386,7 +376,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             const worksheet = workbook.worksheets[0];
             if (!worksheet) throw new Error("Template worksheet not found.");
 
-            // Find and replace global placeholders
             worksheet.eachRow({ includeEmpty: true }, (row) => {
                 row.eachCell({ includeEmpty: true }, (cell) => {
                     if (cell.value && typeof cell.value === 'string') {
@@ -398,7 +387,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 });
             });
 
-            // Find the template row
             let templateRowNumber = -1;
             worksheet.eachRow({ includeEmpty: true }, (row, rowNum) => {
                  row.eachCell({ includeEmpty: true }, (cell) => {
@@ -436,7 +424,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 return new Date(a.date).getTime() - new Date(b.date).getTime();
             });
 
-            // Insert new rows and populate them
             sortedData.forEach((rowData, index) => {
                 const newRow = worksheet.insertRow(templateRowNumber + index + 1, {});
                 templateRow.eachCell({ includeEmpty: true }, (templateCell, colNumber) => {
@@ -454,7 +441,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 });
             });
             
-            // Remove the original template row
             worksheet.spliceRows(templateRowNumber, 1);
 
             const fileBuffer = await workbook.xlsx.writeBuffer();
@@ -475,8 +461,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     }
     
-    // --- Attendance Sheet Functions ---
-
     const generateAttendanceSheetData = (): ReportData | null => {
         if (!attendanceDateRange || !attendanceDateRange.from || !attendanceDateRange.to) {
             toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a week for the attendance sheet.' });
@@ -502,7 +486,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 if (scheduleCode === 'HOL OFF') {
                     scheduleCode = 'HOL OFF';
                 }
-                // For Attendance Sheet, map 'FREE' to 'OFF'
                 if (scheduleCode === 'FREE') {
                     scheduleCode = 'OFF';
                 }
@@ -539,7 +522,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
             const displayedDays = eachDayOfInterval({ start: attendanceDateRange.from, end: attendanceDateRange.to });
 
-            // Find and replace header placeholders
             worksheet.eachRow((row) => {
                 row.eachCell((cell) => {
                     if (cell.value && typeof cell.value === 'string') {
@@ -559,10 +541,9 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 });
             });
 
-            // Find and replace employee data placeholders
             for (let i = 0; i < data.rows.length; i++) {
-                const employeeDataRow = data.rows[i]; // [Name, Group, Position, Day1, Day2, ...]
-                const employeeIndex = i + 1; // 1-based index for placeholders
+                const employeeDataRow = data.rows[i]; 
+                const employeeIndex = i + 1; 
 
                 worksheet.eachRow((row) => {
                     row.eachCell((cell) => {
@@ -595,7 +576,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         } catch (error) {
             console.error("Error generating Excel from template:", error);
-            toast({ variant: 'destructive', title: 'Template Error', description: (error as Error).message, duration: 8000 });
+            toast({ variant: 'destructive', title: 'Template Error', description: (error as Error).message });
             return null;
         }
     }
@@ -608,8 +589,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     };
     
-    // --- User Summary Functions ---
-
     const generateUserSummaryData = (): ReportData | null => {
         if (!summaryDateRange || !summaryDateRange.from || !summaryDateRange.to) {
             toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a covered period for the summary.' });
@@ -671,7 +650,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             ]);
         });
 
-        // Calculate Totals
         const totals = new Array(headers.length - 1).fill(0);
         rows.forEach(row => {
             for (let i = 1; i < row.length; i++) {
@@ -702,7 +680,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true };
 
-        // Bold the last row (TOTAL)
         const lastRow = worksheet.getRow(data.rows.length + 1);
         lastRow.font = { bold: true };
 
@@ -718,14 +695,12 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     };
 
-    // --- Cumulative Tardy Report ---
     const generateTardyReportData = (): ReportData | null => {
         if (!tardyDateRange || !tardyDateRange.from || !tardyDateRange.to) {
              toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a covered period for the summary.' });
             return null;
         }
 
-        // 1. Get TARDY leave requests
         const tardyLeave = leave
             .filter(l => l.type === 'TARDY' && l.status === 'approved' && l.startDate && isWithinInterval(new Date(l.startDate), {start: tardyDateRange.from!, end: tardyDateRange.to!}))
             .map(l => {
@@ -742,12 +717,10 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 };
             });
         
-        // 2. Filter imported records by date
         const filteredImportedRecords = tardyRecords.filter(r => 
             isWithinInterval(new Date(r.date), {start: tardyDateRange.from!, end: tardyDateRange.to!})
         );
         
-        // 3. Combine and de-duplicate (imported takes precedence)
         const combinedRecords = [...filteredImportedRecords];
         const importedKeys = new Set(filteredImportedRecords.map(r => `${r.employeeId}-${format(new Date(r.date), 'yyyy-MM-dd')}`));
         
@@ -759,7 +732,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             }
         });
 
-        // 4. Sort and format for the table
         combinedRecords.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.employeeName.localeCompare(b.employeeName));
 
         const headers = ['Employee', 'Date', 'Schedule', 'In/Out', 'Remarks'];
@@ -804,7 +776,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     };
     
-    // --- WFH Certification Functions ---
     const generateWfhCertificationData = (): WfhCertRowData[] | null => {
         if (!wfhCertDateRange || !wfhCertDateRange.from || !wfhCertDateRange.to) {
             toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a month for the report.' });
@@ -850,7 +821,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     totalHrs = (diff - breakHours).toFixed(2);
                 }
             } else {
-                includeRow = false; // Ignore days with no activity
+                includeRow = false; 
             }
             
             if (dayData.status === 'FREE' || dayData.status === 'HOL OFF') {
@@ -892,7 +863,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     
             const manager = employees.find(e => e.id === currentUser.reportsTo);
     
-            // Global placeholders
             worksheet.eachRow({ includeEmpty: true }, (row) => {
                 row.eachCell({ includeEmpty: true }, (cell) => {
                     const replacePlaceholders = (text: string) => {
@@ -949,7 +919,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 if (cellText.includes('{{REMARKS}}')) placeholderMap['REMARKS'] = colNumber;
             });
             
-            // Insert and populate data rows
             data.forEach((rowData, index) => {
                 const newRow = worksheet.insertRow(templateRowNumber + index + 1, {});
                  templateRow!.eachCell({ includeEmpty: true }, (templateCell, colNumber) => {
@@ -1022,7 +991,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     };
     
-    // --- Work Extension Functions ---
     const generateWorkExtensionData = (): WorkExtensionRowData[] | null => {
          if (!workExtensionDateRange || !workExtensionDateRange.from || !workExtensionDateRange.to) {
             toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a covered period for the report.' });
@@ -1141,7 +1109,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     }
     
-    // --- Overtime/ND Functions ---
     const generateOvertimeData = (): OvertimeRowData[] | null => {
         if (!overtimeDateRange || !overtimeDateRange.from || !overtimeDateRange.to) {
             toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a covered period for the report.' });
@@ -1154,7 +1121,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     
         applicableEmployees.forEach(employee => {
             daysInInterval.forEach(day => {
-                // OT Calculations
                 const workExtensionsOnDay = leave.filter(l =>
                     l.employeeId === employee.id &&
                     l.type === 'Work Extension' &&
@@ -1188,7 +1154,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     }
                 });
     
-                // ND Calculations
                 const shiftOnDay = shifts.find(s =>
                     s.employeeId === employee.id &&
                     isSameDay(new Date(s.date), day) &&
@@ -1214,14 +1179,12 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     
                     let totalNdMinutes = 0;
     
-                    // Overlap with today's ND period (e.g., 22:00 to 23:59)
                     const overlapStart1 = Math.max(shiftStart.getTime(), ndPeriodStartToday.getTime());
                     const overlapEnd1 = Math.min(shiftEnd.getTime(), ndPeriodEndToday.getTime());
                     if (overlapEnd1 > overlapStart1) {
                         totalNdMinutes += (overlapEnd1 - overlapStart1) / (1000 * 60);
                     }
     
-                    // Overlap with tomorrow's ND period (e.g., 00:00 to 06:00)
                     const overlapStart2 = Math.max(shiftStart.getTime(), ndPeriodStartTomorrow.getTime());
                     const overlapEnd2 = Math.min(shiftEnd.getTime(), ndPeriodEndTomorrow.getTime());
                     if (overlapEnd2 > overlapStart2) {
@@ -1265,7 +1228,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             const worksheet = workbook.worksheets[0];
             if (!worksheet) throw new Error("Template worksheet not found.");
 
-            // Handle global placeholders
             worksheet.eachRow({ includeEmpty: true }, (row) => {
                 row.eachCell({ includeEmpty: true }, (cell) => {
                     const replacePlaceholders = (text: string) => {
@@ -1329,7 +1291,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
             worksheet.spliceRows(templateRowNumber, 1);
             
-            // Handle signature
             let sigRowNumber = -1;
             let sigColNumber = -1;
             worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
@@ -1371,8 +1332,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     }
 
 
-    // --- Event Handlers ---
-    
     const handleViewReport = (type: ReportType) => {
         let data: ReportData | null = null;
         let title = '';
@@ -1469,7 +1428,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         if (period === 'first-half') {
             from = new Date(year, month, 1);
             to = new Date(year, month, 15);
-        } else { // second-half
+        } else { 
             from = new Date(year, month, 16);
             to = endOfMonth(targetMonth);
         }
@@ -1477,351 +1436,356 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         setWorkScheduleDateRange({ from, to });
     };
 
-    const reportConfig: Record<ReportType, {
-        label: string;
-        description: string;
-        dateComponent: React.ReactNode;
-        templateKey?: keyof typeof templates;
-        openUploader?: () => void;
-        permissionKey: `report-${ReportType}`;
-        isDateRequired: boolean;
-        settingsComponent?: React.ReactNode;
-    }> = {
-        workSchedule: {
-            label: "Regular Work Schedule",
-            description: "Generate a report of employee work schedules for a specific period.",
-            permissionKey: 'report-work-schedule',
-            isDateRequired: true,
-            dateComponent: (
-                 <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !workScheduleDateRange && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {workScheduleDateRange?.from ? (
-                        workScheduleDateRange.to ? (
-                            <>
-                            {format(workScheduleDateRange.from, "MM/dd/yyyy")} -{" "}
-                            {format(workScheduleDateRange.to, "MM/dd/yyyy")}
-                            </>
-                        ) : (
-                            format(workScheduleDateRange.from, "MM/dd/yyyy")
-                        )
-                        ) : (
-                        <span>Pick a date range</span>
-                        )}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 flex" align="start">
-                        <div className="flex flex-col space-y-2 p-4 border-r">
-                            <h4 className="font-medium text-sm">Presets</h4>
-                            <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('first-half', 0)}>This Month (1-15)</Button>
-                            <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('second-half', 0)}>This Month (16-EOM)</Button>
-                            <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('first-half', -1)}>Last Month (1-15)</Button>
-                            <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('second-half', -1)}>Last Month (16-EOM)</Button>
-                        </div>
-                        <Calendar
-                            initialFocus
-                            mode="range"
-                            defaultMonth={workScheduleDateRange?.from}
-                            selected={workScheduleDateRange}
-                            onSelect={setWorkScheduleDateRange}
-                            numberOfMonths={2}
-                        />
-                    </PopoverContent>
-                </Popover>
-            ),
-            templateKey: 'workScheduleTemplate',
-            openUploader: () => setIsWorkScheduleUploaderOpen(true),
-        },
-        attendance: {
-            label: 'Attendance Sheet',
-            description: 'Generate a weekly attendance sheet (Mon-Sun) based on a template.',
-            permissionKey: 'report-attendance',
-            isDateRequired: true,
-            dateComponent: (
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="attendance-date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !attendanceDateRange && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {attendanceDateRange?.from ? (
-                            <>
-                            {format(attendanceDateRange.from, "LLL dd, y")} -{" "}
-                            {format(attendanceDateRange.to, "LLL dd, y")}
-                            </>
-                        ) : (
-                        <span>Pick a week</span>
-                        )}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="single"
-                        selected={attendanceWeek}
-                        onSelect={setAttendanceWeek}
-                    />
-                    </PopoverContent>
-                </Popover>
-            ),
-            templateKey: 'attendanceSheetTemplate',
-            openUploader: () => setIsAttendanceUploaderOpen(true),
-        },
-        workExtension: {
-            label: "Work Extension Summary",
-            description: "Generate a summary of work extensions for the selected week or date range.",
-            permissionKey: 'report-work-extension',
-            isDateRequired: true,
-            dateComponent: (
-                <div className="flex flex-col gap-2">
-                    <Select value={workExtensionSelectionMode} onValueChange={(v) => setWorkExtensionSelectionMode(v as 'week' | 'range')}>
-                        <SelectTrigger className="w-[150px]">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="week">Weekly</SelectItem>
-                            <SelectItem value="range">Custom Range</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                        <Button
-                            id="work-extension-date"
-                            variant={"outline"}
-                            className={cn(
-                            "w-full sm:w-[300px] justify-start text-left font-normal",
-                            !workExtensionDateRange && "text-muted-foreground"
-                            )}
-                        >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {workExtensionDateRange?.from ? (
-                                <>
-                                {format(workExtensionDateRange.from, "LLL dd, y")}
-                                {workExtensionDateRange.to && ` - ${format(workExtensionDateRange.to, "LLL dd, y")}`}
-                                </>
-                            ) : (
-                            <span>{workExtensionSelectionMode === 'week' ? 'Pick a week' : 'Pick a range'}</span>
-                            )}
-                        </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                        {workExtensionSelectionMode === 'week' ? (
-                            <Calendar
-                                initialFocus
-                                mode="single"
-                                selected={workExtensionWeek}
-                                onSelect={setWorkExtensionWeek}
-                            />
-                        ) : (
-                            <Calendar
-                                initialFocus
-                                mode="range"
-                                selected={workExtensionRange}
-                                onSelect={setWorkExtensionRange}
-                                numberOfMonths={2}
-                            />
-                        )}
-                        </PopoverContent>
-                    </Popover>
-                </div>
-            ),
-            templateKey: 'workExtensionTemplate',
-            openUploader: () => setIsWorkExtensionUploaderOpen(true),
-        },
-        overtime: {
-            label: "Overtime and Night Differential",
-            description: "Generates reports based on employee overtime and night differential.",
-            permissionKey: 'report-overtime',
-            isDateRequired: true,
-            dateComponent: (
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="overtime-date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !overtimeDateRange && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {overtimeDateRange?.from ? (
-                        overtimeDateRange.to ? (
-                            <>
-                            {format(overtimeDateRange.from, "LLL dd, y")} -{" "}
-                            {format(overtimeDateRange.to, "LLL dd, y")}
-                            </>
-                        ) : (
-                            format(overtimeDateRange.from, "LLL dd, y")
-                        )
-                        ) : (
-                        <span>Pick a date range</span>
-                        )}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={overtimeDateRange?.from}
-                        selected={overtimeDateRange}
-                        onSelect={setOvertimeDateRange}
-                        numberOfMonths={2}
-                    />
-                    </PopoverContent>
-                </Popover>
-            ),
-             templateKey: 'overtimeTemplate',
-             openUploader: () => setIsOvertimeUploaderOpen(true),
-             settingsComponent: (
-                 <Button variant="outline" size="icon" onClick={() => setIsOvertimeSettingsOpen(true)}>
-                    <Settings className="h-4 w-4" />
-                </Button>
-             )
-        },
-        userSummary: {
-            label: 'Summary Per User',
-            description: 'Generate an individual summary of shifts, hours, and leave for each employee.',
-            permissionKey: 'report-user-summary',
-            isDateRequired: true,
-            dateComponent: (
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="summary-date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !summaryDateRange && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {summaryDateRange?.from ? (
-                        summaryDateRange.to ? (
-                            <>
-                            {format(summaryDateRange.from, "LLL dd, y")} -{" "}
-                            {format(summaryDateRange.to, "LLL dd, y")}
-                            </>
-                        ) : (
-                            format(summaryDateRange.from, "LLL dd, y")
-                        )
-                        ) : (
-                        <span>Pick a date range</span>
-                        )}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={summaryDateRange?.from}
-                        selected={summaryDateRange}
-                        onSelect={setSummaryDateRange}
-                        numberOfMonths={2}
-                    />
-                    </PopoverContent>
-                </Popover>
-            ),
-        },
-        tardy: {
-            label: "Cumulative Tardy Report",
-            description: "Combines tardiness data from leave requests and manual CSV uploads.",
-            permissionKey: 'report-tardy',
-            isDateRequired: true,
-            dateComponent: (
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="tardy-date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !tardyDateRange && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {tardyDateRange?.from ? (
-                        tardyDateRange.to ? (
-                            <>
-                            {format(tardyDateRange.from, "LLL dd, y")} -{" "}
-                            {format(tardyDateRange.to, "LLL dd, y")}
-                            </>
-                        ) : (
-                            format(tardyDateRange.from, "LLL dd, y")
-                        )
-                        ) : (
-                        <span>Pick a date range</span>
-                        )}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={tardyDateRange?.from}
-                        selected={tardyDateRange}
-                        onSelect={setTardyDateRange}
-                        numberOfMonths={2}
-                    />
-                    </PopoverContent>
-                </Popover>
-            ),
-            openUploader: () => setIsTardyImporterOpen(true),
-        },
-        wfh: {
-            label: "Work From Home Certification",
-            description: "Generate a WFH certification for the current user for a specific month.",
-            permissionKey: 'report-wfh',
-            isDateRequired: true,
-            dateComponent: (
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        id="wfh-cert-date"
-                        variant={"outline"}
-                        className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !wfhCertMonth && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {wfhCertMonth ? format(wfhCertMonth, "MMMM yyyy") : <span>Pick a month</span>}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="single"
-                        selected={wfhCertMonth}
-                        onSelect={setWfhCertMonth}
-                        captionLayout="dropdown-buttons"
-                        fromYear={2020}
-                        toYear={new Date().getFullYear() + 1}
-                    />
-                    </PopoverContent>
-                </Popover>
-            ),
-            templateKey: 'wfhCertificationTemplate',
-            openUploader: () => setIsWfhCertUploaderOpen(true),
-        }
-    };
+    const reportConfig = useMemo(() => {
+      const config: Record<ReportType, {
+          label: string;
+          description: string;
+          dateComponent: React.ReactNode;
+          templateKey?: keyof typeof templates;
+          openUploader?: () => void;
+          permissionKey: NavItemKey;
+          isDateRequired: boolean;
+          settingsComponent?: React.ReactNode;
+      }> = {
+          workSchedule: {
+              label: "Regular Work Schedule",
+              description: "Generate a report of employee work schedules for a specific period.",
+              permissionKey: 'report-work-schedule',
+              isDateRequired: true,
+              dateComponent: (
+                   <Popover>
+                      <PopoverTrigger asChild>
+                      <Button
+                          id="date"
+                          variant={"outline"}
+                          className={cn(
+                          "w-full sm:w-[300px] justify-start text-left font-normal",
+                          !workScheduleDateRange && "text-muted-foreground"
+                          )}
+                      >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {workScheduleDateRange?.from ? (
+                          workScheduleDateRange.to ? (
+                              <>
+                              {format(workScheduleDateRange.from, "MM/dd/yyyy")} -{" "}
+                              {format(workScheduleDateRange.to, "MM/dd/yyyy")}
+                              </>
+                          ) : (
+                              format(workScheduleDateRange.from, "MM/dd/yyyy")
+                          )
+                          ) : (
+                          <span>Pick a date range</span>
+                          )}
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 flex" align="start">
+                          <div className="flex flex-col space-y-2 p-4 border-r">
+                              <h4 className="font-medium text-sm">Presets</h4>
+                              <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('first-half', 0)}>This Month (1-15)</Button>
+                              <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('second-half', 0)}>This Month (16-EOM)</Button>
+                              <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('first-half', -1)}>Last Month (1-15)</Button>
+                              <Button variant="ghost" className="justify-start" onClick={() => setSemiMonthlyRange('second-half', -1)}>Last Month (16-EOM)</Button>
+                          </div>
+                          <Calendar
+                              initialFocus
+                              mode="range"
+                              defaultMonth={workScheduleDateRange?.from}
+                              selected={workScheduleDateRange}
+                              onSelect={setWorkScheduleDateRange}
+                              numberOfMonths={2}
+                          />
+                      </PopoverContent>
+                  </Popover>
+              ),
+              templateKey: 'workScheduleTemplate',
+              openUploader: () => setIsWorkScheduleUploaderOpen(true),
+          },
+          attendance: {
+              label: 'Attendance Sheet',
+              description: 'Generate a weekly attendance sheet (Mon-Sun) based on a template.',
+              permissionKey: 'report-attendance',
+              isDateRequired: true,
+              dateComponent: (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                      <Button
+                          id="attendance-date"
+                          variant={"outline"}
+                          className={cn(
+                          "w-full sm:w-[300px] justify-start text-left font-normal",
+                          !attendanceDateRange && "text-muted-foreground"
+                          )}
+                      >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {attendanceDateRange?.from ? (
+                              <>
+                              {format(attendanceDateRange.from, "LLL dd, y")} -{" "}
+                              {format(attendanceDateRange.to, "LLL dd, y")}
+                              </>
+                          ) : (
+                          <span>Pick a week</span>
+                          )}
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                          initialFocus
+                          mode="single"
+                          selected={attendanceWeek}
+                          onSelect={setAttendanceWeek}
+                      />
+                      </PopoverContent>
+                  </Popover>
+              ),
+              templateKey: 'attendanceSheetTemplate',
+              openUploader: () => setIsAttendanceUploaderOpen(true),
+          },
+          workExtension: {
+              label: "Work Extension Summary",
+              description: "Generate a summary of work extensions for the selected week or date range.",
+              permissionKey: 'report-work-extension',
+              isDateRequired: true,
+              dateComponent: (
+                  <div className="flex flex-col gap-2">
+                      <Select value={workExtensionSelectionMode} onValueChange={(v) => setWorkExtensionSelectionMode(v as 'week' | 'range')}>
+                          <SelectTrigger className="w-[150px]">
+                              <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="week">Weekly</SelectItem>
+                              <SelectItem value="range">Custom Range</SelectItem>
+                          </SelectContent>
+                      </Select>
+                      <Popover>
+                          <PopoverTrigger asChild>
+                          <Button
+                              id="work-extension-date"
+                              variant={"outline"}
+                              className={cn(
+                              "w-full sm:w-[300px] justify-start text-left font-normal",
+                              !workExtensionDateRange && "text-muted-foreground"
+                              )}
+                          >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {workExtensionDateRange?.from ? (
+                                  <>
+                                  {format(workExtensionDateRange.from, "LLL dd, y")}
+                                  {workExtensionDateRange.to && ` - ${format(workExtensionDateRange.to, "LLL dd, y")}`}
+                                  </>
+                              ) : (
+                              <span>{workExtensionSelectionMode === 'week' ? 'Pick a week' : 'Pick a range'}</span>
+                              )}
+                          </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                          {workExtensionSelectionMode === 'week' ? (
+                              <Calendar
+                                  initialFocus
+                                  mode="single"
+                                  selected={workExtensionWeek}
+                                  onSelect={setWorkExtensionWeek}
+                              />
+                          ) : (
+                              <Calendar
+                                  initialFocus
+                                  mode="range"
+                                  selected={workExtensionRange}
+                                  onSelect={setWorkExtensionRange}
+                                  numberOfMonths={2}
+                              />
+                          )}
+                          </PopoverContent>
+                      </Popover>
+                  </div>
+              ),
+              templateKey: 'workExtensionTemplate',
+              openUploader: () => setIsWorkExtensionUploaderOpen(true),
+          },
+          overtime: {
+              label: "Overtime and Night Differential",
+              description: "Generates reports based on employee overtime and night differential.",
+              permissionKey: 'report-overtime',
+              isDateRequired: true,
+              dateComponent: (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                      <Button
+                          id="overtime-date"
+                          variant={"outline"}
+                          className={cn(
+                          "w-full sm:w-[300px] justify-start text-left font-normal",
+                          !overtimeDateRange && "text-muted-foreground"
+                          )}
+                      >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {overtimeDateRange?.from ? (
+                          overtimeDateRange.to ? (
+                              <>
+                              {format(overtimeDateRange.from, "LLL dd, y")} -{" "}
+                              {format(overtimeDateRange.to, "LLL dd, y")}
+                              </>
+                          ) : (
+                              format(overtimeDateRange.from, "LLL dd, y")
+                          )
+                          ) : (
+                          <span>Pick a date range</span>
+                          )}
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                          initialFocus
+                          mode="range"
+                          defaultMonth={overtimeDateRange?.from}
+                          selected={overtimeDateRange}
+                          onSelect={setOvertimeDateRange}
+                          numberOfMonths={2}
+                      />
+                      </PopoverContent>
+                  </Popover>
+              ),
+               templateKey: 'overtimeTemplate',
+               openUploader: () => setIsOvertimeUploaderOpen(true),
+               settingsComponent: (
+                   <Button variant="outline" size="icon" onClick={() => setIsOvertimeSettingsOpen(true)}>
+                      <Settings className="h-4 w-4" />
+                  </Button>
+               )
+          },
+          userSummary: {
+              label: 'Summary Per User',
+              description: 'Generate an individual summary of shifts, hours, and leave for each employee.',
+              permissionKey: 'report-user-summary',
+              isDateRequired: true,
+              dateComponent: (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                      <Button
+                          id="summary-date"
+                          variant={"outline"}
+                          className={cn(
+                          "w-full sm:w-[300px] justify-start text-left font-normal",
+                          !summaryDateRange && "text-muted-foreground"
+                          )}
+                      >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {summaryDateRange?.from ? (
+                          summaryDateRange.to ? (
+                              <>
+                              {format(summaryDateRange.from, "LLL dd, y")} -{" "}
+                              {format(summaryDateRange.to, "LLL dd, y")}
+                              </>
+                          ) : (
+                              format(summaryDateRange.from, "LLL dd, y")
+                          )
+                          ) : (
+                          <span>Pick a date range</span>
+                          )}
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                          initialFocus
+                          mode="range"
+                          defaultMonth={summaryDateRange?.from}
+                          selected={summaryDateRange}
+                          onSelect={setSummaryDateRange}
+                          numberOfMonths={2}
+                      />
+                      </PopoverContent>
+                  </Popover>
+              ),
+          },
+          tardy: {
+              label: "Cumulative Tardy Report",
+              description: "Combines tardiness data from leave requests and manual CSV uploads.",
+              permissionKey: 'report-tardy',
+              isDateRequired: true,
+              dateComponent: (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                      <Button
+                          id="tardy-date"
+                          variant={"outline"}
+                          className={cn(
+                          "w-full sm:w-[300px] justify-start text-left font-normal",
+                          !tardyDateRange && "text-muted-foreground"
+                          )}
+                      >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {tardyDateRange?.from ? (
+                          tardyDateRange.to ? (
+                              <>
+                              {format(tardyDateRange.from, "LLL dd, y")} -{" "}
+                              {format(tardyDateRange.to, "LLL dd, y")}
+                              </>
+                          ) : (
+                              format(tardyDateRange.from, "LLL dd, y")
+                          )
+                          ) : (
+                          <span>Pick a date range</span>
+                          )}
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                          initialFocus
+                          mode="range"
+                          defaultMonth={tardyDateRange?.from}
+                          selected={tardyDateRange}
+                          onSelect={setTardyDateRange}
+                          numberOfMonths={2}
+                      />
+                      </PopoverContent>
+                  </Popover>
+              ),
+              openUploader: () => setIsTardyImporterOpen(true),
+          },
+          wfh: {
+              label: "Work From Home Certification",
+              description: "Generate a WFH certification for the current user for a specific month.",
+              permissionKey: 'report-wfh',
+              isDateRequired: true,
+              dateComponent: (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                      <Button
+                          id="wfh-cert-date"
+                          variant={"outline"}
+                          className={cn(
+                          "w-full sm:w-[300px] justify-start text-left font-normal",
+                          !wfhCertMonth && "text-muted-foreground"
+                          )}
+                      >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {wfhCertMonth ? format(wfhCertMonth, "MMMM yyyy") : <span>Pick a month</span>}
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                          initialFocus
+                          mode="single"
+                          selected={wfhCertMonth}
+                          onSelect={setWfhCertMonth}
+                          captionLayout="dropdown-buttons"
+                          fromYear={2020}
+                          toYear={new Date().getFullYear() + 1}
+                      />
+                      </PopoverContent>
+                  </Popover>
+              ),
+              templateKey: 'wfhCertificationTemplate',
+              openUploader: () => setIsWfhCertUploaderOpen(true),
+          }
+      };
+      return config;
+    }, [workScheduleDateRange, attendanceDateRange, attendanceWeek, summaryDateRange, tardyDateRange, wfhCertMonth, workExtensionWeek, workExtensionRange, workExtensionSelectionMode, overtimeDateRange, templates]);
     
-    const availableReports = Object.entries(reportConfig)
-        .filter(([, config]) => userPermissions.includes(config.permissionKey)) 
-        .map(([key]) => key as ReportType);
+    const availableReports = useMemo(() => {
+        return Object.entries(reportConfig)
+            .filter(([key, config]) => currentUser.role === 'admin' || userPermissions.includes(config.permissionKey)) 
+            .map(([key]) => key as ReportType);
+    }, [reportConfig, currentUser.role, userPermissions]);
 
     const currentReport = reportConfig[selectedReportType];
     
@@ -1838,7 +1802,10 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
     }
     
-    const isDownloadDisabled = (currentReport.templateKey && !templates[currentReport.templateKey]) || (currentReport.isDateRequired && !isDateFilled());
+    const isDownloadDisabled = useMemo(() => {
+      if (!currentReport) return true;
+      return (currentReport.templateKey && !templates[currentReport.templateKey]) || (currentReport.isDateRequired && !isDateFilled());
+    }, [currentReport, templates, selectedReportType, workScheduleDateRange, attendanceDateRange, summaryDateRange, tardyDateRange, wfhCertMonth, workExtensionDateRange, overtimeDateRange]);
     
     const handleSaveOvertimeSettings = () => {
         localStorage.setItem('ndStartTime', ndStartTime);
@@ -1903,52 +1870,62 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Report Type</label>
-                        <Select value={selectedReportType} onValueChange={(v) => setSelectedReportType(v as ReportType)}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableReports.map(key => (
-                                    <SelectItem key={key} value={key}>{reportConfig[key].label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {availableReports.length > 0 ? (
+                      <>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Report Type</label>
+                            <Select value={selectedReportType} onValueChange={(v) => setSelectedReportType(v as ReportType)}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableReports.map(key => (
+                                        <SelectItem key={key} value={key}>{reportConfig[key].label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                    <Card className="p-6 bg-muted/50">
-                        <h3 className="font-semibold text-lg mb-2">{currentReport.label}</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                            {currentReport.description}
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-4">
-                           {currentReport.dateComponent}
-                            <div className="flex items-center gap-2">
-                                {currentReport.openUploader && (
-                                    <Button variant="outline" onClick={currentReport.openUploader}>
-                                        <Upload className="mr-2 h-4 w-4" />
-                                        {selectedReportType === 'tardy' ? 'Import Tardy Data' : 'Upload Template'}
-                                    </Button>
-                                )}
-                                {currentReport.settingsComponent}
-                            </div>
-                        </div>
-                        <div className="pt-6 flex flex-wrap gap-2">
-                            <Button onClick={() => handleViewReport(selectedReportType)} disabled={currentReport.isDateRequired && !isDateFilled()}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                View Report
-                            </Button>
-                            <Button onClick={() => handleEmailReport()} disabled={isDownloadDisabled}>
-                                <Send className="mr-2 h-4 w-4" />
-                                Send Email
-                            </Button>
-                            <Button onClick={() => reportGenerator && reportGenerator()} disabled={isDownloadDisabled}>
-                                <Download className="mr-2 h-4 w-4" />
-                                Generate & Download
-                            </Button>
-                        </div>
-                    </Card>
+                        {currentReport && (
+                          <Card className="p-6 bg-muted/50">
+                              <h3 className="font-semibold text-lg mb-2">{currentReport.label}</h3>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                  {currentReport.description}
+                              </p>
+                              <div className="flex flex-col sm:flex-row gap-4">
+                                 {currentReport.dateComponent}
+                                  <div className="flex items-center gap-2">
+                                      {currentReport.openUploader && (
+                                          <Button variant="outline" onClick={currentReport.openUploader}>
+                                              <Upload className="mr-2 h-4 w-4" />
+                                              {selectedReportType === 'tardy' ? 'Import Tardy Data' : 'Upload Template'}
+                                          </Button>
+                                      )}
+                                      {currentReport.settingsComponent}
+                                  </div>
+                              </div>
+                              <div className="pt-6 flex flex-wrap gap-2">
+                                  <Button onClick={() => handleViewReport(selectedReportType)} disabled={currentReport.isDateRequired && !isDateFilled()}>
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      View Report
+                                  </Button>
+                                  <Button onClick={() => handleEmailReport()} disabled={isDownloadDisabled}>
+                                      <Send className="mr-2 h-4 w-4" />
+                                      Send Email
+                                  </Button>
+                                  <Button onClick={() => reportGenerator && reportGenerator()} disabled={isDownloadDisabled}>
+                                      <Download className="mr-2 h-4 w-4" />
+                                      Generate & Download
+                                  </Button>
+                              </div>
+                          </Card>
+                        )}
+                      </>
+                    ) : (
+                      <div className="p-12 text-center border-2 border-dashed rounded-lg">
+                          <p className="text-muted-foreground">You do not have access to any reports. Please contact an administrator.</p>
+                      </div>
+                    )}
                 </CardContent>
             </Card>
             <ReportTemplateUploader

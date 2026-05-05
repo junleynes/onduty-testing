@@ -53,7 +53,7 @@ export type Shift = {
 
 export type LeaveType = string;
 
-export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
+export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected' | 'processed';
 
 export type Leave = {
   id: string;

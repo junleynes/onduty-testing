@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format, isSameDay, isWithinInterval, startOfDay, eachDayOfInterval, differenceInCalendarDays } from 'date-fns';
 import { getFullName, getInitialState, cn } from '@/lib/utils';
-import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter, Palmtree } from 'lucide-react';
+import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter, Palmtree, ListChecks } from 'lucide-react';
 import { LeaveRequestDialog } from './leave-request-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -96,7 +96,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             break;
           case 'dateFiled':
             aValue = new Date(a.dateFiled || a.requestedAt || 0).getTime();
-            bValue = new Date(b.dateFiled || b.requestedAt || 0).getTime();
+            bValue = new Date(a.dateFiled || a.requestedAt || 0).getTime();
             break;
           case 'status':
             aValue = a.status.toLowerCase();
@@ -223,7 +223,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     setIsOffsetDialogOpen(false);
   };
   
-  const handleManageRequest = async (requestId: string, newStatus: 'approved' | 'rejected') => {
+  const handleManageRequest = async (requestId: string, newStatus: LeaveRequestStatus) => {
     let finalUpdatedRequest: Leave | undefined;
 
     setLeaveRequests(prevLeaveRequests => {
@@ -238,14 +238,13 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             ...originalRequest,
             status: newStatus,
             managedBy: currentUser.id,
-            managedAt: new Date(),
-            managerSignature: currentUser.signature,
+            managedAt: originalRequest.managedAt || new Date(), // Keep managedAt if already approved
+            managerSignature: originalRequest.managerSignature || currentUser.signature,
             color: leaveTypeDetails?.color || originalRequest.color
         };
 
         newLeaveRequests[requestIndex] = finalUpdatedRequest;
 
-        // If rejected offset, release the linked work extension
         if (newStatus === 'rejected' && originalRequest.type === 'Offset' && originalRequest.claimedWorkExtensionId) {
              const weIndex = newLeaveRequests.findIndex(r => r.id === originalRequest.claimedWorkExtensionId);
              if (weIndex > -1) {
@@ -266,7 +265,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             }
         }
         
-        if (newStatus === 'approved') {
+        if (newStatus === 'approved' && originalRequest.status === 'pending') {
             const leaveStart = startOfDay(new Date(finalUpdatedRequest!.startDate));
             const leaveEnd = startOfDay(new Date(finalUpdatedRequest!.endDate));
             const leaveInterval = { start: leaveStart, end: leaveEnd };
@@ -284,7 +283,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         return newLeaveRequests;
     });
 
-    if (newStatus === 'approved' && finalUpdatedRequest) {
+    if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.status === 'approved') {
         toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
         
         const generatorAction = finalUpdatedRequest.type === 'Offset' ? generateOffsetPdf : generateLeavePdf;
@@ -353,15 +352,22 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     </div>
                 );
             }
-            if (req.pdfDataUri) {
-                return (
-                    <div className="flex gap-2 justify-end flex-wrap">
-                        <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
-                        <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)}><Mail className="h-4 w-4 mr-1" />Email</Button>
-                    </div>
-                );
-            }
+            return (
+                <div className="flex gap-2 justify-end flex-wrap">
+                    {req.status === 'approved' && (
+                        <Button size="sm" variant="outline" className="text-blue-600 border-blue-600 hover:bg-blue-100" onClick={() => handleManageRequest(req.id, 'processed')} title="Mark as Processed">
+                            <ListChecks className="h-4 w-4 mr-1" />Process
+                        </Button>
+                    )}
+                    {req.pdfDataUri && (
+                        <>
+                            <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
+                            <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
+                            <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)}><Mail className="h-4 w-4 mr-1" />Email</Button>
+                        </>
+                    )}
+                </div>
+            );
         } else {
             if (req.status === 'pending') {
                 return (
@@ -405,7 +411,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                                     <CardDescription className="flex items-center gap-2"><Calendar className="h-4 w-4"/> {dateDisplay}</CardDescription>
                                 </div>
                             </div>
-                            <Badge variant={req.status === 'approved' ? 'default' : req.status === 'rejected' ? 'destructive' : 'secondary'}>{req.status}</Badge>
+                            <Badge variant={req.status === 'approved' ? 'default' : req.status === 'rejected' ? 'destructive' : req.status === 'processed' ? 'outline' : 'secondary'}>{req.status}</Badge>
                         </CardHeader>
                         <CardContent className="p-4 pt-0 space-y-2 text-sm">
                             <div className="flex items-center gap-2">
@@ -438,20 +444,27 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.status === 'pending') {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')} title="Approve"><Check className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')} title="Reject"><X className="h-4 w-4" /></Button>
                     </div>
                 );
             }
-            if (req.pdfDataUri) {
-                return (
-                    <div className="flex gap-2 justify-end">
-                        <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline" title="View PDF"><Eye className="h-4 w-4" /></Button></a>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))} title="Download PDF"><FileDown className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)} title="Send via Email"><Mail className="h-4 w-4" /></Button>
-                    </div>
-                );
-            }
+            return (
+                <div className="flex gap-2 justify-end">
+                    {req.status === 'approved' && (
+                        <Button size="sm" variant="outline" className="text-blue-600 border-blue-600 hover:bg-blue-100" onClick={() => handleManageRequest(req.id, 'processed')} title="Mark as Processed">
+                            <ListChecks className="h-4 w-4" />
+                        </Button>
+                    )}
+                    {req.pdfDataUri && (
+                        <>
+                            <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline" title="View PDF"><Eye className="h-4 w-4" /></Button></a>
+                            <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))} title="Download PDF"><FileDown className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)} title="Send via Email"><Mail className="h-4 w-4" /></Button>
+                        </>
+                    )}
+                </div>
+            );
         } else {
             if (req.status === 'pending') {
                 return (
@@ -516,7 +529,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                         <TableCell className="font-medium">{req.type}</TableCell>
                         <TableCell>{dateDisplay}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{req.reason}</TableCell>
-                        <TableCell><Badge variant={req.status === 'approved' ? 'default' : req.status === 'rejected' ? 'destructive' : 'secondary'}>{req.status}</Badge></TableCell>
+                        <TableCell><Badge variant={req.status === 'approved' ? 'default' : req.status === 'rejected' ? 'destructive' : req.status === 'processed' ? 'outline' : 'secondary'}>{req.status}</Badge></TableCell>
                         <TableCell className="text-right">
                            {renderActions(req)}
                         </TableCell>
@@ -645,6 +658,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                         <SelectItem value="all">All Statuses</SelectItem>
                         <SelectItem value="pending">Pending</SelectItem>
                         <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="processed">Processed</SelectItem>
                         <SelectItem value="rejected">Rejected</SelectItem>
                     </SelectContent>
                     </Select>

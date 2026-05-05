@@ -106,19 +106,22 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
     } else { // Creating
+      const employeeId = requestData.employeeId || currentUser.id;
+      const targetEmployee = employees.find(e => e.id === employeeId) || currentUser;
+      
       const newRequest: Leave = {
         id: uuidv4(),
-        employeeId: currentUser.id,
+        employeeId: employeeId,
         status: 'pending',
         type: 'Work Extension',
         requestedAt: new Date(),
         ...requestData,
         endDate: requestData.endDate || requestData.startDate,
         dateFiled: new Date(),
-        department: currentUser.group || '',
-        idNumber: currentUser.employeeNumber || '',
-        contactInfo: currentUser.phone || '',
-        employeeSignature: currentUser.signature,
+        department: targetEmployee.group || '',
+        idNumber: targetEmployee.employeeNumber || '',
+        contactInfo: targetEmployee.phone || '',
+        employeeSignature: targetEmployee.signature,
         color: '#f39c12',
       } as Leave;
       setLeaveRequests(prev => [newRequest, ...prev]);
@@ -292,98 +295,100 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
 
   return (
     <>
-      <Card>
-        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <CardTitle>Work Extension Requests</CardTitle>
-            <CardDescription>File and manage requests for work extensions, which can be used for future offsets.</CardDescription>
-          </div>
-           <div className="flex gap-2 flex-wrap items-center">
-                {selectedIds.length > 0 && (
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive">
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete Selected ({selectedIds.length})
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This will permanently delete {selectedIds.length} selected request(s). This action cannot be undone.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
-                {isManager && (
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isPurging} className={cn(selectedIds.length > 0 && "hidden md:flex")}>
-                                {isPurging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-                                Clear All
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This action will permanently delete all work extension requests for your team. This cannot be undone.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleClearAllRequests}>Continue</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
-                 {isManager && (
-                    <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Settings
-                    </Button>
-                )}
-               <Button onClick={handleNewRequest}>
-                   <PlusCircle className="h-4 w-4 mr-2" />
-                   New Request
-               </Button>
-           </div>
-        </CardHeader>
-        <CardContent>
-            <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search team members..." 
-                  className="pl-10"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+      <div className="space-y-6">
+        <Card>
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+                <CardTitle>Work Extension Requests</CardTitle>
+                <CardDescription>File and manage requests for work extensions, which can be used for future offsets.</CardDescription>
             </div>
+            <div className="flex gap-2 flex-wrap items-center">
+                    {selectedIds.length > 0 && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive">
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Selected ({selectedIds.length})
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This will permanently delete {selectedIds.length} selected request(s). This action cannot be undone.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
+                    {isManager && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" disabled={isPurging} className={cn(selectedIds.length > 0 && "hidden md:flex")}>
+                                    {isPurging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                                    Clear All
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action will permanently delete all work extension requests for your team. This cannot be undone.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleClearAllRequests}>Continue</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
+                    {isManager && (
+                        <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
+                            <Settings className="h-4 w-4 mr-2" />
+                            Settings
+                        </Button>
+                    )}
+                <Button onClick={handleNewRequest}>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    New Request
+                </Button>
+            </div>
+            </CardHeader>
+            <CardContent>
+                <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
+                <div className="relative flex-1 w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                    placeholder="Search team members..." 
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                </div>
 
-            <Tabs defaultValue={isManager ? "team-requests" : "my-requests"} className="w-full">
-                <TabsList className="mb-4">
-                    <TabsTrigger value="my-requests">My Requests ({myRequests.length})</TabsTrigger>
-                    {isManager && <TabsTrigger value="team-requests">Team Requests ({teamRequests.length})</TabsTrigger>}
-                </TabsList>
-                <TabsContent value="my-requests">
-                    {myRequests.length > 0 ? <><RequestTable requests={myRequests} /><RequestList requests={myRequests} /></> : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">You haven't made any work extension requests yet.</p>}
-                </TabsContent>
-                {isManager && (
-                    <TabsContent value="team-requests">
-                        {teamRequests.length > 0 ? <><RequestTable requests={teamRequests} forManagerView /><RequestList requests={teamRequests} forManagerView /></> : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">Your team members haven't made any work extension requests yet.</p>}
+                <Tabs defaultValue={isManager ? "team-requests" : "my-requests"} className="w-full">
+                    <TabsList className="mb-4">
+                        <TabsTrigger value="my-requests">My Requests ({myRequests.length})</TabsTrigger>
+                        {isManager && <TabsTrigger value="team-requests">Team Requests ({teamRequests.length})</TabsTrigger>}
+                    </TabsList>
+                    <TabsContent value="my-requests">
+                        {myRequests.length > 0 ? <><RequestTable requests={myRequests} /><RequestList requests={myRequests} /></> : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">You haven't made any work extension requests yet.</p>}
                     </TabsContent>
-                )}
-            </Tabs>
-        </CardContent>
-      </Card>
+                    {isManager && (
+                        <TabsContent value="team-requests">
+                            {teamRequests.length > 0 ? <><RequestTable requests={teamRequests} forManagerView /><RequestList requests={teamRequests} forManagerView /></> : <p className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">Your team members haven't made any work extension requests yet.</p>}
+                        </TabsContent>
+                    )}
+                </Tabs>
+            </CardContent>
+        </Card>
+      </div>
       
       <WorkExtensionRequestDialog
         isOpen={isRequestDialogOpen}
@@ -391,6 +396,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         onSave={handleSaveRequest}
         request={editingRequest}
         currentUser={currentUser}
+        employees={employees}
       />
       
        <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>

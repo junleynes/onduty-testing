@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -15,14 +14,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Leave, Employee } from '@/types';
 import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { format } from 'date-fns';
 import { DatePicker } from './ui/date-picker';
+import { getFullName } from '@/lib/utils';
 
 
 const requestSchema = z.object({
+  employeeId: z.string().min(1, 'Employee is required.'),
   originalShiftDate: z.date({ required_error: "Original shift date is required."}),
   originalStartTime: z.string().min(1, 'Original shift start time is required.'),
   originalEndTime: z.string().min(1, 'Original shift end time is required.'),
@@ -39,17 +41,24 @@ type WorkExtensionRequestDialogProps = {
   request: Partial<Leave> | null;
   onSave: (request: Partial<Leave>) => void;
   currentUser: Employee;
+  employees: Employee[];
 };
 
-export function WorkExtensionRequestDialog({ isOpen, setIsOpen, request, onSave, currentUser }: WorkExtensionRequestDialogProps) {
+export function WorkExtensionRequestDialog({ isOpen, setIsOpen, request, onSave, currentUser, employees }: WorkExtensionRequestDialogProps) {
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
     defaultValues: {},
   });
 
+  const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
+  const groupMembers = useMemo(() => 
+    employees.filter(e => e.group === currentUser.group).sort((a,b) => a.lastName.localeCompare(b.lastName)),
+  [employees, currentUser.group]);
+
   useEffect(() => {
     if (isOpen) {
       form.reset({
+        employeeId: request?.employeeId || currentUser.id,
         originalShiftDate: request?.originalShiftDate ? new Date(request.originalShiftDate) : new Date(),
         originalStartTime: request?.originalStartTime || '',
         originalEndTime: request?.originalEndTime || '',
@@ -59,7 +68,7 @@ export function WorkExtensionRequestDialog({ isOpen, setIsOpen, request, onSave,
         reason: request?.reason || '',
       });
     }
-  }, [request, isOpen, form]);
+  }, [request, isOpen, form, currentUser.id]);
 
   const onSubmit = (values: z.infer<typeof requestSchema>) => {
     const finalValues: Partial<Leave> = {
@@ -77,17 +86,43 @@ export function WorkExtensionRequestDialog({ isOpen, setIsOpen, request, onSave,
         <DialogHeader>
           <DialogTitle>{request?.id ? 'Edit' : 'New'} Work Extension Request</DialogTitle>
           <DialogDescription>
-            {request?.id ? 'Update the details for your work extension.' : 'Fill in the details for your work extension.'}
+            {request?.id ? 'Update the details for this work extension.' : 'Fill in the details for the work extension.'}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
-             <FormItem>
-                <FormLabel>Name</FormLabel>
-                <FormControl>
-                <Input readOnly disabled value={`${currentUser.firstName} ${currentUser.lastName}`} />
-                </FormControl>
-            </FormItem>
+            
+            {isManager ? (
+               <FormField
+                  control={form.control}
+                  name="employeeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Employee</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select team member..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {groupMembers.map(emp => (
+                            <SelectItem key={emp.id} value={emp.id}>{getFullName(emp)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+            ) : (
+                <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                    <Input readOnly disabled value={getFullName(currentUser)} />
+                    </FormControl>
+                </FormItem>
+            )}
 
              <div className="rounded-md border p-4 space-y-4">
                 <p className="text-sm font-medium">Original Shift Details</p>

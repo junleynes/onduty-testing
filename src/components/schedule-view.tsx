@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react';
-import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDay, addMonths, isToday, getISOWeek, eachWeekOfInterval, lastDayOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
+import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDay, addMonths, isToday, getISOWeek, eachWeekOfInterval, lastDayOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear, eachMonthOfInterval, endOfDay } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -109,24 +109,36 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
   
   const displayedDays = useMemo(() => {
     if (dateRange?.from && dateRange.to && viewMode !== 'month') {
-      return eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
+      try {
+        return eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
+      } catch (e) {
+        return [];
+      }
     }
     return [];
   }, [dateRange, viewMode]);
 
   const firstHalfDays = useMemo(() => {
     if (viewMode !== 'month') return [];
-    const monthStart = startOfMonth(currentDate);
-    const day15 = addDays(monthStart, 14);
-    return eachDayOfInterval({ start: monthStart, end: day15 });
+    try {
+        const monthStart = startOfMonth(currentDate);
+        const day15 = addDays(monthStart, 14);
+        return eachDayOfInterval({ start: monthStart, end: day15 });
+    } catch (e) {
+        return [];
+    }
   }, [currentDate, viewMode]);
 
   const secondHalfDays = useMemo(() => {
     if (viewMode !== 'month') return [];
-    const day16 = addDays(startOfMonth(currentDate), 15);
-    const monthEnd = endOfMonth(currentDate);
-    if (day16 > monthEnd) return [];
-    return eachDayOfInterval({ start: day16, end: monthEnd });
+    try {
+        const day16 = addDays(startOfMonth(currentDate), 15);
+        const monthEnd = endOfMonth(currentDate);
+        if (day16 > monthEnd) return [];
+        return eachDayOfInterval({ start: day16, end: monthEnd });
+    } catch (e) {
+        return [];
+    }
   }, [currentDate, viewMode]);
   
   const orderedEmployees = useMemo(() => {
@@ -719,12 +731,12 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         
         const leaveForDay = leave.filter(l => {
             if (l.employeeId !== employee.id) return false;
-            if (l.type === 'Work Extension') return false; // Work extensions do not reflect in the schedule grid
+            if (l.type === 'Work Extension') return false; 
             if (!l.startDate || !l.endDate) return false;
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));
             const leaveEnd = startOfDay(new Date(l.endDate));
-            if (isNaN(leaveStart.getTime()) || isNaN(endOfDay(new Date(l.endDate)).getTime())) return false;
+            if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) return false;
             
             return isWithinInterval(checkDay, { start: leaveStart, end: leaveEnd });
         }).map(l => {
@@ -1072,7 +1084,6 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                 const sheetName = format(month, 'MMMM yyyy');
                 const worksheet = workbook.addWorksheet(sheetName);
 
-                // Get employees in the preferred order for this specific month
                 const visibleEmployees = employees.filter(e => e.visibility?.schedule !== false);
                 const employeeMap = new Map(visibleEmployees.map(e => [e.id, e]));
                 let orderedEmps = [...visibleEmployees].sort((a,b) => a.lastName.localeCompare(b.lastName));
@@ -1095,7 +1106,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
 
                     const leaveOnDay = leave.find(l => {
                         if (l.employeeId !== employee.id || l.status !== 'approved' || !l.startDate || !l.endDate) return false;
-                        if (l.type === 'Work Extension') return false; // Skip work extensions in exports
+                        if (l.type === 'Work Extension') return false; 
                         return isWithinInterval(normalizedDay, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
                     });
                     if (leaveOnDay) {
@@ -1171,7 +1182,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                         worksheet.getColumn(i + 3).width = 12;
                     }
 
-                    return startRow + orderedEmps.length + 4; // Return next available row
+                    return startRow + orderedEmps.length + 4; 
                 };
 
                 const monthStart = startOfMonth(month);

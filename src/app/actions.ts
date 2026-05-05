@@ -28,10 +28,12 @@ export async function sendEmail(
         return { success: false, error: 'SMTP connection settings (Host, Port, User, Pass) are not fully configured.' };
     }
 
+    const isSecure = smtpSettings.port === 465 || smtpSettings.secure;
+
     const transporter = nodemailer.createTransport({
         host: smtpSettings.host,
-        port: smtpSettings.port,
-        secure: smtpSettings.port === 465 || smtpSettings.secure,
+        port: Number(smtpSettings.port),
+        secure: isSecure,
         auth: {
             user: smtpSettings.user,
             pass: smtpSettings.pass,
@@ -40,9 +42,9 @@ export async function sendEmail(
             rejectUnauthorized: false, // Essential for many self-hosted environments
             minVersion: 'TLSv1.2'
         },
-        connectionTimeout: 15000,
-        greetingTimeout: 15000,
-        socketTimeout: 45000,
+        connectionTimeout: 20000,
+        greetingTimeout: 20000,
+        socketTimeout: 60000,
     });
 
     try {
@@ -67,20 +69,17 @@ export async function sendEmail(
 export async function verifyUser(email: string, password: string): Promise<{ success: boolean; user?: Employee; error?: string; }> {
     const db = getDb();
     try {
-        // Find user by email
         const userRow = db.prepare('SELECT * FROM employees WHERE email = ?').get(email.toLowerCase()) as any;
 
         if (userRow) {
             const user = JSON.parse(JSON.stringify(userRow)) as Employee;
             
-            // Check hashed password
             if (user.password && user.password.startsWith('$2')) {
                 const isMatch = await bcrypt.compare(password, user.password);
                 if (isMatch) {
                     return { success: true, user: user };
                 }
             } 
-            // Fallback for legacy plain text passwords (including the default admin)
             else if (user.password === password) {
                 return { success: true, user: user };
             }
@@ -208,7 +207,6 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
     }
 }
 
-// Internal Helper for Digital Signatures
 async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefined, fieldNames: string[]) {
     if (!sigData || !sigData.includes('base64,')) return;
     const form = pdfDoc.getForm();
@@ -410,10 +408,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             if (weRequest) {
                 weDate = format(new Date(weRequest.startDate), 'MM/dd/yyyy');
                 if (weRequest.startTime && weRequest.endTime) {
-                    const start = parse(weRequest.startTime, 'HH:mm', new Date());
-                    const end = parse(weRequest.endTime, 'HH:mm', new Date());
+                    const start = parse(weRequest.startTime, 'HH:mm', new Date(weRequest.startDate));
+                    let end = parse(weRequest.endTime, 'HH:mm', new Date(weRequest.startDate));
+                    if (end < start) end = addDays(end, 1);
                     let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                    if (diff < 0) diff += 24;
                     weHours = diff.toFixed(2);
                 }
                 if (weRequest.managedBy) {

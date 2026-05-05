@@ -303,7 +303,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = templateSched.paidbreak_start;
                     paidbreak_end = templateSched.paidbreak_end;
                 } else if (dayData.leave) {
-                    day_status = ''; // Hide leave types per requirement for Work Schedule
+                    day_status = ''; // Hide leave types (VL, SL, Offset) per requirement for Work Schedule
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -484,6 +484,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 const dayData = findDataForDay(day, employee);
                 let scheduleCode = '';
 
+                // Hierarchy: Leave (includes VL, SL, SL-D, OFFSET) > Working Shifts (SKE, SKE-10, WFH) > Holidays > OFF
                 if (dayData.leave) {
                     scheduleCode = dayData.leave.type.toUpperCase();
                 } else if (dayData.shift && !dayData.shift.isDayOff && !dayData.shift.isHolidayOff) {
@@ -626,7 +627,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 l.employeeId === employee.id &&
                 (l.status === 'approved' || l.status === 'processed') &&
                 l.startDate && l.endDate &&
-                isWithinInterval(new Date(l.startDate), { start: summaryDateRange.from!, end: summaryDateRange.to! })
+                isWithinInterval(startOfDay(new Date(l.startDate)), { start: summaryDateRange.from!, end: summaryDateRange.to! })
             );
 
             const totalHours = shiftsInRange.reduce((acc, shift) => {
@@ -715,7 +716,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
 
         const tardyLeave = leave
-            .filter(l => l.type === 'TARDY' && (l.status === 'approved' || l.status === 'processed') && l.startDate && isWithinInterval(new Date(l.startDate), {start: tardyDateRange.from!, end: tardyDateRange.to!}))
+            .filter(l => l.type === 'TARDY' && (l.status === 'approved' || l.status === 'processed') && l.startDate && isWithinInterval(startOfDay(new Date(l.startDate)), {start: tardyDateRange.from!, end: tardyDateRange.to!}))
             .map(l => {
                 const employee = employees.find(e => e.id === l.employeeId);
                 const shift = shifts.find(s => s.employeeId === l.employeeId && l.startDate && isSameDay(new Date(s.date), new Date(l.startDate)));
@@ -731,7 +732,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             });
         
         const filteredImportedRecords = tardyRecords.filter(r => 
-            isWithinInterval(new Date(r.date), {start: tardyDateRange.from!, end: tardyDateRange.to!})
+            isWithinInterval(startOfDay(new Date(r.date)), {start: tardyDateRange.from!, end: tardyDateRange.to!})
         );
         
         const combinedRecords = [...filteredImportedRecords];
@@ -1014,7 +1015,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             l.type === 'Work Extension' &&
             (l.status === 'approved' || l.status === 'processed') &&
             l.originalShiftDate &&
-            isWithinInterval(new Date(l.originalShiftDate), { start: workExtensionDateRange.from!, end: workExtensionDateRange.to! })
+            isWithinInterval(startOfDay(new Date(l.originalShiftDate)), { start: workExtensionDateRange.from!, end: workExtensionDateRange.to! })
         );
         
         const data: WorkExtensionRowData[] = extensionRequests.map(req => {

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState, useMemo, useTransition } from 'react';
@@ -8,7 +9,6 @@ import { Download, Upload, Calendar as CalendarIcon, Eye, Settings, Send, Loader
 import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { DatePicker } from './ui/date-picker';
 import { cn, getFullName, getInitialState } from '@/lib/utils';
 import { format, eachDayOfInterval, isSameDay, getDate, startOfWeek, endOfWeek, parse, isWithinInterval, startOfMonth, endOfMonth, addMonths, getMonth, startOfDay, differenceInMinutes, set, addDays, endOfDay } from 'date-fns';
 import { ReportTemplateUploader } from './report-template-uploader';
@@ -303,7 +303,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = templateSched.paidbreak_start;
                     paidbreak_end = templateSched.paidbreak_end;
                 } else if (dayData.leave) {
-                    day_status = ''; // Hide leave types (VL, SL, Offset) per requirement for Work Schedule
+                    day_status = ''; // Leave types (VL, SL, Offset) hidden for Work Schedule
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;

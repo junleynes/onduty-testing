@@ -19,6 +19,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '20mb',
+    },
+  },
   webpack: (config, { isServer, dev }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,

@@ -31,6 +31,18 @@ import { OvertimeTemplateUploader } from './overtime-template-uploader';
 import { sendEmail } from '@/app/actions';
 import { Textarea } from './ui/textarea';
 
+// Helper to try and parse a numeric string into a number for ExcelJS to avoid "Number Stored as Text" warning
+const tryParseExcelNumber = (val: any) => {
+    if (typeof val !== 'string') return val;
+    const trimmed = val.trim();
+    if (trimmed === '') return val;
+    // Check if it's a number (including decimals), excluding dates like 12/12/2024
+    if (/^-?\d*\.?\d+$/.test(trimmed)) {
+        const num = Number(trimmed);
+        if (!isNaN(num)) return num;
+    }
+    return val;
+};
 
 type ReportsViewProps = {
     employees: Employee[];
@@ -253,7 +265,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         const leaveOnDay = leave.find(l => {
             if (l.employeeId !== employee.id) return false;
-            if (l.status !== 'approved') return false;
+            if (l.status !== 'approved' && l.status !== 'processed') return false;
             const leaveStart = l.startDate ? startOfDay(new Date(l.startDate)) : null;
             const leaveEnd = l.endDate ? startOfDay(new Date(l.endDate)) : null;
             if (!leaveStart || !leaveEnd) return false;
@@ -301,7 +313,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 if (dayData.status === 'FREE') {
                     day_status = 'FREE';
                 } else {
-                    day_status = ''; 
+                    day_status = dayData.status || ''; 
 
                     if (dayData.shift && (dayData.status === 'SKE' || dayData.status === 'WFH' || dayData.status === 'SKE-10')) {
                         schedule_start = dayData.shift.startTime;
@@ -436,7 +448,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                         }
                     }
                     
-                    newCell.value = templateValue;
+                    newCell.value = tryParseExcelNumber(templateValue);
                     newCell.style = templateStyles.get(colNumber) || {};
                 });
             });
@@ -534,7 +546,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                         }
                         for (let i = 0; i < 7 && i < displayedDays.length; i++) {
                             if (cellText.includes(`{{day_${i + 1}}}`) && displayedDays[i]) {
-                                cell.value = cellText.replace(`{{day_${i + 1}}}`, String(getDate(displayedDays[i])));
+                                cell.value = tryParseExcelNumber(cellText.replace(`{{day_${i + 1}}}`, String(getDate(displayedDays[i]))));
                             }
                         }
                     }
@@ -563,7 +575,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                             for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
                                 if (cellText.includes(`{{schedule_${employeeIndex}_${dayIndex + 1}}}`)) {
                                     const scheduleCode = String(employeeDataRow[3 + dayIndex]);
-                                    cell.value = cellText.replace(`{{schedule_${employeeIndex}_${dayIndex + 1}}}`, scheduleCode);
+                                    cell.value = tryParseExcelNumber(cellText.replace(`{{schedule_${employeeIndex}_${dayIndex + 1}}}`, scheduleCode));
                                 }
                             }
                         }
@@ -612,7 +624,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             
             const leaveInRange = leave.filter(l => 
                 l.employeeId === employee.id &&
-                l.status === 'approved' &&
+                (l.status === 'approved' || l.status === 'processed') &&
                 l.startDate && l.endDate &&
                 isWithinInterval(new Date(l.startDate), { start: summaryDateRange.from!, end: summaryDateRange.to! })
             );
@@ -645,7 +657,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             rows.push([
                 `${employee.lastName}, ${employee.firstName} ${employee.middleInitial || ''}`.toUpperCase(),
                 shiftsInRange.length,
-                totalHours.toFixed(2),
+                Number(totalHours.toFixed(2)),
                 ...leaveCounts
             ]);
         });
@@ -657,7 +669,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             }
         });
 
-        const totalRow: (string | number)[] = ['TOTAL', ...totals.map((t, i) => i === 1 ? t.toFixed(2) : t)];
+        const totalRow: (string | number)[] = ['TOTAL', ...totals.map((t, i) => i === 1 ? Number(t.toFixed(2)) : t)];
         rows.push(totalRow);
         
         return { headers, rows };
@@ -702,7 +714,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         }
 
         const tardyLeave = leave
-            .filter(l => l.type === 'TARDY' && l.status === 'approved' && l.startDate && isWithinInterval(new Date(l.startDate), {start: tardyDateRange.from!, end: tardyDateRange.to!}))
+            .filter(l => l.type === 'TARDY' && (l.status === 'approved' || l.status === 'processed') && l.startDate && isWithinInterval(new Date(l.startDate), {start: tardyDateRange.from!, end: tardyDateRange.to!}))
             .map(l => {
                 const employee = employees.find(e => e.id === l.employeeId);
                 const shift = shifts.find(s => s.employeeId === l.employeeId && l.startDate && isSameDay(new Date(s.date), new Date(l.startDate)));
@@ -757,7 +769,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             width: header === 'Employee' ? 30 : header === 'Remarks' ? 40 : 20,
         }));
         
-        worksheet.addRows(data.rows);
+        worksheet.addRows(data.rows.map(row => row.map(cell => tryParseExcelNumber(cell))));
         
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -818,7 +830,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                             breakHours = breakDiff; 
                         }
                     }
-                    totalHrs = (diff - breakHours).toFixed(2);
+                    totalHrs = Number((diff - breakHours).toFixed(2));
                 }
             } else {
                 includeRow = false; 
@@ -875,7 +887,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                         return newText;
                     }
                     if (cell.value && typeof cell.value === 'string') {
-                        cell.value = replacePlaceholders(cell.value);
+                        cell.value = tryParseExcelNumber(replacePlaceholders(cell.value));
                     } else if (cell.value && typeof cell.value === 'object' && 'richText' in cell.value) {
                         const richText = cell.value as ExcelJS.RichText;
                         richText.richText = richText.richText.map(rt => ({...rt, text: replacePlaceholders(rt.text)}));
@@ -929,7 +941,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 for (const key in placeholderMap) {
                     const dataKey = key as keyof WfhCertRowData;
                     const col = placeholderMap[dataKey];
-                    newRow.getCell(col).value = rowData[dataKey];
+                    newRow.getCell(col).value = tryParseExcelNumber(rowData[dataKey]);
                 }
             });
 
@@ -999,7 +1011,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         const extensionRequests = leave.filter(l => 
             l.type === 'Work Extension' &&
-            l.status === 'approved' &&
+            (l.status === 'approved' || l.status === 'processed') &&
             l.originalShiftDate &&
             isWithinInterval(new Date(l.originalShiftDate), { start: workExtensionDateRange.from!, end: workExtensionDateRange.to! })
         );
@@ -1086,7 +1098,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                             .replace('{{reason}}', rowData.reason);
                     }
                     const cell = row.getCell(colNumber);
-                    cell.value = finalValue;
+                    cell.value = tryParseExcelNumber(finalValue);
                     cell.style = templateCellStyles.get(colNumber) || {};
                 });
             });
@@ -1124,7 +1136,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 const workExtensionsOnDay = leave.filter(l =>
                     l.employeeId === employee.id &&
                     l.type === 'Work Extension' &&
-                    l.status === 'approved' &&
+                    (l.status === 'approved' || l.status === 'processed') &&
                     l.startDate &&
                     isSameDay(new Date(l.startDate), day)
                 );
@@ -1239,7 +1251,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                         return newText;
                     }
                     if (cell.value && typeof cell.value === 'string') {
-                        cell.value = replacePlaceholders(cell.value);
+                        cell.value = tryParseExcelNumber(replacePlaceholders(cell.value));
                     }
                 });
             });
@@ -1284,7 +1296,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                             templateValue = templateValue.replace(new RegExp(placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'), rowData[placeholderMap[placeholder as keyof typeof placeholderMap]]);
                         }
                     }
-                    newCell.value = templateValue;
+                    newCell.value = tryParseExcelNumber(templateValue);
                     newCell.style = templateStyles.get(colNumber) || {};
                 });
             });

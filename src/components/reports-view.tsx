@@ -1019,12 +1019,14 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         const data: WorkExtensionRowData[] = extensionRequests.map(req => {
             const employee = employees.find(e => e.id === req.employeeId);
             
-            let totalHours = '';
+            let totalHours = '0.00';
             if (req.startTime && req.endTime) {
-                 const start = parse(req.startTime, 'HH:mm', new Date());
-                 const end = parse(req.endTime, 'HH:mm', new Date());
+                 const start = parse(req.startTime, 'HH:mm', new Date(req.startDate));
+                 let end = parse(req.endTime, 'HH:mm', new Date(req.startDate));
+                 if (end < start) {
+                     end = addDays(end, 1);
+                 }
                  let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                 if (diff < 0) diff += 24;
                  totalHours = diff.toFixed(2);
             }
 
@@ -1082,7 +1084,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             });
     
             data.forEach((rowData, index) => {
-                const row = worksheet.getRow(templateRowNumber + index);
+                const newRow = worksheet.insertRow(templateRowNumber + index + 1, {});
                 templateCellValues.forEach((templateValue, colNumber) => {
                     let finalValue = templateValue;
                     if (typeof templateValue === 'string') {
@@ -1097,11 +1099,13 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                             .replace('{{total_hours_extended}}', rowData.total_hours_extended)
                             .replace('{{reason}}', rowData.reason);
                     }
-                    const cell = row.getCell(colNumber);
+                    const cell = newRow.getCell(colNumber);
                     cell.value = tryParseExcelNumber(finalValue);
                     cell.style = templateCellStyles.get(colNumber) || {};
                 });
             });
+
+            worksheet.spliceRows(templateRowNumber, 1);
             
             const fileBuffer = await workbook.xlsx.writeBuffer();
             return Buffer.from(fileBuffer);

@@ -313,10 +313,9 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     const shiftLabel = dayData.shift.label?.trim().toUpperCase();
                     if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
                          day_status = 'WFH';
-                    } else if (shiftLabel?.includes('10H')) {
-                        day_status = 'SKE-10';
                     } else {
-                        day_status = 'SKE';
+                        // Regular shifts (SKE or SKE-10) now show as empty status
+                        day_status = '';
                     }
                     schedule_start = dayData.shift.startTime;
                     schedule_end = dayData.shift.endTime;
@@ -333,8 +332,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = templateSched.paidbreak_start;
                     paidbreak_end = templateSched.paidbreak_end;
                 } else if (dayData.leave) {
-                    // User requested NOT to include leave types (VL/SL/Offset) in the status column, just the schedule
-                    day_status = 'SKE'; 
+                    // Leave days now show as empty status but with regular hours
+                    day_status = ''; 
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -650,15 +649,16 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
             const totalHours = shiftsInRange.reduce((acc, shift) => {
                 if (!shift.startTime || !shift.endTime) return acc;
-                const start = parse(shift.startTime, 'HH:mm', new Date());
-                let end = parse(shift.endTime, 'HH:mm', new Date());
+                const shiftDate = new Date(shift.date);
+                const start = parse(shift.startTime, 'HH:mm', shiftDate);
+                let end = parse(shift.endTime, 'HH:mm', shiftDate);
                 if (end < start) end = addDays(end, 1);
                 let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
                 let breakHours = 0;
                 if (shift.isUnpaidBreak && shift.breakStartTime && shift.breakEndTime) {
-                    const breakStart = parse(shift.breakStartTime, 'HH:mm', new Date());
-                    let breakEnd = parse(shift.breakEndTime, 'HH:mm', new Date());
+                    const breakStart = parse(shift.breakStartTime, 'HH:mm', shiftDate);
+                    let breakEnd = parse(shift.breakEndTime, 'HH:mm', shiftDate);
                     if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
                       if (breakEnd < breakStart) breakEnd = addDays(breakEnd, 1);
                       let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
@@ -834,15 +834,15 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 attendanceRendered = (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') ? 'WFH' : 'OFFICE-BASED';
                 
                 if (dayData.shift.startTime && dayData.shift.endTime) {
-                     const start = parse(dayData.shift.startTime, 'HH:mm', new Date());
-                    let end = parse(dayData.shift.endTime, 'HH:mm', new Date());
+                     const start = parse(dayData.shift.startTime, 'HH:mm', day);
+                    let end = parse(dayData.shift.endTime, 'HH:mm', day);
                     if (end < start) end = addDays(end, 1);
                     let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
                     let breakHours = 0;
                     if (dayData.shift.isUnpaidBreak && dayData.shift.breakStartTime && dayData.shift.breakEndTime) {
-                        const breakStart = parse(dayData.shift.breakStartTime, 'HH:mm', new Date());
-                        let breakEnd = parse(dayData.shift.breakEndTime, 'HH:mm', new Date());
+                        const breakStart = parse(dayData.shift.breakStartTime, 'HH:mm', day);
+                        let breakEnd = parse(dayData.shift.breakEndTime, 'HH:mm', day);
                         if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
                             if (breakEnd < breakStart) breakEnd = addDays(breakEnd, 1);
                             let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);

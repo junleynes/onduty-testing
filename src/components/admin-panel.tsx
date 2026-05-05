@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useTransition } from 'react';
@@ -9,7 +10,7 @@ import { getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu';
-import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download } from 'lucide-react';
+import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download, Key } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from './ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
@@ -17,6 +18,9 @@ import { sendActivationLink } from '@/app/actions';
 import Papa from 'papaparse';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Label } from './ui/label';
+import { Input } from './ui/input';
 
 type AdminPanelProps = {
   users: Employee[];
@@ -35,6 +39,8 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
   const { toast } = useToast();
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [isSending, startSendingTransition] = useTransition();
+  const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
   
   const handleRoleChange = (userId: string, newRole: UserRole) => {
     setUsers(users.map(user => 
@@ -113,7 +119,15 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
     toast({ title: 'Export Successful', description: 'User data has been exported to CSV.' });
   };
 
+  const handleSaveApiKey = () => {
+    if (!tempApiKey) return;
+    localStorage.setItem('import_api_key', tempApiKey);
+    toast({ title: 'API Key Updated', description: 'Changes will be saved during the next database sync.' });
+    setIsApiKeyDialogOpen(false);
+  }
+
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
@@ -145,6 +159,10 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
                 </AlertDialog>
             ) : (
                 <>
+                    <Button variant="outline" onClick={() => setIsApiKeyDialogOpen(true)}>
+                        <Key className="h-4 w-4 mr-2" />
+                        Import API Key
+                    </Button>
                     <Button variant="outline" onClick={onManageGroups}>
                         <Users className="h-4 w-4 mr-2" />
                         Manage Groups
@@ -266,5 +284,33 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
         </Table>
       </CardContent>
     </Card>
+
+    <Dialog open={isApiKeyDialogOpen} onOpenChange={setIsApiKeyDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Import API Security</DialogTitle>
+                <DialogDescription>
+                    Set the API Key required for the <code>/api/import-schedule</code> endpoint. 
+                    Default is <code>onduty_secret_key</code> if not set.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                    <Label htmlFor="apiKey">Secret API Key</Label>
+                    <Input 
+                        id="apiKey" 
+                        value={tempApiKey} 
+                        onChange={e => setTempApiKey(e.target.value)} 
+                        placeholder="Enter secret token..."
+                    />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="ghost" onClick={() => setIsApiKeyDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleSaveApiKey}>Save API Key</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -117,7 +118,10 @@ function AppContent() {
         groups,
         smtpSettings,
         tardyRecords,
-        templates,
+        templates: {
+            ...templates,
+            import_api_key: localStorage.getItem('import_api_key') || 'onduty_secret_key'
+        },
         shiftTemplates,
         leaveTypes,
         permissions,
@@ -206,6 +210,10 @@ function AppContent() {
         setFaqs(result.data.faqs);
         setPreferredAvl(result.data.preferredAvl);
         setAvlLocks(result.data.avlLocks || {});
+
+        if (result.data.templates.import_api_key) {
+            localStorage.setItem('import_api_key', result.data.templates.import_api_key);
+        }
         
         // If it wasn't the special admin, find the user from the DB
         if (!userToSet) {

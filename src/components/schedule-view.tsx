@@ -9,7 +9,7 @@ import { Button } from './ui/button';
 import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Upload, Settings, Save, Send, MoreVertical, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, StickyNote, PartyPopper, Mail, Loader2, Trash2, FileSpreadsheet } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from './ui/calendar';
+import { Calendar } from '@/components/ui/calendar';
 import { cn, getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
 import { ShiftEditor, type ShiftTemplate, type ShiftWithRepeat } from './shift-editor';
 import { LeaveEditor } from './leave-editor';
@@ -731,7 +731,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         
         const leaveForDay = leave.filter(l => {
             if (l.employeeId !== employee.id) return false;
-            if (l.type === 'Work Extension') return false; 
+            if (l.type === 'Work Extension') return false; // Filter out work extension from main grid
             if (!l.startDate || !l.endDate) return false;
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));

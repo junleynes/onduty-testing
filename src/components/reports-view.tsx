@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from './ui/button';
 import { Download, Upload, Calendar as CalendarIcon, Eye, Settings, Send, Loader2 } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { DatePicker } from './ui/date-picker';
 import { cn, getFullName, getInitialState } from '@/lib/utils';
 import { format, eachDayOfInterval, isSameDay, getDate, startOfWeek, endOfWeek, parse, isWithinInterval, startOfMonth, endOfMonth, addMonths, getMonth, startOfDay, differenceInMinutes, set, addDays, endOfDay } from 'date-fns';
@@ -237,42 +237,18 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     const findDataForDay = (day: Date, employee: Employee) => {
         const normalizedDay = startOfDay(day);
         const shiftOnDay = shifts.find(s => s.employeeId === employee.id && isSameDay(new Date(s.date), normalizedDay));
-        
-        if (shiftOnDay && !shiftOnDay.isDayOff && !shiftOnDay.isHolidayOff) {
-            const shiftLabel = shiftOnDay.label?.trim().toUpperCase();
-            if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
-                 return { status: 'WFH', shift: shiftOnDay, leave: null };
-            }
-            // Shifts show empty status as per requirement
-            return { status: '', shift: shiftOnDay, leave: null };
-        }
-
         const holidayOnDay = holidays.find(h => isSameDay(new Date(h.date), normalizedDay));
-        if (holidayOnDay) {
-            return { status: 'HOL OFF', shift: null, leave: null };
-        }
-
-        if (shiftOnDay?.isHolidayOff) {
-            return { status: 'HOL OFF', shift: shiftOnDay, leave: null };
-        }
-        if (shiftOnDay?.isDayOff) {
-            return { status: 'FREE', shift: shiftOnDay, leave: null };
-        }
-
         const leaveOnDay = leave.find(l => {
             if (l.employeeId !== employee.id) return false;
             if (l.status !== 'approved' && l.status !== 'processed') return false;
+            if (l.type === 'Work Extension') return false; 
             const leaveStart = l.startDate ? startOfDay(new Date(l.startDate)) : null;
             const leaveEnd = l.endDate ? startOfDay(new Date(l.endDate)) : null;
             if (!leaveStart || !leaveEnd) return false;
             return isWithinInterval(normalizedDay, { start: leaveStart, end: leaveEnd });
         });
-        if (leaveOnDay) {
-            // Leave days show empty status as per requirement
-            return { status: '', shift: shiftOnDay, leave: leaveOnDay };
-        }
 
-        return { status: 'FREE', shift: null, leave: null };
+        return { shift: shiftOnDay, leave: leaveOnDay, holiday: holidayOnDay };
     };
 
 
@@ -305,17 +281,21 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 let unpaidbreak_end = '';
                 let paidbreak_start = '';
                 let paidbreak_end = '';
-                let day_status = dayData.status;
+                let day_status = '';
 
-                // Hierarchy: Shift > Holiday > Leave > Default (Free)
                 if (dayData.shift && !dayData.shift.isDayOff && !dayData.shift.isHolidayOff) {
+                    const label = dayData.shift.label?.toUpperCase() || '';
+                    if (label === 'WFH' || label === 'WORK FROM HOME') {
+                        day_status = 'WFH';
+                    }
                     schedule_start = dayData.shift.startTime;
                     schedule_end = dayData.shift.endTime;
                     unpaidbreak_start = dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                     unpaidbreak_end = dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
                     paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                     paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
-                } else if (dayData.status === 'HOL OFF') {
+                } else if (dayData.holiday || dayData.shift?.isHolidayOff) {
+                    day_status = 'HOL OFF';
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -323,6 +303,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = templateSched.paidbreak_start;
                     paidbreak_end = templateSched.paidbreak_end;
                 } else if (dayData.leave) {
+                    day_status = ''; // Hide leave types per requirement for Work Schedule
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -501,13 +482,25 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             
             displayedDays.forEach(day => {
                 const dayData = findDataForDay(day, employee);
-                let scheduleCode = dayData.status || '';
-                if (scheduleCode === 'HOL OFF') {
+                let scheduleCode = '';
+
+                if (dayData.leave) {
+                    scheduleCode = dayData.leave.type.toUpperCase();
+                } else if (dayData.shift && !dayData.shift.isDayOff && !dayData.shift.isHolidayOff) {
+                    const label = dayData.shift.label?.toUpperCase() || '';
+                    if (label === 'WFH' || label === 'WORK FROM HOME') {
+                        scheduleCode = 'WFH';
+                    } else if (label.includes('10H')) {
+                        scheduleCode = 'SKE-10';
+                    } else {
+                        scheduleCode = 'SKE';
+                    }
+                } else if (dayData.holiday || dayData.shift?.isHolidayOff) {
                     scheduleCode = 'HOL OFF';
-                }
-                if (scheduleCode === 'FREE') {
+                } else {
                     scheduleCode = 'OFF';
                 }
+                
                 row.push(scheduleCode);
             });
             rows.push(row);
@@ -844,11 +837,11 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 includeRow = false; 
             }
             
-            if (dayData.status === 'FREE' || dayData.status === 'HOL OFF') {
+            // Exclude non-working days (FREE or HOL OFF) from WFH certification listing
+            if (dayData.shift?.isDayOff || dayData.shift?.isHolidayOff || dayData.holiday) {
                 includeRow = false;
             }
 
-    
             if (includeRow) {
                 rows.push({
                     DATE: format(day, 'MMMM d, yyyy'),

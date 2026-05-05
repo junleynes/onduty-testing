@@ -7,7 +7,7 @@ import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay } from 'date-fns';
+import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay, addDays } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { getFullName } from '@/lib/utils';
 
@@ -28,6 +28,7 @@ export async function sendEmail(
         return { success: false, error: 'SMTP connection settings (Host, Port, User, Pass) are not fully configured.' };
     }
 
+    // Force secure true for port 465, otherwise follow settings
     const isSecure = smtpSettings.port === 465 || smtpSettings.secure;
 
     const transporter = nodemailer.createTransport({
@@ -74,12 +75,14 @@ export async function verifyUser(email: string, password: string): Promise<{ suc
         if (userRow) {
             const user = JSON.parse(JSON.stringify(userRow)) as Employee;
             
+            // Check for hashed password
             if (user.password && user.password.startsWith('$2')) {
                 const isMatch = await bcrypt.compare(password, user.password);
                 if (isMatch) {
                     return { success: true, user: user };
                 }
             } 
+            // Fallback for legacy plain-text passwords
             else if (user.password === password) {
                 return { success: true, user: user };
             }

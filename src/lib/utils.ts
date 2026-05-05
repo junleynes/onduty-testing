@@ -1,4 +1,3 @@
-
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { Employee } from "@/types";
@@ -116,4 +115,29 @@ export const findEmployeeByName = (name: string, allEmployees: Employee[]): Empl
   }
 
   return null;
+};
+
+export const convertTo24Hour = (timeStr: string): string => {
+    if (!timeStr || typeof timeStr !== 'string') return '';
+    let time = timeStr.trim().toLowerCase();
+    
+    // Check for am/pm
+    const isPm = time.includes('pm') || time.includes('p');
+    const isAm = time.includes('am') || time.includes('a');
+    
+    // Remove am/pm for easier parsing
+    time = time.replace(/am|pm|a|p/g, '').trim();
+    
+    let [hours, minutes] = time.split(':').map(Number);
+    if (isNaN(hours)) hours = 0;
+    if (isNaN(minutes)) minutes = 0;
+
+    if (isPm && hours < 12) {
+        hours += 12;
+    }
+    if (isAm && hours === 12) { // Handle 12am (midnight)
+        hours = 0;
+    }
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };

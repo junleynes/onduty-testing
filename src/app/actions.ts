@@ -40,9 +40,9 @@ export async function sendEmail(
             rejectUnauthorized: false, // Essential for many self-hosted environments
             minVersion: 'TLSv1.2'
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 30000,
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 45000,
     });
 
     try {
@@ -179,7 +179,7 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
                 db.prepare('DELETE FROM holidays').run();
                 break;
             case 'reportTemplates':
-                db.prepare("DELETE FROM key_value_store WHERE key LIKE '%Template'").run();
+                db.prepare("DELETE FROM key_value_store WHERE key LIKE ?").run('%Template');
                 break;
             case 'tasks':
                 db.prepare('DELETE FROM tasks').run();

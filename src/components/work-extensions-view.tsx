@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useTransition } from 'react';
+import React, { useState, useMemo, useTransition, useEffect } from 'react';
 import type { Leave, Employee, SmtpSettings } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
@@ -35,10 +35,16 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
   const [isPurging, startPurgeTransition] = useTransition();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [now, setNow] = useState(new Date());
 
   // Settings state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [expiryDays, setExpiryDays] = useState<number>(() => getInitialState('workExtensionExpiryDays', 30));
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
 
@@ -49,7 +55,6 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         return getFullName(employee || {}).toLowerCase().includes(searchTerm.toLowerCase());
       })
       .sort((a, b) => {
-        // Sort by Date Filed descending
         const dateA = new Date(a.dateFiled || a.requestedAt || 0).getTime();
         const dateB = new Date(b.dateFiled || b.requestedAt || 0).getTime();
         return dateB - dateA;
@@ -102,10 +107,10 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
   }
 
   const handleSaveRequest = (requestData: Partial<Leave>) => {
-    if (editingRequest?.id) { // Editing
+    if (editingRequest?.id) {
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
-    } else { // Creating
+    } else {
       const employeeId = requestData.employeeId || currentUser.id;
       const targetEmployee = employees.find(e => e.id === employeeId) || currentUser;
       
@@ -164,6 +169,21 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
     toast({ title: "Settings Saved" });
     setIsSettingsOpen(false);
   };
+
+  const getRemainingTimeDisplay = (managedAt: Date) => {
+    const expiryDate = addDays(new Date(managedAt), expiryDays);
+    const diff = expiryDate.getTime() - now.getTime();
+    
+    if (diff <= 0) return null;
+    
+    const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (d > 0) return `${d}d ${h}h left`;
+    if (h > 0) return `${h}h ${m}m left`;
+    return `${m}m left`;
+  };
   
   const getStatusBadge = (req: Leave) => {
     if (req.status === 'rejected') return <Badge variant="destructive">Rejected</Badge>;
@@ -172,11 +192,17 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         if (req.workExtensionStatus === 'claimed') return <Badge variant="default">Claimed</Badge>;
         
         const expiryDate = addDays(new Date(req.managedAt!), expiryDays);
-        if (new Date() > expiryDate) {
+        if (now > expiryDate) {
              return <Badge variant="destructive">Expired</Badge>;
         }
         
-        return <Badge variant="outline" className="text-green-600 border-green-600">Not Claimed</Badge>;
+        const remaining = getRemainingTimeDisplay(req.managedAt!);
+        return (
+          <div className="flex flex-col items-end gap-1">
+            <Badge variant="outline" className="text-green-600 border-green-600">Not Claimed</Badge>
+            {remaining && <span className="text-[10px] font-bold text-orange-600 animate-pulse uppercase tracking-tight">{remaining}</span>}
+          </div>
+        );
     }
     return <Badge>{req.status}</Badge>;
   }
@@ -248,7 +274,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
             <TableHead>Original Shift Date</TableHead>
             <TableHead>Extension Time</TableHead>
             <TableHead>Reason</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>Status / Claim Timer</TableHead>
             <TableHead className="text-right">Actions</TableHead>
             </TableRow>
         </TableHeader>

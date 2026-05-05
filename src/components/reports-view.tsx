@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo, useTransition } from 'react';
-import type { Employee, Shift, Leave, Holiday, TardyRecord, RolePermissions, SmtpSettings } from '@/types';
+import type { Employee, Shift, Leave, Holiday, TardyRecord, RolePermissions, SmtpSettings, NavItemKey } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
 import { Download, Upload, Calendar as CalendarIcon, Eye, Settings, Send, Loader2 } from 'lucide-react';
@@ -261,7 +261,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         const leaveOnDay = leave.find(l => {
             if (l.employeeId !== employee.id) return false;
-            if (l.type === 'Work Extension') return false; // Work Extensions don't reflect in reports
             if (l.status !== 'approved' && l.status !== 'processed') return false;
             const leaveStart = l.startDate ? startOfDay(new Date(l.startDate)) : null;
             const leaveEnd = l.endDate ? startOfDay(new Date(l.endDate)) : null;

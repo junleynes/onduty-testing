@@ -92,7 +92,7 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
     return allLeaveRequests.filter(l => {
         const isMine = l.employeeId === currentUser.id;
         const isWorkExtension = l.type === 'Work Extension';
-        const isApproved = l.status === 'approved';
+        const isApproved = l.status === 'approved' || l.status === 'processed';
         const isNotClaimed = !l.workExtensionStatus || l.workExtensionStatus === 'not-claimed';
         
         if (!isMine || !isWorkExtension || !isApproved || !isNotClaimed || !l.managedAt) {

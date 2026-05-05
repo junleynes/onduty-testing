@@ -31,12 +31,10 @@ import { OvertimeTemplateUploader } from './overtime-template-uploader';
 import { sendEmail } from '@/app/actions';
 import { Textarea } from './ui/textarea';
 
-// Helper to try and parse a numeric string into a number for ExcelJS to avoid "Number Stored as Text" warning
 const tryParseExcelNumber = (val: any) => {
     if (typeof val !== 'string') return val;
     const trimmed = val.trim();
     if (trimmed === '') return val;
-    // Check if it's a number (including decimals), excluding dates like 12/12/2024
     if (/^-?\d*\.?\d+$/.test(trimmed)) {
         const num = Number(trimmed);
         if (!isNaN(num)) return num;
@@ -94,7 +92,7 @@ type WorkExtensionRowData = {
     date_of_work_extended: string;
     extended_start_time: string;
     extended_end_time: string;
-    total_hours_extended: string;
+    total_hours_extended: string | number;
     reason: string;
 };
 
@@ -108,7 +106,7 @@ type OvertimeRowData = {
     'END TIME': string;
     'START DATE': string;
     'END DATE': string;
-    'TOTAL HOURS': string;
+    'TOTAL HOURS': string | number;
     'REASONS/REMARKS': string;
 }
 
@@ -310,26 +308,47 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 let paidbreak_end = '';
                 let day_status = '';
 
-                if (dayData.status === 'FREE') {
-                    day_status = 'FREE';
-                } else {
-                    day_status = dayData.status || ''; 
-
-                    if (dayData.shift && (dayData.status === 'SKE' || dayData.status === 'WFH' || dayData.status === 'SKE-10')) {
-                        schedule_start = dayData.shift.startTime;
-                        schedule_end = dayData.shift.endTime;
-                        unpaidbreak_start = dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
-                        unpaidbreak_end = dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
-                        paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
-                        paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
+                // Hierarchy: Shift > Holiday > Leave > Default (Free)
+                if (dayData.shift && !dayData.shift.isDayOff && !dayData.shift.isHolidayOff) {
+                    const shiftLabel = dayData.shift.label?.trim().toUpperCase();
+                    if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
+                         day_status = 'WFH';
+                    } else if (shiftLabel?.includes('10H')) {
+                        day_status = 'SKE-10';
                     } else {
-                        schedule_start = templateSched.schedule_start;
-                        schedule_end = templateSched.schedule_end;
-                        unpaidbreak_start = templateSched.unpaidbreak_start;
-                        unpaidbreak_end = templateSched.unpaidbreak_end;
-                        paidbreak_start = templateSched.paidbreak_start;
-                        paidbreak_end = templateSched.paidbreak_end;
+                        day_status = 'SKE';
                     }
+                    schedule_start = dayData.shift.startTime;
+                    schedule_end = dayData.shift.endTime;
+                    unpaidbreak_start = dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
+                    unpaidbreak_end = dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
+                    paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
+                    paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
+                } else if (dayData.status === 'HOL OFF') {
+                    day_status = 'HOL OFF';
+                    schedule_start = templateSched.schedule_start;
+                    schedule_end = templateSched.schedule_end;
+                    unpaidbreak_start = templateSched.unpaidbreak_start;
+                    unpaidbreak_end = templateSched.unpaidbreak_end;
+                    paidbreak_start = templateSched.paidbreak_start;
+                    paidbreak_end = templateSched.paidbreak_end;
+                } else if (dayData.leave) {
+                    // User requested NOT to include leave types (VL/SL/Offset) in the status column, just the schedule
+                    day_status = 'SKE'; 
+                    schedule_start = templateSched.schedule_start;
+                    schedule_end = templateSched.schedule_end;
+                    unpaidbreak_start = templateSched.unpaidbreak_start;
+                    unpaidbreak_end = templateSched.unpaidbreak_end;
+                    paidbreak_start = templateSched.paidbreak_start;
+                    paidbreak_end = templateSched.paidbreak_end;
+                } else {
+                    day_status = 'FREE';
+                    schedule_start = '';
+                    schedule_end = '';
+                    unpaidbreak_start = '';
+                    unpaidbreak_end = '';
+                    paidbreak_start = '';
+                    paidbreak_end = '';
                 }
 
                 rows.push({
@@ -632,17 +651,17 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             const totalHours = shiftsInRange.reduce((acc, shift) => {
                 if (!shift.startTime || !shift.endTime) return acc;
                 const start = parse(shift.startTime, 'HH:mm', new Date());
-                const end = parse(shift.endTime, 'HH:mm', new Date());
+                let end = parse(shift.endTime, 'HH:mm', new Date());
+                if (end < start) end = addDays(end, 1);
                 let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                if (diff < 0) diff += 24;
 
                 let breakHours = 0;
                 if (shift.isUnpaidBreak && shift.breakStartTime && shift.breakEndTime) {
                     const breakStart = parse(shift.breakStartTime, 'HH:mm', new Date());
-                    const breakEnd = parse(shift.breakEndTime, 'HH:mm', new Date());
-                    if (!isNaN(breakStart.getTime()) || !isNaN(breakEnd.getTime())) {
+                    let breakEnd = parse(shift.breakEndTime, 'HH:mm', new Date());
+                    if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
+                      if (breakEnd < breakStart) breakEnd = addDays(breakEnd, 1);
                       let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
-                      if (breakDiff < 0) breakDiff += 24;
                       breakHours = breakDiff;
                     }
                 }
@@ -687,7 +706,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             width: header === 'Employee Name' ? 30 : 15
         }));
         
-        worksheet.addRows(data.rows);
+        worksheet.addRows(data.rows.map(row => row.map(cell => tryParseExcelNumber(cell))));
         
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true };
@@ -816,17 +835,17 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 
                 if (dayData.shift.startTime && dayData.shift.endTime) {
                      const start = parse(dayData.shift.startTime, 'HH:mm', new Date());
-                    const end = parse(dayData.shift.endTime, 'HH:mm', new Date());
+                    let end = parse(dayData.shift.endTime, 'HH:mm', new Date());
+                    if (end < start) end = addDays(end, 1);
                     let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                    if (diff < 0) diff += 24;
 
                     let breakHours = 0;
                     if (dayData.shift.isUnpaidBreak && dayData.shift.breakStartTime && dayData.shift.breakEndTime) {
                         const breakStart = parse(dayData.shift.breakStartTime, 'HH:mm', new Date());
-                        const breakEnd = parse(dayData.shift.breakEndTime, 'HH:mm', new Date());
-                        if (!isNaN(breakStart.getTime()) || !isNaN(breakEnd.getTime())) {
-                           let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
-                            if (breakDiff < 0) breakDiff += 24;
+                        let breakEnd = parse(dayData.shift.breakEndTime, 'HH:mm', new Date());
+                        if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
+                            if (breakEnd < breakStart) breakEnd = addDays(breakEnd, 1);
+                            let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
                             breakHours = breakDiff; 
                         }
                     }
@@ -1019,7 +1038,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         const data: WorkExtensionRowData[] = extensionRequests.map(req => {
             const employee = employees.find(e => e.id === req.employeeId);
             
-            let totalHours = '0.00';
+            let totalHours: string | number = '0.00';
             if (req.startTime && req.endTime) {
                  const start = parse(req.startTime, 'HH:mm', new Date(req.startDate));
                  let end = parse(req.endTime, 'HH:mm', new Date(req.startDate));
@@ -1027,7 +1046,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                      end = addDays(end, 1);
                  }
                  let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                 totalHours = diff.toFixed(2);
+                 totalHours = Number(diff.toFixed(2));
             }
 
             return {
@@ -1072,7 +1091,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             });
     
             if (templateRowNumber === -1) {
-                throw new Error("Template row with `{{employee_name}}` found.");
+                throw new Error("Template row with `{{employee_name}}` not found.");
             }
             
             const templateRow = worksheet.getRow(templateRowNumber);
@@ -1096,7 +1115,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                             .replace('{{date_of_work_extended}}', rowData.date_of_work_extended)
                             .replace('{{extended_start_time}}', rowData.extended_start_time)
                             .replace('{{extended_end_time}}', rowData.extended_end_time)
-                            .replace('{{total_hours_extended}}', rowData.total_hours_extended)
+                            .replace('{{total_hours_extended}}', String(rowData.total_hours_extended))
                             .replace('{{reason}}', rowData.reason);
                     }
                     const cell = newRow.getCell(colNumber);
@@ -1148,8 +1167,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 workExtensionsOnDay.forEach(ext => {
                     if (ext.startTime && ext.endTime && ext.startDate) {
                         const start = parse(ext.startTime, 'HH:mm', new Date(ext.startDate));
-                        const end = parse(ext.endTime, 'HH:mm', new Date(ext.startDate));
-                        if(end < start) end.setDate(end.getDate() + 1);
+                        let end = parse(ext.endTime, 'HH:mm', new Date(ext.startDate));
+                        if(end < start) end = addDays(end, 1);
                         const otMinutes = differenceInMinutes(end, start);
     
                         if (otMinutes > 0) {
@@ -1163,7 +1182,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                                 'END DATE': format(end, 'yyyy-MM-dd'),
                                 'START TIME': format(start, 'HH:mm'),
                                 'END TIME': format(end, 'HH:mm'),
-                                'TOTAL HOURS': (otMinutes / 60).toFixed(2),
+                                'TOTAL HOURS': Number((otMinutes / 60).toFixed(2)),
                                 'REASONS/REMARKS': ext.reason || ''
                             });
                         }
@@ -1218,7 +1237,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                            'END DATE': format(shiftEnd, 'yyyy-MM-dd'),
                            'START TIME': format(shiftStart, 'HH:mm'),
                            'END TIME': format(shiftEnd, 'HH:mm'),
-                           'TOTAL HOURS': (totalNdMinutes / 60).toFixed(2),
+                           'TOTAL HOURS': Number((totalNdMinutes / 60).toFixed(2)),
                            'REASONS/REMARKS': ''
                         });
                     }
@@ -1297,7 +1316,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     let templateValue = templateCell.text;
                     for (const placeholder in placeholderMap) {
                         if (templateValue.includes(placeholder)) {
-                            templateValue = templateValue.replace(new RegExp(placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'), rowData[placeholderMap[placeholder as keyof typeof placeholderMap]]);
+                            templateValue = templateValue.replace(new RegExp(placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'), String(rowData[placeholderMap[placeholder as keyof typeof placeholderMap]]));
                         }
                     }
                     newCell.value = tryParseExcelNumber(templateValue);
@@ -1415,7 +1434,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 const headers: (keyof OvertimeRowData)[] = ['SURNAME', 'EMPLOYEE NAME', 'TYPE', 'PERSONNEL NUMBER', 'TYPE CODE', 'START TIME', 'END TIME', 'START DATE', 'END DATE', 'TOTAL HOURS', 'REASONS/REMARKS'];
                 data = {
                     headers: headers,
-                    rows: rawData.map(d => headers.map(h => d[h]))
+                    rows: rawData.map(d => headers.map(h => d[h as keyof OvertimeRowData]))
                 };
                 title = `Overtime & Night Differential (${format(overtimeDateRange!.from!, 'LLL d')} - ${format(overtimeDateRange!.to!, 'LLL d, y')})`;
                 generator = () => handleDownloadOvertime();

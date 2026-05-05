@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react';
@@ -720,11 +719,12 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
         
         const leaveForDay = leave.filter(l => {
             if (l.employeeId !== employee.id) return false;
+            if (l.type === 'Work Extension') return false; // Work extensions do not reflect in the schedule grid
             if (!l.startDate || !l.endDate) return false;
             const checkDay = startOfDay(day);
             const leaveStart = startOfDay(new Date(l.startDate));
             const leaveEnd = startOfDay(new Date(l.endDate));
-            if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) return false;
+            if (isNaN(leaveStart.getTime()) || isNaN(endOfDay(new Date(l.endDate)).getTime())) return false;
             
             return isWithinInterval(checkDay, { start: leaveStart, end: leaveEnd });
         }).map(l => {
@@ -1095,6 +1095,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
 
                     const leaveOnDay = leave.find(l => {
                         if (l.employeeId !== employee.id || l.status !== 'approved' || !l.startDate || !l.endDate) return false;
+                        if (l.type === 'Work Extension') return false; // Skip work extensions in exports
                         return isWithinInterval(normalizedDay, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
                     });
                     if (leaveOnDay) {

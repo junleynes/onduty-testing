@@ -243,10 +243,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
                  return { status: 'WFH', shift: shiftOnDay, leave: null };
             }
-            if (shiftLabel?.includes('10H')) {
-                return { status: 'SKE-10', shift: shiftOnDay, leave: null };
-            }
-            return { status: 'SKE', shift: shiftOnDay, leave: null };
+            // Shifts show empty status as per requirement
+            return { status: '', shift: shiftOnDay, leave: null };
         }
 
         const holidayOnDay = holidays.find(h => isSameDay(new Date(h.date), normalizedDay));
@@ -263,6 +261,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         const leaveOnDay = leave.find(l => {
             if (l.employeeId !== employee.id) return false;
+            if (l.type === 'Work Extension') return false; // Work Extensions don't reflect in reports
             if (l.status !== 'approved' && l.status !== 'processed') return false;
             const leaveStart = l.startDate ? startOfDay(new Date(l.startDate)) : null;
             const leaveEnd = l.endDate ? startOfDay(new Date(l.endDate)) : null;
@@ -270,7 +269,8 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             return isWithinInterval(normalizedDay, { start: leaveStart, end: leaveEnd });
         });
         if (leaveOnDay) {
-            return { status: leaveOnDay.type.toUpperCase(), shift: shiftOnDay, leave: leaveOnDay };
+            // Leave days show empty status as per requirement
+            return { status: '', shift: shiftOnDay, leave: leaveOnDay };
         }
 
         return { status: 'FREE', shift: null, leave: null };
@@ -306,17 +306,10 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 let unpaidbreak_end = '';
                 let paidbreak_start = '';
                 let paidbreak_end = '';
-                let day_status = '';
+                let day_status = dayData.status;
 
                 // Hierarchy: Shift > Holiday > Leave > Default (Free)
                 if (dayData.shift && !dayData.shift.isDayOff && !dayData.shift.isHolidayOff) {
-                    const shiftLabel = dayData.shift.label?.trim().toUpperCase();
-                    if (shiftLabel === 'WORK FROM HOME' || shiftLabel === 'WFH') {
-                         day_status = 'WFH';
-                    } else {
-                        // Regular shifts (SKE or SKE-10) now show as empty status
-                        day_status = '';
-                    }
                     schedule_start = dayData.shift.startTime;
                     schedule_end = dayData.shift.endTime;
                     unpaidbreak_start = dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
@@ -324,7 +317,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                     paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
                 } else if (dayData.status === 'HOL OFF') {
-                    day_status = 'HOL OFF';
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -332,8 +324,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = templateSched.paidbreak_start;
                     paidbreak_end = templateSched.paidbreak_end;
                 } else if (dayData.leave) {
-                    // Leave days now show as empty status but with regular hours
-                    day_status = ''; 
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -1148,9 +1138,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         if (!overtimeDateRange || !overtimeDateRange.from || !overtimeDateRange.to) {
             toast({ variant: 'destructive', title: 'No Date Range', description: 'Please select a covered period for the report.' });
             return null;
-        }
-    
-        const applicableEmployees = employees.filter(e => ndClassifications.includes(e.employeeClassification || ''));
+        }    const applicableEmployees = employees.filter(e => ndClassifications.includes(e.employeeClassification || ''));
         const data: OvertimeRowData[] = [];
         const daysInInterval = eachDayOfInterval({ start: overtimeDateRange.from, end: overtimeDateRange.to });
     

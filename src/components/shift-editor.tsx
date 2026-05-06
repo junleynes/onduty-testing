@@ -1,8 +1,6 @@
-
-
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -18,7 +16,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { FileText, MoreHorizontal, Pencil, Copy, Trash2, X, PlusCircle, Repeat } from 'lucide-react';
+import { FileText, MoreHorizontal, Pencil, Copy, Trash2, X, PlusCircle, Repeat, Search } from 'lucide-react';
 import { getFullName } from '@/lib/utils';
 import type { Employee, Shift, Task } from '@/types';
 import { Checkbox } from './ui/checkbox';
@@ -125,6 +123,7 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
   const [activeTab, setActiveTab] = useState('details');
+  const [templateSearch, setTemplateSearch] = useState('');
 
   const selectedEmployee = employees.find(e => e.id === shift?.employeeId);
   const defaultColor = selectedEmployee ? roleColors[selectedEmployee.position] : shiftColorOptions[1].value;
@@ -160,6 +159,14 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
     }
   }, [editingTask]);
 
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearch) return shiftTemplates;
+    const lowerSearch = templateSearch.toLowerCase();
+    return shiftTemplates.filter(t => 
+        t.name.toLowerCase().includes(lowerSearch) || 
+        t.label.toLowerCase().includes(lowerSearch)
+    );
+  }, [shiftTemplates, templateSearch]);
 
   const handleEditTemplate = (template: ShiftTemplate) => {
     setEditingTemplate(template);
@@ -677,9 +684,18 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
                 </ScrollArea>
             </TabsContent>
             <TabsContent value="templates">
-                <ScrollArea className="h-[55vh] pr-6">
+                <div className="relative pt-4 pb-2 px-1">
+                    <Search className="absolute left-3 top-[26px] h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Search templates..." 
+                        className="pl-9" 
+                        value={templateSearch}
+                        onChange={(e) => setTemplateSearch(e.target.value)}
+                    />
+                </div>
+                <ScrollArea className="h-[48vh] pr-6">
                     <div className="space-y-2 py-4">
-                        {shiftTemplates.map((template) => (
+                        {filteredTemplates.map((template) => (
                            <Card key={template.id} className="p-3 hover:bg-muted group">
                                <div className="flex items-center justify-between">
                                    <div className="flex items-start gap-3 cursor-pointer flex-1" onClick={() => handleTemplateClick(template)}>
@@ -717,6 +733,9 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
                                </div>
                            </Card>
                         ))}
+                        {filteredTemplates.length === 0 && (
+                            <p className="text-center text-muted-foreground py-8 text-sm italic">No templates found matching "{templateSearch}".</p>
+                        )}
                     </div>
                 </ScrollArea>
             </TabsContent>

@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react';
@@ -30,6 +29,7 @@ import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Dia
 import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { v4 as uuidv4 } from 'uuid';
+import Papa from 'papaparse';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -443,6 +443,23 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
     toast({ title: "Template Loaded", description: "The saved template has been applied to the current week." });
   };
 
+  const handleExportTemplates = () => {
+    const csvData = shiftTemplates.map(t => ({
+      'Shift Label': t.label,
+      'Start Time': t.startTime,
+      'End Time': t.endTime,
+      'Shift Color': t.color,
+      'Break Start': t.breakStartTime || '',
+      'Break End': t.breakEndTime || '',
+      'Is Unpaid Break': t.isUnpaidBreak ? 'true' : 'false'
+    }));
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, `Shift_Templates_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    toast({ title: 'Export Successful', description: 'Shift templates have been exported to CSV.' });
+  };
+
   const handleImportedData = (importedData: {
     shifts: Shift[];
     leave: Leave[];
@@ -619,7 +636,7 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
                 try {
                     const start = parse(shift.startTime, 'HH:mm', new Date());
                     const end = parse(shift.endTime, 'HH:mm', new Date());
-                    if (isNaN(start.getTime()) || isNaN(end.getTime())) return acc;
+                    if (isNaN(start.getTime()) || iisNaN(end.getTime())) return acc;
 
                     let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
                     if (diff < 0) diff += 24;
@@ -873,6 +890,10 @@ export default function ScheduleView({ employees, setEmployees, shifts, setShift
                             <DropdownMenuItem onClick={() => setIsTemplateImporterOpen(true)}>
                                 <Upload className="mr-2 h-4 w-4" />
                                 <span>Import Templates</span>
+                            </DropdownMenuItem>
+                             <DropdownMenuItem onClick={handleExportTemplates}>
+                                <Download className="mr-2 h-4 w-4" />
+                                <span>Export Templates</span>
                             </DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
@@ -1253,7 +1274,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                             <Label>End Month</Label>
                             <Select 
                                 value={format(endMonth, 'yyyy-MM')} 
-                                onValueChange={(v) => setEndMonth(parse(v, 'yyyy-MM', new Date()))}
+                                onValueChange={(v) => setStartMonth(parse(v, 'yyyy-MM', new Date()))}
                             >
                                 <SelectTrigger>
                                     <SelectValue />

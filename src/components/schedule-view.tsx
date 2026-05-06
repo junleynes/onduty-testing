@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react';
@@ -1077,12 +1078,14 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
         setIsExporting(true);
         try {
             const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Schedule Export');
+            let currentRow = 1;
+
             const months = eachMonthOfInterval({ start: startMonth, end: endMonth });
 
             for (const month of months) {
                 const monthKey = format(month, 'yyyy-MM');
                 const sheetName = format(month, 'MMMM yyyy');
-                const worksheet = workbook.addWorksheet(sheetName);
 
                 const visibleEmployees = employees.filter(e => e.visibility?.schedule !== false);
                 const employeeMap = new Map(visibleEmployees.map(e => [e.id, e]));
@@ -1176,13 +1179,16 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                         });
                     });
 
-                    worksheet.columns[0].width = 30;
-                    worksheet.columns[1].width = 20;
-                    for(let i = 0; i < days.length; i++) {
-                        worksheet.getColumn(i + 3).width = 12;
+                    if (startRow === 1) {
+                        worksheet.columns[0].width = 30;
+                        worksheet.columns[1].width = 20;
+                        for(let i = 0; i < 31; i++) {
+                            const col = worksheet.getColumn(i + 3);
+                            if (col) col.width = 12;
+                        }
                     }
 
-                    return startRow + orderedEmps.length + 4; 
+                    return startRow + orderedEmps.length + 3; 
                 };
 
                 const monthStart = startOfMonth(month);
@@ -1193,15 +1199,15 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                 const monthEnd = endOfMonth(month);
                 const secondHalfDays = eachDayOfInterval({ start: day16, end: monthEnd });
 
-                let nextRow = renderTable(1, firstHalfDays, `Semi-Monthly Schedule: ${sheetName} (1-15)`);
-                renderTable(nextRow, secondHalfDays, `Semi-Monthly Schedule: ${sheetName} (16-${getDate(monthEnd)})`);
+                currentRow = renderTable(currentRow, firstHalfDays, `Semi-Monthly Schedule: ${sheetName} (1-15)`);
+                currentRow = renderTable(currentRow, secondHalfDays, `Semi-Monthly Schedule: ${sheetName} (16-${getDate(monthEnd)})`);
             }
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-            saveAs(blob, `Semi-Monthly Schedule Export - ${format(startMonth, 'MMM yyyy')} to ${format(endMonth, 'MMM yyyy')}.xlsx`);
+            saveAs(blob, `Consolidated Schedule Export - ${format(startMonth, 'MMM yyyy')} to ${format(endMonth, 'MMM yyyy')}.xlsx`);
 
-            toast({ title: 'Export Successful', description: 'Your schedule has been exported to Excel.' });
+            toast({ title: 'Export Successful', description: 'Your schedule has been exported to a single sheet.' });
             setIsOpen(false);
         } catch (error) {
             console.error(error);
@@ -1217,7 +1223,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                 <DialogHeader>
                     <DialogTitle>Export Schedule to Excel</DialogTitle>
                     <DialogDescription>
-                        Generate a grid-view semi-monthly Excel report for the selected months.
+                        Generate a single-sheet continuous semi-monthly Excel report for the selected months.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
@@ -1278,7 +1284,7 @@ function ScheduleExportDialog({ isOpen, setIsOpen, employees, shifts, leave, hol
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-                    <Button onClick={handleExport} disabled={isExporting}>
+                    <Button onClick={handleExport} disabled={endMonth < startMonth || isExporting}>
                         {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
                         Export to Excel
                     </Button>

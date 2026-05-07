@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
+import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear, eachMonthOfInterval, addMonths } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -25,6 +25,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { ShiftTemplateManager } from './shift-template-manager';
 import { ScheduleImporter } from './schedule-importer';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { DatePicker } from './ui/date-picker';
+import { Label } from './ui/label';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -67,6 +70,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isManageShiftsOpen, setIsManageShiftsOpen] = useState(false);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   
   const [viewEmployeeOrder, setViewEmployeeOrder] = useState<string[] | null>(null);
 
@@ -537,16 +541,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     toast({ title: "Template Loaded" });
   };
 
-  const handleCopyMonthRange = () => {
-    const monthStart = startOfMonth(currentDate);
-    const day15 = addDays(monthStart, 14);
-    const day16 = addDays(monthStart, 15);
-    const monthEnd = endOfMonth(currentDate);
-    
-    // Logic to export specific range as CSV or Excel
-    toast({ title: "Export Started", description: "Generating schedule file..." });
-  };
-
   return (
     <Card className="h-full flex flex-col">
        <CardHeader>
@@ -557,10 +551,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
             </div>
              {!isReadOnly && (
             <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" />Add</Button></DropdownMenuTrigger>
-                <DropdownMenuContent><DropdownMenuItem onClick={handleAddShiftClick}>Add Shift</DropdownMenuItem><DropdownMenuItem onClick={handleAddLeaveClick}>Add Time Off</DropdownMenuItem></DropdownMenuContent>
-              </DropdownMenu>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="outline">Actions<ChevronsUpDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">

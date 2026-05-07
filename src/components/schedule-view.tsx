@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -7,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -15,7 +14,7 @@ import { cn, getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
 import { ShiftEditor, type ShiftTemplate, type ShiftWithRepeat } from './shift-editor';
 import { LeaveEditor } from './leave-editor';
 import { ShiftBlock } from './shift-block';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from './ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { LeaveTypeEditor, type LeaveTypeOption } from './leave-type-editor';
 import { LeaveTypeImporter } from './leave-type-importer';
@@ -25,6 +24,7 @@ import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ShiftTemplateManager } from './shift-template-manager';
 import { ScheduleImporter } from './schedule-importer';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -84,6 +84,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isLeaveTypeEditorOpen, setIsLeaveTypeEditorOpen] = useState(false);
   const [isLeaveTypeImporterOpen, setIsLeaveTypeImporterOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [clearType, setClearType] = useState<'week' | 'month' | 'year' | null>(null);
   
   const [weekTemplate, setWeekTemplate] = useState<Omit<Shift, 'id' | 'date'>[] | null>(null);
   const { toast } = useToast();
@@ -300,6 +302,40 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       return `${format(start, 'MMM d')} - ${format(end, 'd, yyyy')}`;
   }
 
+  const handleClearWeek = () => {
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    setShifts(prev => prev.filter(s => !isWithinInterval(new Date(s.date), { start, end })));
+    toast({ title: "Week Cleared", description: "All shifts for the current week have been removed." });
+  };
+
+  const handleClearMonth = () => {
+    const start = startOfMonth(currentDate);
+    const end = endOfMonth(currentDate);
+    setShifts(prev => prev.filter(s => !isWithinInterval(new Date(s.date), { start, end })));
+    toast({ title: "Month Cleared", description: "All shifts for the current month have been removed." });
+  };
+
+  const handleClearYear = () => {
+    const start = startOfYear(currentDate);
+    const end = endOfYear(currentDate);
+    setShifts(prev => prev.filter(s => !isWithinInterval(new Date(s.date), { start, end })));
+    toast({ title: "Year Cleared", description: "All shifts for the current year have been removed." });
+  };
+
+  const confirmClear = (type: 'week' | 'month' | 'year') => {
+    setClearType(type);
+    setIsClearConfirmOpen(true);
+  };
+
+  const handleExecuteClear = () => {
+    if (clearType === 'week') handleClearWeek();
+    else if (clearType === 'month') handleClearMonth();
+    else if (clearType === 'year') handleClearYear();
+    setIsClearConfirmOpen(false);
+    setClearType(null);
+  };
+
   const renderGridHeader = (days: Date[]) => (
      <div className="contents">
         <div className="sticky top-0 left-0 z-30 p-2 bg-card border-b border-r flex items-center justify-center">
@@ -500,26 +536,46 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
               </DropdownMenu>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="outline">Actions<ChevronsUpDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuLabel>General Actions</DropdownMenuLabel>
                         <DropdownMenuGroup>
                            <DropdownMenuItem onClick={() => toast({ title: "Draft Saved" })}><Save className="mr-2 h-4 w-4" /><span>Save Draft</span></DropdownMenuItem>
                            <DropdownMenuItem onClick={onPublish}><Send className="mr-2 h-4 w-4" /><span>Publish</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Data Management</DropdownMenuLabel>
                         <DropdownMenuGroup>
                             <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export Semi-Monthly Excel</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Template Actions</DropdownMenuLabel>
                          <DropdownMenuGroup>
                             <DropdownMenuItem onClick={handleCopyPreviousWeek} disabled={viewMode !== 'week'}><Copy className="mr-2 h-4 w-4" /><span>Copy Previous Week</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={handleSaveTemplate} disabled={viewMode !== 'week'}><Download className="mr-2 h-4 w-4" /><span>Save as Template</span></DropdownMenuItem>
                             <DropdownMenuItem onClick={handleLoadTemplate} disabled={!weekTemplate || viewMode !== 'week'}><Upload className="mr-2 h-4 w-4" /><span>Load Template</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Settings</DropdownMenuLabel>
                          <DropdownMenuGroup>
                              <DropdownMenuItem onClick={() => setIsLeaveTypeEditorOpen(true)}><Settings className="mr-2 h-4 w-4" /><span>Manage Leave Types</span></DropdownMenuItem>
                             <DropdownMenuItem onClick={onManageHolidays}><Settings className="mr-2 h-4 w-4" /><span>Manage Holidays</span></DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export Semi-Monthly Excel</span></DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-destructive">Danger Zone</DropdownMenuLabel>
+                        <DropdownMenuGroup>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => confirmClear('week')}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Clear Current Week</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => confirmClear('month')}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Clear Current Month</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => confirmClear('year')}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Clear Current Year</span>
+                            </DropdownMenuItem>
                         </DropdownMenuGroup>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -621,6 +677,27 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
           toast({ title: "Import Successful" });
         }}
       />
+
+      <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Are you absolutely sure?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all shifts for the current {clearType}. 
+              This action cannot be undone. Time off requests will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setClearType(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleExecuteClear} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Clear All Shifts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

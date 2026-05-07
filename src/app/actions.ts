@@ -7,7 +7,7 @@ import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay, addDays } from 'date-fns';
+import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay, addDays, startOfDay } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { getFullName } from '@/lib/utils';
 
@@ -28,7 +28,6 @@ export async function sendEmail(
         return { success: false, error: 'SMTP connection settings (Host, Port, User, Pass) are not fully configured.' };
     }
 
-    // Force secure true for port 465, otherwise follow settings
     const isSecure = smtpSettings.port === 465 || smtpSettings.secure;
 
     const transporter = nodemailer.createTransport({
@@ -40,7 +39,7 @@ export async function sendEmail(
             pass: smtpSettings.pass,
         },
         tls: {
-            rejectUnauthorized: false, // Essential for many self-hosted environments
+            rejectUnauthorized: false,
             minVersion: 'TLSv1.2'
         },
         connectionTimeout: 20000,
@@ -75,14 +74,12 @@ export async function verifyUser(email: string, password: string): Promise<{ suc
         if (userRow) {
             const user = JSON.parse(JSON.stringify(userRow)) as Employee;
             
-            // Check for hashed password
             if (user.password && user.password.startsWith('$2')) {
                 const isMatch = await bcrypt.compare(password, user.password);
                 if (isMatch) {
                     return { success: true, user: user };
                 }
             } 
-            // Fallback for legacy plain-text passwords
             else if (user.password === password) {
                 return { success: true, user: user };
             }
@@ -234,7 +231,8 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
         for (const field of allFormFields) {
             const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
             const isMatch = normalizedTargets.some(target => 
-                currentFieldName === target || currentFieldName.endsWith(target)
+                currentFieldName === target || 
+                (target.length > 5 && currentFieldName.endsWith(target))
             );
 
             if (isMatch) {
@@ -296,17 +294,17 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
         const fields = {
-            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
-            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed', 'date'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept', 'group'],
-            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
-            leave_dates: [leaveDatesDisplay, 'leave_dates', 'dates', 'period', 'dates of leave applied for', 'inclusive dates'],
-            total_days: [totalDaysValue, 'total_days', 'totaldays', 'no_of_days', 'total no of leave days', 'days'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons', 'details'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'i can be contacted at', 'contact number', 'mobile', 'cellphone', 'contactno', 'phoneno', 'telephoneno'],
-            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved', 'date received'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
-            leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave', 'type', 'leavetype'],
+            employee_name: [getFullName(employee), 'employee_name', 'employee name', 'emp_name', 'applicant_name'],
+            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept'],
+            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no'],
+            leave_dates: [leaveDatesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
+            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'total no of leave days', 'days'],
+            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'i can be contacted at', 'contact number'],
+            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'immediate superior', 'mgr_name'],
+            leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave'],
         };
 
         const allFormFields = form.getFields();
@@ -316,7 +314,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isMatch = normalizedTargets.some(target => 
-                    currentFieldName === target || currentFieldName.endsWith(target)
+                    currentFieldName === target || 
+                    (target.length > 5 && currentFieldName.endsWith(target))
                 );
                 if (isMatch) {
                     try {
@@ -361,22 +360,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                     try { form.getCheckBox(field.getName()).check(); } catch (e) {}
                     try { form.getTextField(field.getName()).setText('X'); } catch (e) {}
                 }
-                try {
-                    const radioGroup = form.getRadioGroup(field.getName());
-                    const options = radioGroup.getOptions();
-                    const matchingOption = options.find(opt => {
-                        const normOpt = opt.toLowerCase().replace(/[^a-z0-9]/g, '');
-                        return normOpt === statusKey || normOpt.endsWith(statusKey) || normOpt === alternateKey || normOpt.endsWith(alternateKey);
-                    });
-                    if (matchingOption) radioGroup.select(matchingOption);
-                } catch (e) {}
             }
         }
 
         form.updateFieldAppearances();
 
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'employee signature', 'signature_1']);
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'immediate superior signature', 'signature_2']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'employee_signature', 'signature_employee', 'emp_sig', 'signature_1']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || (manager?.signature), ['manager_signature_af_image', 'manager_signature', 'signature_manager', 'supervisor_signature', 'superior_signature', 'mgr_sig', 'signature_2']);
 
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
@@ -455,17 +445,17 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         const fields: Record<string, string[]> = {
-            employee_name: [getFullName(employee), 'fullname', 'name', 'employee_name', 'employee name', 'emp_name'],
-            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no', 'id'],
-            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group', 'office'],
-            offset_dates: [offsetDatesDisplay, 'offset_dates', 'dates', 'period'],
-            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days', 'totaldays'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'mobile', 'cellphone', 'contactno', 'phoneno'],
+            employee_name: [getFullName(employee), 'employee_name', 'employee name', 'emp_name', 'applicant_name'],
+            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
+            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group'],
+            offset_dates: [offsetDatesDisplay, 'offset_dates', 'period_of_offset', 'inclusive_dates'],
+            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
+            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'offset_reason'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact_number'],
             work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
             work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'manager', 'supervisor', 'superior', 'immediate superior', 'immediate_superior', 'mgr_name'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'mgr_name'],
         };
         
         if (weRequest) {
@@ -489,7 +479,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isMatch = normalizedTargets.some(target => 
-                    currentFieldName === target || currentFieldName.endsWith(target)
+                    currentFieldName === target || 
+                    (target.length > 5 && currentFieldName.endsWith(target))
                 );
                 if (isMatch) {
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
@@ -539,7 +530,7 @@ export async function sendPasswordResetLink(email: string, origin: string, smtpS
         }
 
         const token = uuidv4();
-        const expiresAt = new Date(Date.now() + 3600000); // 1 hour expiry
+        const expiresAt = new Date(Date.now() + 3600000); 
 
         db.prepare('INSERT INTO password_reset_tokens (token, employeeId, expiresAt) VALUES (?, ?, ?)')
           .run(token, employee.id, expiresAt.toISOString());
@@ -570,7 +561,7 @@ export async function sendActivationLink(employeeId: string, origin: string, smt
         }
 
         const token = uuidv4();
-        const expiresAt = new Date(Date.now() + 24 * 3600000); // 24 hours expiry for activation
+        const expiresAt = new Date(Date.now() + 24 * 3600000); 
 
         db.prepare('INSERT INTO password_reset_tokens (token, employeeId, expiresAt) VALUES (?, ?, ?)')
           .run(token, employee.id, expiresAt.toISOString());

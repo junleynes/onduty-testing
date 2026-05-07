@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState } from 'react';
@@ -29,6 +27,8 @@ const shiftColorMap: { [key: string]: string } = {
   purple: '#9b59b6',
   pink: '#e91e63',
   white: '#ffffff',
+  yellow: '#f1c40f',
+  'dark grayish blue': '#6b7280',
 };
 
 
@@ -75,17 +75,31 @@ export function TemplateImporter({ isOpen, setIsOpen, onImport }: TemplateImport
           }
 
           const newTemplates: ShiftTemplate[] = results.data.map((row: any) => {
-            const colorName = (row['Shift Color'] || 'default').toLowerCase();
-            const colorValue = shiftColorMap[colorName] || shiftColorMap['default'];
+            const rawColor = (row['Shift Color'] || '').trim();
+            const lowerColor = rawColor.toLowerCase();
+            
+            // Logic to handle colors:
+            // 1. If it starts with # or hsl, use it as is (raw value)
+            // 2. If it's a known color name (e.g., "red"), use the map
+            // 3. Fallback to default
+            let colorValue = shiftColorMap['default'];
+            
+            if (rawColor.startsWith('#') || rawColor.startsWith('hsl')) {
+                colorValue = rawColor;
+            } else if (shiftColorMap[lowerColor]) {
+                colorValue = shiftColorMap[lowerColor];
+            }
+
             const isUnpaidValue = (row['Is Unpaid Break'] || 'false').toLowerCase();
             const isUnpaidBreak = ['true', '1'].includes(isUnpaidValue);
 
             return {
+              id: row['id'] || `tpl-${Math.random().toString(36).substr(2, 9)}`,
               label: row['Shift Label'] || '',
               startTime: row['Start Time'] || '',
               endTime: row['End Time'] || '',
               color: colorValue,
-              name: `${row['Shift Label']} (${row['Start Time']}-${row['End Time']})`,
+              name: row['name'] || `${row['Shift Label']} (${row['Start Time']}-${row['End Time']})`,
               breakStartTime: row['Break Start'] || '',
               breakEndTime: row['Break End'] || '',
               isUnpaidBreak: isUnpaidBreak,

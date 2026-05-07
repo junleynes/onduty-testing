@@ -309,27 +309,18 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const allFormFields = form.getFields();
         
-        // Exact name matching to prevent collision
-        const setFieldText = (fieldName: string, text: string) => {
-            try {
-                const field = form.getTextField(fieldName);
-                field.setText(text);
-            } catch (e) {}
-        };
-
         for (const [key, [value, ...targets]] of Object.entries(fields)) {
             const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                // Priority: Exact key match > fuzzy logic
                 const isExactKey = fName === key.replace(/_/g, '');
-                const isMatch = isExactKey || normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
+                const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
-                // Special check for manager_name vs employee_name collision
-                if (isMatch && key === 'employee_name' && fName.includes('manager')) continue;
-                if (isMatch && key === 'manager_name' && fName.includes('employee')) continue;
+                if (isExactKey || isFuzzyMatch) {
+                    // Collision prevention
+                    if (key === 'employee_name' && fName.includes('manager')) continue;
+                    if (key === 'manager_name' && fName.includes('employee')) continue;
 
-                if (isMatch) {
                     try {
                         const textField = form.getTextField(field.getName());
                         textField.setText(value || '');
@@ -362,8 +353,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
-        if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
-            const statusKey = leaveRequest.status.toLowerCase();
+        if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected' || leaveRequest.status === 'processed') {
+            const statusKey = leaveRequest.status === 'processed' ? 'approved' : leaveRequest.status.toLowerCase();
             const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -461,12 +452,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
             date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group'],
-            offset_dates: [offsetDatesDisplay, 'offset_dates', 'period_of_offset', 'inclusive_dates'],
+            offset_dates: [offsetDatesDisplay, 'offset_dates', 'period_of_offset', 'inclusive_dates', 'leave_dates'],
             total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'offset_reason'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact_number'],
-            work_extension_date: [weDate, 'work_extension_date', 'we_date', 'claimed_date'],
-            work_extension_hours: [weHours, 'work_extension_hours', 'we_hours', 'claimed_hours'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'mgr_name'],
         };
         
@@ -475,7 +464,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
             fields['we_date_filed'] = [weRequest.dateFiled ? format(new Date(weRequest.dateFiled), 'MM/dd/yyyy') : '', 'we_date_filed'];
             fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
-            fields['we_date'] = [format(new Date(weRequest.startDate), 'MM/dd/yyyy'), 'we_date'];
+            fields['we_date'] = [weDate, 'we_date'];
             fields['we_shiftfrom'] = [weRequest.originalStartTime || '', 'we_shiftfrom'];
             fields['we_shiftto'] = [weRequest.originalEndTime || '', 'we_shiftto'];
             fields['we_timein'] = [weRequest.startTime || '', 'we_timein'];
@@ -491,23 +480,24 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isExactKey = fName === key.replace(/_/g, '');
-                const isMatch = isExactKey || normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
+                const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
-                // Collision prevention for manager vs employee
-                if (isMatch && key === 'employee_name' && fName.includes('manager')) continue;
-                if (isMatch && key === 'manager_name' && fName.includes('employee')) continue;
-                // Collision prevention for we_reason vs reason
-                if (isMatch && key === 'reason' && fName.startsWith('we')) continue;
-                if (isMatch && key === 'we_reason' && !fName.startsWith('we')) continue;
+                if (isExactKey || isFuzzyMatch) {
+                    // Strict separation for name fields
+                    if (key === 'employee_name' && fName.includes('manager')) continue;
+                    if (key === 'manager_name' && fName.includes('employee')) continue;
+                    
+                    // Strict separation for reason fields
+                    if (key === 'reason' && fName.startsWith('we')) continue;
+                    if (key === 'we_reason' && !fName.startsWith('we')) continue;
 
-                if (isMatch) {
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }
             }
         }
         
-        if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected') {
-            const statusKey = leaveRequest.status.toLowerCase();
+        if (leaveRequest.status === 'approved' || leaveRequest.status === 'rejected' || leaveRequest.status === 'processed') {
+            const statusKey = leaveRequest.status === 'processed' ? 'approved' : leaveRequest.status.toLowerCase();
             const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');

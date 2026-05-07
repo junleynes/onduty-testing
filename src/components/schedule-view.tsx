@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -23,6 +24,7 @@ import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ShiftTemplateManager } from './shift-template-manager';
+import { ScheduleImporter } from './schedule-importer';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -64,6 +66,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isManageShiftsOpen, setIsManageShiftsOpen] = useState(false);
+  const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   
   const [viewEmployeeOrder, setViewEmployeeOrder] = useState<string[] | null>(null);
 
@@ -291,136 +294,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       setCurrentDate(newDate);
   }
   
-  const handleClearWeek = () => {
-    if (isReadOnly) return;
-    const shiftIdsInView = new Set(shifts.filter(shift => displayedDays.some(day => isSameDay(new Date(shift.date), day))).map(s => s.id));
-    setShifts(shifts.filter(shift => !displayedDays.some(day => isSameDay(new Date(shift.date), day))));
-    setTasks(tasks.filter(t => !t.shiftId || !shiftIdsInView.has(t.shiftId)));
-    toast({ title: "Week Cleared" });
-  };
-  
-  const handleClearMonth = () => {
-    if (isReadOnly) return;
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
-    const shiftIdsInMonth = new Set(shifts.filter(shift => new Date(shift.date) >= monthStart && new Date(shift.date) <= monthEnd).map(s => s.id));
-    setShifts(shifts.filter(shift => new Date(shift.date) < monthStart || new Date(shift.date) > monthEnd));
-    setTasks(tasks.filter(t => !t.shiftId || !shiftIdsInMonth.has(t.shiftId)));
-    toast({ title: "Month Cleared" });
-  };
-
-  const handleClearDraft = () => {
-    if (isReadOnly) return;
-    const draftShiftIds = new Set(shifts.filter(shift => shift.status === 'draft').map(s => s.id));
-    setShifts(shifts.filter(shift => shift.status !== 'draft'));
-    setTasks(tasks.filter(t => !t.shiftId || !draftShiftIds.has(t.shiftId)));
-    toast({ title: "Drafts Cleared" });
-  };
-
-  const handleCopyPreviousWeek = () => {
-    if (isReadOnly) return;
-    const prevWeekStart = subDays(dateRange.from, 7);
-    const prevWeekEnd = subDays(dateRange.to, 7);
-    const prevWeekShifts = shifts.filter(shift => new Date(shift.date) >= prevWeekStart && new Date(shift.date) <= prevWeekEnd);
-
-    const newShifts = prevWeekShifts.map(shift => ({
-      ...shift,
-      id: uuidv4(),
-      date: addDays(new Date(shift.date), 7),
-      status: 'draft' as const,
-    }));
-
-    setShifts(currentShifts => [...currentShifts, ...newShifts]);
-    toast({ title: "Previous Week Copied" });
-  };
-
-  const handleSaveTemplate = () => {
-    if (isReadOnly) return;
-    const shiftsInView = shifts.filter(shift => displayedDays.some(day => isSameDay(new Date(shift.date), day)));
-    const template = shiftsInView.map(({ id, date, ...rest }) => ({
-      ...rest,
-      dayOfWeek: new Date(date).getDay(),
-    }));
-    setWeekTemplate(template as any);
-    toast({ title: "Template Saved" });
-  };
-
-  const handleLoadTemplate = () => {
-    if (isReadOnly) return;
-    if (!weekTemplate) {
-      toast({ variant: 'destructive', title: "No Template Saved" });
-      return;
-    }
-    const shiftsOutsideCurrentWeek = shifts.filter(shift => !displayedDays.some(day => isSameDay(new Date(shift.date), day)));
-    const newShifts = weekTemplate.map((templateShift: any) => {
-        const targetDay = displayedDays.find(d => d.getDay() === templateShift.dayOfWeek);
-        if (!targetDay) return null;
-        return { ...templateShift, id: uuidv4(), date: targetDay, status: 'draft' };
-    }).filter(Boolean);
-    setShifts([...shiftsOutsideCurrentWeek, ...newShifts as Shift[]]);
-    toast({ title: "Template Loaded" });
-  };
-
-  const handleShiftDragStart = (e: React.DragEvent<HTMLDivElement>, item: Shift | Leave) => {
-    if (isReadOnly) return;
-    e.dataTransfer.setData("itemId", item.id);
-    const itemType = 'label' in item ? 'shift' : 'leave';
-    e.dataTransfer.setData("itemType", itemType);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleShiftDrop = (e: React.DragEvent<HTMLDivElement>, targetEmployeeId: string | null, targetDate: Date) => {
-    if (isReadOnly) return;
-    e.preventDefault();
-    const itemId = e.dataTransfer.getData("itemId");
-    const itemType = e.dataTransfer.getData("itemType");
-    
-    if (itemType === 'shift') {
-      setShifts(prevShifts => 
-        prevShifts.map(shift =>
-          shift.id === itemId
-            ? { ...shift, employeeId: targetEmployeeId, date: targetDate, status: 'draft' }
-            : shift
-        )
-      );
-    } else if (itemType === 'leave') {
-       setLeave(prevLeave => 
-        prevLeave.map(l =>
-          l.id === itemId
-            ? { ...l, employeeId: targetEmployeeId!, startDate: targetDate, endDate: targetDate }
-            : l
-        )
-      );
-    }
-  };
-  
-  const handleEmployeeDragStart = (e: React.DragEvent<HTMLDivElement>, employeeId: string) => {
-    if (isReadOnly) return;
-    e.dataTransfer.setData('draggedEmployeeId', employeeId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-  
-  const handleEmployeeDrop = (e: React.DragEvent<HTMLDivElement>, targetEmployeeId: string) => {
-    if (isReadOnly) return;
-    e.preventDefault();
-    const draggedEmployeeId = e.dataTransfer.getData('draggedEmployeeId');
-    if (!draggedEmployeeId || draggedEmployeeId === targetEmployeeId) return;
-
-    const currentOrder = viewEmployeeOrder || visibleEmployees.map(e => e.id);
-    const draggedIndex = currentOrder.indexOf(draggedEmployeeId);
-    const targetIndex = currentOrder.indexOf(targetEmployeeId);
-
-    if (draggedIndex === -1 || targetIndex === -1) return;
-
-    const newOrder = [...currentOrder];
-    const [draggedItem] = newOrder.splice(draggedIndex, 1);
-    newOrder.splice(targetIndex, 0, draggedItem);
-    
-    const monthKey = format(currentDate, 'yyyy-MM');
-    setMonthlyEmployeeOrder(prev => ({ ...prev, [monthKey]: newOrder }));
-    setViewEmployeeOrder(newOrder);
-  };
-
   const formatRange = (start: Date, end: Date) => {
       if (viewMode === 'month') return format(start, 'MMMM yyyy');
       if (isSameDay(start, end)) return format(start, 'MMM d, yyyy');
@@ -493,13 +366,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     }
     
     return (
-    <div className="contents" key={employee.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleEmployeeDrop(e, employee.id)}>
+    <div className="contents" key={employee.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => {}}>
         <div className="sticky left-0 z-20 py-1 px-2 border-b border-r flex items-center gap-3 min-h-[52px] bg-card group">
-            {!isReadOnly && employee.id !== 'unassigned' && (
-              <div draggable onDragStart={(e) => handleEmployeeDragStart(e, employee.id)} className="cursor-grab">
-                <GripVertical className="h-5 w-5 text-muted-foreground group-hover:opacity-100 opacity-0 transition-opacity" />
-              </div>
-            )}
             <div className="flex items-center gap-3">
                  {employee.id !== 'unassigned' ? (
                     <Avatar className="h-9 w-9">
@@ -535,6 +403,83 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     </div>
   )};
 
+  const handleShiftDragStart = (e: React.DragEvent<HTMLDivElement>, item: Shift | Leave) => {
+    if (isReadOnly) return;
+    e.dataTransfer.setData("itemId", item.id);
+    const itemType = 'label' in item ? 'shift' : 'leave';
+    e.dataTransfer.setData("itemType", itemType);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleShiftDrop = (e: React.DragEvent<HTMLDivElement>, targetEmployeeId: string | null, targetDate: Date) => {
+    if (isReadOnly) return;
+    e.preventDefault();
+    const itemId = e.dataTransfer.getData("itemId");
+    const itemType = e.dataTransfer.getData("itemType");
+    
+    if (itemType === 'shift') {
+      setShifts(prevShifts => 
+        prevShifts.map(shift =>
+          shift.id === itemId
+            ? { ...shift, employeeId: targetEmployeeId, date: targetDate, status: 'draft' }
+            : shift
+        )
+      );
+    } else if (itemType === 'leave') {
+       setLeave(prevLeave => 
+        prevLeave.map(l =>
+          l.id === itemId
+            ? { ...l, employeeId: targetEmployeeId!, startDate: targetDate, endDate: targetDate }
+            : l
+        )
+      );
+    }
+  };
+
+  const handleCopyPreviousWeek = () => {
+    if (isReadOnly) return;
+    const prevWeekStart = subDays(dateRange.from, 7);
+    const prevWeekEnd = subDays(dateRange.to, 7);
+    const prevWeekShifts = shifts.filter(shift => new Date(shift.date) >= prevWeekStart && new Date(shift.date) <= prevWeekEnd);
+
+    const newShifts = prevWeekShifts.map(shift => ({
+      ...shift,
+      id: uuidv4(),
+      date: addDays(new Date(shift.date), 7),
+      status: 'draft' as const,
+    }));
+
+    setShifts(currentShifts => [...currentShifts, ...newShifts]);
+    toast({ title: "Previous Week Copied" });
+  };
+
+  const handleSaveTemplate = () => {
+    if (isReadOnly) return;
+    const shiftsInView = shifts.filter(shift => displayedDays.some(day => isSameDay(new Date(shift.date), day)));
+    const template = shiftsInView.map(({ id, date, ...rest }) => ({
+      ...rest,
+      dayOfWeek: new Date(date).getDay(),
+    }));
+    setWeekTemplate(template as any);
+    toast({ title: "Template Saved" });
+  };
+
+  const handleLoadTemplate = () => {
+    if (isReadOnly) return;
+    if (!weekTemplate) {
+      toast({ variant: 'destructive', title: "No Template Saved" });
+      return;
+    }
+    const shiftsOutsideCurrentWeek = shifts.filter(shift => !displayedDays.some(day => isSameDay(new Date(shift.date), day)));
+    const newShifts = weekTemplate.map((templateShift: any) => {
+        const targetDay = displayedDays.find(d => d.getDay() === templateShift.dayOfWeek);
+        if (!targetDay) return null;
+        return { ...templateShift, id: uuidv4(), date: targetDay, status: 'draft' };
+    }).filter(Boolean);
+    setShifts([...shiftsOutsideCurrentWeek, ...newShifts as Shift[]]);
+    toast({ title: "Template Loaded" });
+  };
+
   return (
     <Card className="h-full flex flex-col">
        <CardHeader>
@@ -547,7 +492,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => setIsManageShiftsOpen(true)}>
                 <Settings2 className="mr-2 h-4 w-4" />
-                Manage Shifts
+                Manage Shift Templates
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" />Add</Button></DropdownMenuTrigger>
@@ -559,6 +504,10 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuGroup>
                            <DropdownMenuItem onClick={() => toast({ title: "Draft Saved" })}><Save className="mr-2 h-4 w-4" /><span>Save Draft</span></DropdownMenuItem>
                            <DropdownMenuItem onClick={onPublish}><Send className="mr-2 h-4 w-4" /><span>Publish</span></DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                            <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                          <DropdownMenuGroup>
@@ -643,13 +592,34 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         setIsOpen={setIsManageShiftsOpen}
         shiftTemplates={shiftTemplates}
         setShiftTemplates={setShiftTemplates}
+      />
+      <ScheduleImporter
+        isOpen={isScheduleImporterOpen}
+        setIsOpen={setIsScheduleImporterOpen}
         employees={employees}
-        shifts={shifts}
-        setShifts={setShifts}
-        leave={leave}
-        setLeave={setLeave}
+        shiftTemplates={shiftTemplates}
         leaveTypes={leaveTypes}
-        setMonthlyEmployeeOrder={setMonthlyEmployeeOrder}
+        onImport={(data) => {
+          const { shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells } = data;
+          
+          const cellsToOverwrite = new Set(
+            overwrittenCells.map(cell => `${cell.employeeId}-${format(cell.date, 'yyyy-MM-dd')}`)
+          );
+
+          setShifts(prev => [
+            ...prev.filter(s => !s.employeeId || !cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)),
+            ...importedShifts
+          ]);
+
+          setLeave(prev => [
+            ...prev.filter(l => !l.employeeId || !cellsToOverwrite.has(`${l.employeeId}-${format(new Date(l.startDate), 'yyyy-MM-dd')}`)),
+            ...importedLeave
+          ]);
+
+          setMonthlyEmployeeOrder(prev => ({ ...prev, ...monthlyOrders }));
+          setIsScheduleImporterOpen(false);
+          toast({ title: "Import Successful" });
+        }}
       />
     </Card>
   );

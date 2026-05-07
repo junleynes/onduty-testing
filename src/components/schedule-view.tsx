@@ -181,7 +181,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   
   const handleNoteCellClick = (date: Date) => {
     const existingNote = notes.find(n => isSameDay(new Date(n.date), date));
-    const holiday = holidays.find(h => isSameDay(new Date(h.date), day));
+    const holiday = holidays.find(h => isSameDay(new Date(h.date), date));
 
     if (existingNote) {
         onViewNote(existingNote);
@@ -421,6 +421,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         );
         const leaveForDay = leave.filter(l => {
             if (l.employeeId !== employee.id || l.type === 'Work Extension' || !l.startDate || !l.endDate) return false;
+            if (l.type.toUpperCase() === 'TARDY' && l.status === 'approved') return false; // Don't show approved tardy on schedule
             return isWithinInterval(startOfDay(day), { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
         });
         return [...shiftsForDay, ...leaveForDay];
@@ -809,7 +810,11 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                                 
                                 days.forEach((day, idx) => {
                                     const shiftOnDay = shifts.find(s => (s.employeeId === emp.id || (emp.id === 'unassigned' && !s.employeeId)) && isSameDay(new Date(s.date), day));
-                                    const leaveOnDay = leave.find(l => l.employeeId === emp.id && isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) }));
+                                    const leaveOnDay = leave.find(l => {
+                                        if (l.employeeId !== emp.id) return false;
+                                        if (l.type.toUpperCase() === 'TARDY' && l.status === 'approved') return false;
+                                        return isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
+                                    });
                                     
                                     let cellValue = '';
                                     if (leaveOnDay) cellValue = leaveOnDay.type;

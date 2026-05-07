@@ -309,14 +309,26 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const allFormFields = form.getFields();
         
-        for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
-            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        // Exact name matching to prevent collision
+        const setFieldText = (fieldName: string, text: string) => {
+            try {
+                const field = form.getTextField(fieldName);
+                field.setText(text);
+            } catch (e) {}
+        };
+
+        for (const [key, [value, ...targets]] of Object.entries(fields)) {
+            const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const isMatch = normalizedTargets.some(target => 
-                    currentFieldName === target || 
-                    (target.length > 5 && currentFieldName.endsWith(target))
-                );
+                const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                // Priority: Exact key match > fuzzy logic
+                const isExactKey = fName === key.replace(/_/g, '');
+                const isMatch = isExactKey || normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
+                
+                // Special check for manager_name vs employee_name collision
+                if (isMatch && key === 'employee_name' && fName.includes('manager')) continue;
+                if (isMatch && key === 'manager_name' && fName.includes('employee')) continue;
+
                 if (isMatch) {
                     try {
                         const textField = form.getTextField(field.getName());
@@ -474,14 +486,20 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         const allFormFields = form.getFields();
-        for (const [key, [value, ...fieldNames]] of Object.entries(fields)) {
-            const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        for (const [key, [value, ...targets]] of Object.entries(fields)) {
+            const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
             for (const field of allFormFields) {
-                const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const isMatch = normalizedTargets.some(target => 
-                    currentFieldName === target || 
-                    (target.length > 5 && currentFieldName.endsWith(target))
-                );
+                const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                const isExactKey = fName === key.replace(/_/g, '');
+                const isMatch = isExactKey || normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
+                
+                // Collision prevention for manager vs employee
+                if (isMatch && key === 'employee_name' && fName.includes('manager')) continue;
+                if (isMatch && key === 'manager_name' && fName.includes('employee')) continue;
+                // Collision prevention for we_reason vs reason
+                if (isMatch && key === 'reason' && fName.startsWith('we')) continue;
+                if (isMatch && key === 'we_reason' && !fName.startsWith('we')) continue;
+
                 if (isMatch) {
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }

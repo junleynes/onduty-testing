@@ -23,19 +23,12 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { cn, getInitialState } from '@/lib/utils';
 import { format, addDays, startOfDay, differenceInCalendarDays, isSameDay } from 'date-fns';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 
 const requestSchema = z.object({
   claimedWorkExtensionId: z.string().min(1, { message: 'You must select a work extension to claim.'}),
   reason: z.string().min(1, 'Reason is required.'),
-  selectionMode: z.enum(['single', 'multiple', 'range']),
-  singleDate: z.date().optional(),
-  multipleDates: z.array(z.date()).optional(),
-  dateRange: z.object({
-      from: z.date().optional(),
-      to: z.date().optional(),
-  }).optional(),
+  singleDate: z.date({ required_error: "Please select a date." }),
   durationCategory: z.enum(['whole', 'half', 'minutes']),
   originalStartTime: z.string().optional(),
   originalEndTime: z.string().optional(),
@@ -44,15 +37,7 @@ const requestSchema = z.object({
   endTime: z.string().optional(),
   totalMinutes: z.coerce.number().optional(),
 }).refine(data => {
-    if (data.selectionMode === 'single') return !!data.singleDate;
-    if (data.selectionMode === 'multiple') return data.multipleDates && data.multipleDates.length > 0;
-    if (data.selectionMode === 'range') return data.dateRange?.from;
-    return false;
-}, {
-    message: "Please select date(s).",
-    path: ["singleDate"]
-}).refine(data => {
-    if (data.durationCategory === 'half' && data.selectionMode === 'single') {
+    if (data.durationCategory === 'half') {
         return !!data.originalStartTime && !!data.originalEndTime && !!data.halfDaySegment;
     }
     return true;
@@ -77,12 +62,10 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
     defaultValues: {
-        selectionMode: 'single',
         durationCategory: 'whole',
         startTime: '08:00',
         endTime: '12:00',
         totalMinutes: 0,
-        multipleDates: [],
         halfDaySegment: 'first',
     },
   });
@@ -107,14 +90,10 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
   useEffect(() => {
     if (isOpen) {
       const fromDate = request?.startDate ? new Date(request.startDate) : new Date();
-      const toDate = request?.endDate ? new Date(request.endDate) : fromDate;
       form.reset({
         claimedWorkExtensionId: request?.claimedWorkExtensionId || '',
         reason: request?.reason || '',
-        selectionMode: request?.endDate && !isSameDay(new Date(request.startDate!), new Date(request.endDate)) ? 'range' : 'single',
         singleDate: fromDate,
-        multipleDates: request?.startDate ? [new Date(request.startDate)] : [],
-        dateRange: { from: fromDate, to: toDate },
         durationCategory: request?.durationCategory || (request?.isAllDay === false ? 'half' : 'whole'),
         originalStartTime: request?.originalStartTime || '',
         originalEndTime: request?.originalEndTime || '',
@@ -124,50 +103,26 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
         totalMinutes: request?.totalMinutes || 0,
       });
     }
-  }, [request, isOpen, form, currentUser]);
+  }, [request, isOpen, form]);
 
-  const selectionMode = form.watch('selectionMode');
   const singleDate = form.watch('singleDate');
-  const multipleDates = form.watch('multipleDates') || [];
-  const dateRange = form.watch('dateRange');
   const durationCategory = form.watch('durationCategory');
 
   const totalDays = useMemo(() => {
     if (durationCategory === 'minutes') return 0;
-    let base = 0;
-    if (selectionMode === 'single') base = singleDate ? 1 : 0;
-    else if (selectionMode === 'multiple') base = multipleDates.length;
-    else if (selectionMode === 'range') {
-        if (dateRange?.from && dateRange?.to) {
-            base = differenceInCalendarDays(dateRange.to, dateRange.from) + 1;
-        } else if (dateRange?.from) {
-            base = 1;
-        }
-    }
+    const base = singleDate ? 1 : 0;
     return durationCategory === 'half' ? base * 0.5 : base;
-  }, [selectionMode, singleDate, multipleDates, dateRange, durationCategory]);
+  }, [singleDate, durationCategory]);
 
   const onSubmit = (values: z.infer<typeof requestSchema>) => {
-    if (values.selectionMode === 'multiple' && values.multipleDates) {
-        values.multipleDates.forEach(date => {
-            onSave({
-                ...values,
-                type: 'Offset',
-                isAllDay: values.durationCategory === 'whole',
-                startDate: date,
-                endDate: date,
-            });
-        });
-    } else {
-        const finalValues: Partial<Leave> = {
-            ...values,
-            type: 'Offset',
-            isAllDay: values.durationCategory === 'whole',
-            startDate: values.selectionMode === 'range' ? values.dateRange?.from : values.singleDate,
-            endDate: values.selectionMode === 'range' ? values.dateRange?.to || values.dateRange?.from : values.singleDate,
-        };
-        onSave(finalValues);
-    }
+    const finalValues: Partial<Leave> = {
+        ...values,
+        type: 'Offset',
+        isAllDay: values.durationCategory === 'whole',
+        startDate: values.singleDate,
+        endDate: values.singleDate,
+    };
+    onSave(finalValues);
   };
 
   return (
@@ -228,67 +183,27 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
             />
 
             <div className="space-y-2">
-                <FormLabel>Dates of Offset</FormLabel>
-                <Tabs value={selectionMode} onValueChange={(v) => {
-                    form.setValue('selectionMode', v as any);
-                    if (v !== 'single') form.setValue('durationCategory', 'whole');
-                }}>
-                    <TabsList className="grid w-full grid-cols-3 mb-2">
-                        <TabsTrigger value="single">Single</TabsTrigger>
-                        <TabsTrigger value="multiple">Multiple</TabsTrigger>
-                        <TabsTrigger value="range">Range</TabsTrigger>
-                    </TabsList>
-                </Tabs>
-                
+                <FormLabel>Date of Offset</FormLabel>
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button
                             variant={"outline"}
                             className={cn(
                                 "w-full justify-start text-left font-normal",
-                                !singleDate && selectionMode === 'single' && "text-muted-foreground"
+                                !singleDate && "text-muted-foreground"
                             )}
                         >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {selectionMode === 'single' ? (
-                                singleDate ? format(singleDate, "PPP") : <span>Pick a date</span>
-                            ) : selectionMode === 'multiple' ? (
-                                multipleDates.length > 0 ? `${multipleDates.length} dates selected` : <span>Pick dates</span>
-                            ) : (
-                                dateRange?.from ? (
-                                    dateRange.to ? (
-                                        <>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>
-                                    ) : format(dateRange.from, "LLL dd, y")
-                                ) : <span>Pick a range</span>
-                            )}
+                            {singleDate ? format(singleDate, "PPP") : <span>Pick a date</span>}
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                        {selectionMode === 'single' && (
-                            <Calendar
-                                mode="single"
-                                selected={singleDate}
-                                onSelect={(d) => form.setValue('singleDate', d)}
-                                initialFocus
-                            />
-                        )}
-                        {selectionMode === 'multiple' && (
-                            <Calendar
-                                mode="multiple"
-                                selected={multipleDates}
-                                onSelect={(d) => form.setValue('multipleDates', d)}
-                                initialFocus
-                            />
-                        )}
-                        {selectionMode === 'range' && (
-                            <Calendar
-                                mode="range"
-                                selected={dateRange}
-                                onSelect={(d) => form.setValue('dateRange', d || { from: undefined, to: undefined })}
-                                numberOfMonths={2}
-                                initialFocus
-                            />
-                        )}
+                        <Calendar
+                            mode="single"
+                            selected={singleDate}
+                            onSelect={(d) => form.setValue('singleDate', d!)}
+                            initialFocus
+                        />
                     </PopoverContent>
                 </Popover>
                 <FormMessage />
@@ -308,8 +223,8 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                         </FormControl>
                         <SelectContent>
                             <SelectItem value="whole">Whole day</SelectItem>
-                            {selectionMode === 'single' && <SelectItem value="half">Half day</SelectItem>}
-                            {selectionMode === 'single' && <SelectItem value="minutes">Minutes / Tardy</SelectItem>}
+                            <SelectItem value="half">Half day</SelectItem>
+                            <SelectItem value="minutes">Minutes / Tardy</SelectItem>
                         </SelectContent>
                     </Select>
                     <FormMessage />
@@ -317,7 +232,7 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                 )}
             />
 
-            {durationCategory === 'half' && selectionMode === 'single' && (
+            {durationCategory === 'half' && (
                 <div className="space-y-4 p-4 border rounded-md bg-muted/20">
                     <p className="text-sm font-semibold">Half Day Offset Details</p>
                     <div className="grid grid-cols-2 gap-4">
@@ -371,7 +286,7 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                 </div>
             )}
 
-            {durationCategory === 'minutes' && selectionMode === 'single' && (
+            {durationCategory === 'minutes' && (
                 <div className="grid grid-cols-2 gap-4">
                      <FormField
                         control={form.control}

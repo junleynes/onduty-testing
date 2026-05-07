@@ -85,7 +85,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isLeaveTypeImporterOpen, setIsLeaveTypeImporterOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
-  const [clearType, setClearType] = useState<'week' | 'month' | 'year' | null>(null);
+  const [clearType, setClearType] = useState<'week' | 'month' | 'year' | 'drafts' | 'unassign-week' | null>(null);
   
   const [weekTemplate, setWeekTemplate] = useState<Omit<Shift, 'id' | 'date'>[] | null>(null);
   const { toast } = useToast();
@@ -323,7 +323,23 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     toast({ title: "Year Cleared", description: "All shifts for the current year have been removed." });
   };
 
-  const confirmClear = (type: 'week' | 'month' | 'year') => {
+  const handleClearDrafts = () => {
+    setShifts(prev => prev.filter(s => s.status !== 'draft'));
+    toast({ title: "Drafts Cleared", description: "All draft shifts have been permanently removed." });
+  };
+
+  const handleUnassignWeek = () => {
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    setShifts(prev => prev.map(s => 
+      isWithinInterval(new Date(s.date), { start, end }) 
+        ? { ...s, employeeId: null, status: 'draft' as const } 
+        : s
+    ));
+    toast({ title: "Week Unassigned", description: "All shifts for the current week have been moved to unassigned." });
+  };
+
+  const confirmClear = (type: 'week' | 'month' | 'year' | 'drafts' | 'unassign-week') => {
     setClearType(type);
     setIsClearConfirmOpen(true);
   };
@@ -332,6 +348,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     if (clearType === 'week') handleClearWeek();
     else if (clearType === 'month') handleClearMonth();
     else if (clearType === 'year') handleClearYear();
+    else if (clearType === 'drafts') handleClearDrafts();
+    else if (clearType === 'unassign-week') handleUnassignWeek();
     setIsClearConfirmOpen(false);
     setClearType(null);
   };
@@ -564,6 +582,14 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel className="text-destructive">Danger Zone</DropdownMenuLabel>
                         <DropdownMenuGroup>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => confirmClear('drafts')}>
+                                <CircleSlash className="mr-2 h-4 w-4" />
+                                <span>Clear All Drafts</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => confirmClear('unassign-week')}>
+                                <UserX className="mr-2 h-4 w-4" />
+                                <span>Unassign Current Week</span>
+                            </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => confirmClear('week')}>
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 <span>Clear Current Week</span>
@@ -686,14 +712,18 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
               Are you absolutely sure?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all shifts for the current {clearType}. 
-              This action cannot be undone. Time off requests will not be affected.
+              {clearType === 'drafts' 
+                ? "This will permanently delete all shifts currently in draft status across the entire schedule. This action cannot be undone."
+                : clearType === 'unassign-week'
+                ? "This will remove all employee assignments for the current week. The shifts will be moved to the 'Unassigned' row."
+                : `This will permanently delete all shifts for the current ${clearType}. This action cannot be undone.`
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setClearType(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleExecuteClear} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Clear All Shifts
+              {clearType === 'unassign-week' ? "Unassign Week" : "Confirm Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

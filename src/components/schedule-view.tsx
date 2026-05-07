@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -181,7 +181,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   
   const handleNoteCellClick = (date: Date) => {
     const existingNote = notes.find(n => isSameDay(new Date(n.date), date));
-    const holiday = holidays.find(h => isSameDay(new Date(h.date), date));
+    const holiday = holidays.find(h => isSameDay(new Date(h.date), day));
 
     if (existingNote) {
         onViewNote(existingNote);
@@ -552,6 +552,26 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
              {!isReadOnly && (
             <div className="flex items-center gap-2">
                 <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            New
+                            <ChevronsUpDown className="ml-2 h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={handleAddShiftClick}>
+                            <Clock className="mr-2 h-4 w-4" />
+                            <span>Shift</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAddLeaveClick}>
+                            <Palmtree className="mr-2 h-4 w-4" />
+                            <span>Time Off</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
+                <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="outline">Actions<ChevronsUpDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                         <DropdownMenuLabel>General Actions</DropdownMenuLabel>
@@ -655,7 +675,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       />
       <LeaveEditor
         isOpen={isLeaveEditorOpen}
-        setIsOpen={setIsLeaveTypeEditorOpen}
+        setIsOpen={setIsLeaveEditorOpen}
         leave={editingLeave}
         onSave={handleSaveLeave}
         onDelete={handleDeleteLeave}

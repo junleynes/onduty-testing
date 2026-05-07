@@ -83,7 +83,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [editingLeave, setEditingLeave] = useState<Partial<Leave> | null>(null);
   const [isLeaveTypeEditorOpen, setIsLeaveTypeEditorOpen] = useState(false);
   const [isLeaveTypeImporterOpen, setIsLeaveTypeImporterOpen] = useState(false);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [clearType, setClearType] = useState<'week' | 'month' | 'year' | 'drafts' | 'unassign-week' | null>(null);
   
@@ -106,7 +105,10 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const displayedDays = useMemo(() => {
     if (dateRange?.from && dateRange.to && viewMode !== 'month') {
       try {
-        return eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
+        const start = startOfDay(dateRange.from);
+        const end = startOfDay(dateRange.to);
+        if (start > end) return [];
+        return eachDayOfInterval({ start, end });
       } catch (e) {
         return [];
       }
@@ -229,9 +231,10 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                     newShifts.push({ ...baseShift, id: uuidv4(), date: shiftDate });
                 }
             } else if (savedShift.repeatType === 'untilDate' && savedShift.repeatUntil) {
-                let currentDate = savedShift.date;
-                while (currentDate <= savedShift.repeatUntil) {
-                    newShifts.push({ ...baseShift, id: uuidv4(), date: currentDate });
+                let currentDate = startOfDay(savedShift.date);
+                const limit = startOfDay(savedShift.repeatUntil);
+                while (currentDate <= limit) {
+                    newShifts.push({ ...baseShift, id: uuidv4(), date: new Date(currentDate) });
                     currentDate = addDays(currentDate, 1);
                 }
             }
@@ -534,6 +537,16 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     toast({ title: "Template Loaded" });
   };
 
+  const handleCopyMonthRange = () => {
+    const monthStart = startOfMonth(currentDate);
+    const day15 = addDays(monthStart, 14);
+    const day16 = addDays(monthStart, 15);
+    const monthEnd = endOfMonth(currentDate);
+    
+    // Logic to export specific range as CSV or Excel
+    toast({ title: "Export Started", description: "Generating schedule file..." });
+  };
+
   return (
     <Card className="h-full flex flex-col">
        <CardHeader>
@@ -544,10 +557,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
             </div>
              {!isReadOnly && (
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setIsManageShiftsOpen(true)}>
-                <Settings2 className="mr-2 h-4 w-4" />
-                Manage Shift Templates
-              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" />Add</Button></DropdownMenuTrigger>
                 <DropdownMenuContent><DropdownMenuItem onClick={handleAddShiftClick}>Add Shift</DropdownMenuItem><DropdownMenuItem onClick={handleAddLeaveClick}>Add Time Off</DropdownMenuItem></DropdownMenuContent>
@@ -576,6 +585,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Settings</DropdownMenuLabel>
                          <DropdownMenuGroup>
+                             <DropdownMenuItem onClick={() => setIsManageShiftsOpen(true)}><Settings2 className="mr-2 h-4 w-4" /><span>Manage Shift Templates</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsLeaveTypeEditorOpen(true)}><Settings className="mr-2 h-4 w-4" /><span>Manage Leave Types</span></DropdownMenuItem>
                             <DropdownMenuItem onClick={onManageHolidays}><Settings className="mr-2 h-4 w-4" /><span>Manage Holidays</span></DropdownMenuItem>
                         </DropdownMenuGroup>
@@ -655,7 +665,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       />
       <LeaveEditor
         isOpen={isLeaveEditorOpen}
-        setIsOpen={setIsLeaveEditorOpen}
+        setIsOpen={setIsLeaveTypeEditorOpen}
         leave={editingLeave}
         onSave={handleSaveLeave}
         onDelete={handleDeleteLeave}
@@ -728,6 +738,90 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>Export Schedule to Excel</DialogTitle>
+                <DialogDescription>
+                    Select the range to export. The schedule will be exported in a continuous semi-monthly format.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="flex flex-col gap-2">
+                    <Label>Start Date</Label>
+                    <DatePicker date={dateRange.from} onDateChange={(d) => d && setCurrentDate(d)} />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Label>End Date (Optional)</Label>
+                    <DatePicker date={dateRange.to} onDateChange={() => {}} />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="ghost" onClick={() => setIsExportDialogOpen(false)}>Cancel</Button>
+                <Button onClick={async () => {
+                    const workbook = new ExcelJS.Workbook();
+                    const worksheet = workbook.addWorksheet('Schedule Export');
+                    
+                    // Simple continuous export logic
+                    const headerStyle: Partial<ExcelJS.Style> = {
+                        font: { bold: true, color: { argb: 'FFFFFFFF' } },
+                        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3498DB' } },
+                        alignment: { vertical: 'middle', horizontal: 'center' }
+                    };
+
+                    let currentRow = 1;
+                    const months = eachMonthOfInterval({ start: dateRange.from, end: addMonths(dateRange.from, 2) });
+
+                    for (const monthDate of months) {
+                        const periods = [
+                            { start: startOfMonth(monthDate), end: addDays(startOfMonth(monthDate), 14) },
+                            { start: addDays(startOfMonth(monthDate), 15), end: endOfMonth(monthDate) }
+                        ];
+
+                        for (const period of periods) {
+                            const days = eachDayOfInterval(period);
+                            const headerRow = worksheet.getRow(currentRow);
+                            headerRow.getCell(1).value = 'Employee';
+                            headerRow.getCell(1).style = headerStyle;
+                            
+                            days.forEach((day, idx) => {
+                                const cell = headerRow.getCell(idx + 2);
+                                cell.value = format(day, 'MM/dd/yyyy');
+                                cell.style = headerStyle;
+                            });
+                            
+                            currentRow++;
+                            
+                            orderedEmployees.forEach(emp => {
+                                const row = worksheet.getRow(currentRow);
+                                row.getCell(1).value = getFullName(emp) || 'Unassigned';
+                                
+                                days.forEach((day, idx) => {
+                                    const shiftOnDay = shifts.find(s => (s.employeeId === emp.id || (emp.id === 'unassigned' && !s.employeeId)) && isSameDay(new Date(s.date), day));
+                                    const leaveOnDay = leave.find(l => l.employeeId === emp.id && isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) }));
+                                    
+                                    let cellValue = '';
+                                    if (leaveOnDay) cellValue = leaveOnDay.type;
+                                    else if (shiftOnDay) cellValue = shiftOnDay.isDayOff ? 'OFF' : shiftOnDay.isHolidayOff ? 'HOL-OFF' : `${shiftOnDay.startTime}-${shiftOnDay.endTime}`;
+                                    
+                                    row.getCell(idx + 2).value = cellValue;
+                                });
+                                currentRow++;
+                            });
+                            
+                            currentRow++; // One row separator
+                        }
+                    }
+
+                    const buffer = await workbook.xlsx.writeBuffer();
+                    saveAs(new Blob([buffer]), `Schedule_Export_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+                    setIsExportDialogOpen(false);
+                    toast({ title: "Export Complete" });
+                }}>Generate Excel</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

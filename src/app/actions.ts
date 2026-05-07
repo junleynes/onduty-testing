@@ -247,6 +247,14 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
     }
 }
 
+// Fixed Date Formatting Helper to avoid UTC/Local mismatches
+function formatLocal(date: Date | string | number | undefined, pattern: string): string {
+    if (!date) return '';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return format(d, pattern);
+}
+
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
     const db = getDb();
     try {
@@ -280,8 +288,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         const startDate = new Date(leaveRequest.startDate);
         const endDate = new Date(leaveRequest.endDate);
         let leaveDatesDisplay = isSameDay(startDate, endDate)
-            ? format(startDate, 'MM/dd/yyyy')
-            : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
+            ? formatLocal(startDate, 'MM/dd/yyyy')
+            : `${formatLocal(startDate, 'MM/dd/yyyy')} to ${formatLocal(endDate, 'MM/dd/yyyy')}`;
         
         if (!leaveRequest.isAllDay && leaveRequest.durationCategory !== 'minutes') {
             if (leaveRequest.durationCategory === 'half' && leaveRequest.originalStartTime && leaveRequest.originalEndTime) {
@@ -295,14 +303,14 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const fields = {
             employee_name: [getFullName(employee), 'employee_name', 'employee name', 'emp_name', 'applicant_name'],
-            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
+            date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no'],
             leave_dates: [leaveDatesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
             total_days: [totalDaysValue, 'total_days', 'no_of_days', 'total no of leave days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'i can be contacted at', 'contact number'],
-            approval_date: [leaveRequest.managedAt ? format(new Date(leaveRequest.managedAt), 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved'],
+            approval_date: [leaveRequest.managedAt ? formatLocal(leaveRequest.managedAt, 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'immediate superior', 'mgr_name'],
             leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave'],
         };
@@ -317,9 +325,9 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
-                    // Collision prevention
-                    if (key === 'employee_name' && fName.includes('manager')) continue;
-                    if (key === 'manager_name' && fName.includes('employee')) continue;
+                    // Collision prevention for Name fields
+                    if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr'))) continue;
+                    if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
                     try {
                         const textField = form.getTextField(field.getName());
@@ -402,7 +410,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (leaveRequest.claimedWorkExtensionId) {
             weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as Leave | undefined;
             if (weRequest) {
-                weDate = format(new Date(weRequest.startDate), 'MM/dd/yyyy');
+                weDate = formatLocal(weRequest.startDate, 'MM/dd/yyyy');
                 if (weRequest.startTime && weRequest.endTime) {
                     const start = parse(weRequest.startTime, 'HH:mm', new Date(weRequest.startDate));
                     let end = parse(weRequest.endTime, 'HH:mm', new Date(weRequest.startDate));
@@ -434,8 +442,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const startDate = new Date(leaveRequest.startDate);
         const endDate = new Date(leaveRequest.endDate);
         let offsetDatesDisplay = isSameDay(startDate, endDate)
-            ? format(startDate, 'MM/dd/yyyy')
-            : `${format(startDate, 'MM/dd/yyyy')} to ${format(endDate, 'MM/dd/yyyy')}`;
+            ? formatLocal(startDate, 'MM/dd/yyyy')
+            : `${formatLocal(startDate, 'MM/dd/yyyy')} to ${formatLocal(endDate, 'MM/dd/yyyy')}`;
 
         if (!leaveRequest.isAllDay && leaveRequest.durationCategory !== 'minutes') {
              if (leaveRequest.durationCategory === 'half' && leaveRequest.originalStartTime && leaveRequest.originalEndTime) {
@@ -450,7 +458,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'employee_name', 'employee name', 'emp_name', 'applicant_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
-            date_filed: [format(new Date(leaveRequest.dateFiled || new Date()), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
+            date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
             department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group'],
             offset_dates: [offsetDatesDisplay, 'offset_dates', 'period_of_offset', 'inclusive_dates', 'leave_dates'],
             total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
@@ -462,7 +470,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (weRequest) {
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
-            fields['we_date_filed'] = [weRequest.dateFiled ? format(new Date(weRequest.dateFiled), 'MM/dd/yyyy') : '', 'we_date_filed'];
+            fields['we_date_filed'] = [weRequest.dateFiled ? formatLocal(weRequest.dateFiled, 'MM/dd/yyyy') : '', 'we_date_filed'];
             fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
             fields['we_date'] = [weDate, 'we_date'];
             fields['we_shiftfrom'] = [weRequest.originalStartTime || '', 'we_shiftfrom'];
@@ -484,8 +492,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 
                 if (isExactKey || isFuzzyMatch) {
                     // Strict separation for name fields
-                    if (key === 'employee_name' && fName.includes('manager')) continue;
-                    if (key === 'manager_name' && fName.includes('employee')) continue;
+                    if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
+                    if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
                     
                     // Strict separation for reason fields
                     if (key === 'reason' && fName.startsWith('we')) continue;

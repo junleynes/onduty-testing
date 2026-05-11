@@ -250,14 +250,24 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 /**
  * Timezone-safe date formatting.
  * new Date('2024-05-10') is UTC midnight. If we format it normally, it might shift to May 9.
- * Using parseISO + local format handles this.
+ * Using local component extraction handles this.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
     try {
-        const dateStr = typeof dateInput === 'string' ? dateInput : new Date(dateInput).toISOString();
-        // If string contains only Date part, parseISO treats it as local midnight.
-        const d = parseISO(dateStr.split('T')[0]);
+        let d: Date;
+        if (typeof dateInput === 'string') {
+            const parts = dateInput.split('T')[0].split('-');
+            if (parts.length === 3) {
+                d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            } else {
+                d = parseISO(dateInput);
+            }
+        } else {
+            const inputDate = new Date(dateInput);
+            d = new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate());
+        }
+        
         if (isNaN(d.getTime())) return '';
         return format(d, pattern);
     } catch (e) {
@@ -332,7 +342,6 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isExactKey = fName === key.replace(/_/g, '');
-                // fuzzy match must be at least 5 chars to avoid tiny collisions like "id" or "name"
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
@@ -509,6 +518,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     // Strict separation for reason fields - WE vs Offset
                     if (key === 'reason' && fName.startsWith('we')) continue;
                     if (key === 'we_reason' && !fName.startsWith('we')) continue;
+
+                    // Strict separation for date fields - WE vs Offset
+                    if (key === 'offset_dates' && fName.startsWith('we')) continue;
+                    if (key === 'we_date' && !fName.startsWith('we')) continue;
 
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }

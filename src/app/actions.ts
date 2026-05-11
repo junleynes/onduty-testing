@@ -249,18 +249,16 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Robust local-time safe date formatting.
- * Extracts date components directly from the Date object to avoid UTC shifting.
+ * Prevents "one-day-behind" shift by manually extracting components.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
     try {
         let d: Date;
         if (typeof dateInput === 'string') {
-            // Handle ISO strings by splitting on 'T' first to get just the date part
             const isoDateOnly = dateInput.split('T')[0];
             const parts = isoDateOnly.split('-');
             if (parts.length === 3) {
-                // new Date(year, monthIndex, day) creates date in local time
                 d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             } else {
                 d = new Date(dateInput);
@@ -273,7 +271,6 @@ function formatLocal(dateInput: Date | string | number | undefined, pattern: str
         
         if (isNaN(d.getTime())) return '';
         
-        // Manual formatting to ensure 100% consistency with requested May 11 vs May 5 logic
         const dd = String(d.getDate()).padStart(2, '0');
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const yyyy = String(d.getFullYear());
@@ -357,7 +354,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
-                    // Strict Exclusion logic to avoid cross-field writing
+                    // Exclusion rules for standard ALAF
                     if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr'))) continue;
                     if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
@@ -437,11 +434,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         let weRequest: Leave | undefined = undefined;
         let weManager: Employee | undefined = undefined;
         let weDateStr = 'N/A';
+        let weDateFiledStr = '';
         
         if (leaveRequest.claimedWorkExtensionId) {
             weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as Leave | undefined;
             if (weRequest) {
                 weDateStr = formatLocal(weRequest.startDate, 'MM/dd/yyyy');
+                weDateFiledStr = formatLocal(weRequest.dateFiled || weRequest.requestedAt, 'MM/dd/yyyy');
                 if (weRequest.managedBy) {
                     weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
                 }
@@ -479,8 +478,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             offsetDatesDisplay += ` @ ${leaveRequest.startTime}`;
         }
 
+        // Mapping definitions. Keys starting with "we_" are strictly isolated.
         const fields: Record<string, string[]> = {
-            // Main Fields (No we_ prefix)
             employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
             date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
@@ -493,10 +492,9 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         };
         
         if (weRequest) {
-            // WE Metadata Fields (With we_ prefix)
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
-            fields['we_date_filed'] = [weRequest.dateFiled ? formatLocal(weRequest.dateFiled, 'MM/dd/yyyy') : '', 'we_date_filed'];
+            fields['we_date_filed'] = [weDateFiledStr, 'we_date_filed'];
             fields['we_reason'] = [weRequest.reason || '', 'we_reason', 'we_remarks'];
             fields['we_date'] = [weDateStr, 'we_date'];
             fields['we_shiftfrom'] = [weRequest.originalStartTime || '', 'we_shiftfrom'];
@@ -521,15 +519,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
                     if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
                     
-                    // 2. Strict WE prefix isolation
-                    // If the data key starts with we_, only write to PDF fields that start with we.
-                    // If the data key does NOT start with we_, only write to PDF fields that do NOT start with we.
+                    // 2. STRICT PREFIX ISOLATION
                     const isWeData = key.startsWith('we_');
                     const isWeField = fName.startsWith('we');
 
-                    // USER REQUIREMENT: we_date (May 5) ONLY writes to we_ prefixed fields.
-                    // USER REQUIREMENT: offset_dates (May 11) and date_filed ONLY write to non-we_ prefixed fields.
-                    // USER REQUIREMENT: we_reason ONLY writes to we_ prefixed fields.
+                    // Data from Work Extension ONLY goes to "we" PDF fields.
+                    // Data from current Offset ONLY goes to NON-"we" PDF fields.
                     if (isWeData && !isWeField) continue;
                     if (!isWeData && isWeField) continue;
 

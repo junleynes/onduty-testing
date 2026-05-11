@@ -248,8 +248,8 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 }
 
 /**
- * Robust local-time safe date formatting.
- * Prevents "one-day-behind" shift by manually extracting components.
+ * Hardened local-time safe date formatting.
+ * Extracts date components directly using local methods to prevent UTC shifts.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
@@ -259,6 +259,7 @@ function formatLocal(dateInput: Date | string | number | undefined, pattern: str
             const isoDateOnly = dateInput.split('T')[0];
             const parts = isoDateOnly.split('-');
             if (parts.length === 3) {
+                // Construct Date object at local midnight
                 d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             } else {
                 d = new Date(dateInput);
@@ -271,9 +272,14 @@ function formatLocal(dateInput: Date | string | number | undefined, pattern: str
         
         if (isNaN(d.getTime())) return '';
         
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const yyyy = String(d.getFullYear());
+        // Manual component extraction for guaranteed consistency
+        const dayNum = d.getDate();
+        const monthNum = d.getMonth() + 1;
+        const yearNum = d.getFullYear();
+        
+        const dd = String(dayNum).padStart(2, '0');
+        const mm = String(monthNum).padStart(2, '0');
+        const yyyy = String(yearNum);
         
         if (pattern === 'MM/dd/yyyy') return `${mm}/${dd}/${yyyy}`;
         if (pattern === 'yyyy-MM-dd') return `${yyyy}-${mm}-${dd}`;
@@ -478,7 +484,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             offsetDatesDisplay += ` @ ${leaveRequest.startTime}`;
         }
 
-        // Mapping definitions. Keys starting with "we_" are strictly isolated.
+        /**
+         * STRICT NAMESPACE MAPPING:
+         * Data from the current Offset request is mapped to standard fields.
+         * Data from the reference Work Extension is mapped to "we_" fields.
+         */
         const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
@@ -519,12 +529,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
                     if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
                     
-                    // 2. STRICT PREFIX ISOLATION
+                    // 2. ABSOLUTE PREFIX ISOLATION
                     const isWeData = key.startsWith('we_');
                     const isWeField = fName.startsWith('we');
 
-                    // Data from Work Extension ONLY goes to "we" PDF fields.
-                    // Data from current Offset ONLY goes to NON-"we" PDF fields.
+                    // Strictest rule: WE data ONLY goes to WE PDF fields. 
+                    // Non-WE data (Offset info) NEVER goes to WE PDF fields.
                     if (isWeData && !isWeField) continue;
                     if (!isWeData && isWeField) continue;
 

@@ -480,6 +480,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         const fields: Record<string, string[]> = {
+            // Main Fields (No we_ prefix)
             employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
             date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
@@ -492,6 +493,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         };
         
         if (weRequest) {
+            // WE Metadata Fields (With we_ prefix)
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
             fields['we_date_filed'] = [weRequest.dateFiled ? formatLocal(weRequest.dateFiled, 'MM/dd/yyyy') : '', 'we_date_filed'];
@@ -515,20 +517,21 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
-                    // Strict separation for name fields
+                    // 1. Strict separation for name fields
                     if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
                     if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
                     
-                    // Strict separation for reason fields - WE vs Offset
-                    if (key === 'reason' && fName.startsWith('we')) continue;
-                    if (key === 'we_reason' && !fName.startsWith('we')) continue;
+                    // 2. Strict WE prefix isolation
+                    // If the data key starts with we_, only write to PDF fields that start with we.
+                    // If the data key does NOT start with we_, only write to PDF fields that do NOT start with we.
+                    const isWeData = key.startsWith('we_');
+                    const isWeField = fName.startsWith('we');
 
-                    // Strict separation for date fields - WE vs Offset
                     // USER REQUIREMENT: we_date (May 5) ONLY writes to we_ prefixed fields.
                     // USER REQUIREMENT: offset_dates (May 11) and date_filed ONLY write to non-we_ prefixed fields.
-                    if (key === 'offset_dates' && fName.startsWith('we')) continue;
-                    if (key === 'date_filed' && fName.startsWith('we')) continue;
-                    if (key === 'we_date' && !fName.startsWith('we')) continue;
+                    // USER REQUIREMENT: we_reason ONLY writes to we_ prefixed fields.
+                    if (isWeData && !isWeField) continue;
+                    if (!isWeData && isWeField) continue;
 
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }

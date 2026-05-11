@@ -248,28 +248,39 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 }
 
 /**
- * Timezone-safe date formatting.
- * Using manual component extraction prevents UTC midnight shifting to the previous day.
+ * Robust local-time safe date formatting.
+ * Extracts date components directly from the Date object to avoid UTC shifting.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
     try {
         let d: Date;
         if (typeof dateInput === 'string') {
-            // Manual split for ISO dates to avoid UTC shift
-            const isoRegex = /^(\d{4})-(\d{2})-(\d{2})/;
-            const match = dateInput.match(isoRegex);
-            if (match) {
-                d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+            // Handle ISO strings by splitting on 'T' first to get just the date part
+            const isoDateOnly = dateInput.split('T')[0];
+            const parts = isoDateOnly.split('-');
+            if (parts.length === 3) {
+                // new Date(year, monthIndex, day) creates date in local time
+                d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             } else {
                 d = new Date(dateInput);
             }
+        } else if (typeof dateInput === 'number') {
+            d = new Date(dateInput);
         } else {
-            const inputDate = new Date(dateInput);
-            d = new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate());
+            d = dateInput;
         }
         
         if (isNaN(d.getTime())) return '';
+        
+        // Manual formatting to ensure 100% consistency with requested May 11 vs May 5 logic
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = String(d.getFullYear());
+        
+        if (pattern === 'MM/dd/yyyy') return `${mm}/${dd}/${yyyy}`;
+        if (pattern === 'yyyy-MM-dd') return `${yyyy}-${mm}-${dd}`;
+        
         return format(d, pattern);
     } catch (e) {
         return '';
@@ -513,7 +524,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     if (key === 'we_reason' && !fName.startsWith('we')) continue;
 
                     // Strict separation for date fields - WE vs Offset
+                    // USER REQUIREMENT: we_date (May 5) ONLY writes to we_ prefixed fields.
+                    // USER REQUIREMENT: offset_dates (May 11) and date_filed ONLY write to non-we_ prefixed fields.
                     if (key === 'offset_dates' && fName.startsWith('we')) continue;
+                    if (key === 'date_filed' && fName.startsWith('we')) continue;
                     if (key === 'we_date' && !fName.startsWith('we')) continue;
 
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}

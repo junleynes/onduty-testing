@@ -7,7 +7,7 @@ import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay, addDays, startOfDay } from 'date-fns';
+import { format, differenceInCalendarDays, parse, differenceInMinutes, isSameDay, addDays, startOfDay, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { getFullName } from '@/lib/utils';
 
@@ -247,12 +247,22 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
     }
 }
 
-// Fixed Date Formatting Helper to avoid UTC/Local mismatches
-function formatLocal(date: Date | string | number | undefined, pattern: string): string {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    return format(d, pattern);
+/**
+ * Timezone-safe date formatting.
+ * new Date('2024-05-10') is UTC midnight. If we format it normally, it might shift to May 9.
+ * Using parseISO + local format handles this.
+ */
+function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
+    if (!dateInput) return '';
+    try {
+        const dateStr = typeof dateInput === 'string' ? dateInput : new Date(dateInput).toISOString();
+        // If string contains only Date part, parseISO treats it as local midnight.
+        const d = parseISO(dateStr.split('T')[0]);
+        if (isNaN(d.getTime())) return '';
+        return format(d, pattern);
+    } catch (e) {
+        return '';
+    }
 }
 
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
@@ -285,8 +295,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             totalDaysValue = String(days);
         }
 
-        const startDate = new Date(leaveRequest.startDate);
-        const endDate = new Date(leaveRequest.endDate);
+        const startDate = leaveRequest.startDate;
+        const endDate = leaveRequest.endDate;
         let leaveDatesDisplay = isSameDay(startDate, endDate)
             ? formatLocal(startDate, 'MM/dd/yyyy')
             : `${formatLocal(startDate, 'MM/dd/yyyy')} to ${formatLocal(endDate, 'MM/dd/yyyy')}`;
@@ -322,10 +332,11 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isExactKey = fName === key.replace(/_/g, '');
+                // fuzzy match must be at least 5 chars to avoid tiny collisions like "id" or "name"
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
-                    // Collision prevention for Name fields
+                    // Strict Exclusion logic to avoid cross-field writing
                     if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr'))) continue;
                     if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
@@ -404,13 +415,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         let weRequest: Leave | undefined = undefined;
         let weManager: Employee | undefined = undefined;
-        let weDate = 'N/A';
+        let weDateStr = 'N/A';
         let weHours = 'N/A';
         
         if (leaveRequest.claimedWorkExtensionId) {
             weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as Leave | undefined;
             if (weRequest) {
-                weDate = formatLocal(weRequest.startDate, 'MM/dd/yyyy');
+                weDateStr = formatLocal(weRequest.startDate, 'MM/dd/yyyy');
                 if (weRequest.startTime && weRequest.endTime) {
                     const start = parse(weRequest.startTime, 'HH:mm', new Date(weRequest.startDate));
                     let end = parse(weRequest.endTime, 'HH:mm', new Date(weRequest.startDate));
@@ -439,8 +450,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             totalDaysValue = String(days);
         }
 
-        const startDate = new Date(leaveRequest.startDate);
-        const endDate = new Date(leaveRequest.endDate);
+        const startDate = leaveRequest.startDate;
+        const endDate = leaveRequest.endDate;
         let offsetDatesDisplay = isSameDay(startDate, endDate)
             ? formatLocal(startDate, 'MM/dd/yyyy')
             : `${formatLocal(startDate, 'MM/dd/yyyy')} to ${formatLocal(endDate, 'MM/dd/yyyy')}`;
@@ -471,8 +482,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
             fields['we_date_filed'] = [weRequest.dateFiled ? formatLocal(weRequest.dateFiled, 'MM/dd/yyyy') : '', 'we_date_filed'];
-            fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
-            fields['we_date'] = [weDate, 'we_date'];
+            fields['we_reason'] = [weRequest.reason || '', 'we_reason', 'we_remarks'];
+            fields['we_date'] = [weDateStr, 'we_date'];
             fields['we_shiftfrom'] = [weRequest.originalStartTime || '', 'we_shiftfrom'];
             fields['we_shiftto'] = [weRequest.originalEndTime || '', 'we_shiftto'];
             fields['we_timein'] = [weRequest.startTime || '', 'we_timein'];
@@ -495,7 +506,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                     if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
                     if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
                     
-                    // Strict separation for reason fields
+                    // Strict separation for reason fields - WE vs Offset
                     if (key === 'reason' && fName.startsWith('we')) continue;
                     if (key === 'we_reason' && !fName.startsWith('we')) continue;
 

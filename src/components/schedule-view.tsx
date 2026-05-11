@@ -421,7 +421,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         );
         const leaveForDay = leave.filter(l => {
             if (l.employeeId !== employee.id || l.type === 'Work Extension' || !l.startDate || !l.endDate) return false;
-            // Filter out approved Tardy requests from the schedule grid
+            // Filter out approved Tardy requests from the schedule grid to avoid clutter
             if (l.type.toUpperCase() === 'TARDY' && (l.status === 'approved' || l.status === 'processed')) return false;
             return isWithinInterval(startOfDay(day), { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
         });

@@ -249,7 +249,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Hardened local-time safe date formatting.
- * Extracts date components directly using local methods to prevent UTC shifts.
+ * Strictly avoids UTC shifts for calendar dates.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
@@ -272,10 +272,13 @@ function formatLocal(dateInput: Date | string | number | undefined, pattern: str
         
         if (isNaN(d.getTime())) return '';
         
-        // Manual component extraction for guaranteed consistency
-        const dayNum = d.getDate();
-        const monthNum = d.getMonth() + 1;
-        const yearNum = d.getFullYear();
+        // If the date has no time (standard ISO calendar date), standard getDate/getMonth shifts 
+        // if the server is in a negative offset. We force UTC component extraction if hours are 0.
+        const isCalendarDate = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
+        
+        const dayNum = isCalendarDate ? d.getUTCDate() : d.getDate();
+        const monthNum = (isCalendarDate ? d.getUTCMonth() : d.getMonth()) + 1;
+        const yearNum = isCalendarDate ? d.getUTCFullYear() : d.getFullYear();
         
         const dd = String(dayNum).padStart(2, '0');
         const mm = String(monthNum).padStart(2, '0');
@@ -439,7 +442,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         let weRequest: Leave | undefined = undefined;
         let weManager: Employee | undefined = undefined;
-        let weDateStr = 'N/A';
+        let weDateStr = '';
         let weDateFiledStr = '';
         
         if (leaveRequest.claimedWorkExtensionId) {
@@ -525,18 +528,16 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
-                    // 1. Strict separation for name fields
-                    if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
-                    if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
-                    
-                    // 2. ABSOLUTE PREFIX ISOLATION
+                    // Guard: Prefix strictness
                     const isWeData = key.startsWith('we_');
                     const isWeField = fName.startsWith('we');
 
-                    // Strictest rule: WE data ONLY goes to WE PDF fields. 
-                    // Non-WE data (Offset info) NEVER goes to WE PDF fields.
-                    if (isWeData && !isWeField) continue;
-                    if (!isWeData && isWeField) continue;
+                    if (isWeField && !isWeData) continue;
+                    if (!isWeField && isWeData) continue;
+
+                    // Guard: Name separation
+                    if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
+                    if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }

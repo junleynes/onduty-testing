@@ -249,19 +249,19 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Timezone-safe date formatting.
- * new Date('2024-05-10') is UTC midnight. If we format it normally, it might shift to May 9.
- * Using local component extraction handles this.
+ * Using local component extraction prevents UTC midnight shifting to the previous day.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
     try {
         let d: Date;
         if (typeof dateInput === 'string') {
-            const parts = dateInput.split('T')[0].split('-');
-            if (parts.length === 3) {
+            const isoRegex = /^\d{4}-\d{2}-\d{2}/;
+            if (isoRegex.test(dateInput)) {
+                const parts = dateInput.split('T')[0].split('-');
                 d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             } else {
-                d = parseISO(dateInput);
+                d = new Date(dateInput);
             }
         } else {
             const inputDate = new Date(dateInput);

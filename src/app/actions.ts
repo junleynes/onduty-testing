@@ -249,17 +249,18 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Timezone-safe date formatting.
- * Using local component extraction prevents UTC midnight shifting to the previous day.
+ * Using manual component extraction prevents UTC midnight shifting to the previous day.
  */
 function formatLocal(dateInput: Date | string | number | undefined, pattern: string): string {
     if (!dateInput) return '';
     try {
         let d: Date;
         if (typeof dateInput === 'string') {
-            const isoRegex = /^\d{4}-\d{2}-\d{2}/;
-            if (isoRegex.test(dateInput)) {
-                const parts = dateInput.split('T')[0].split('-');
-                d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            // Manual split for ISO dates to avoid UTC shift
+            const isoRegex = /^(\d{4})-(\d{2})-(\d{2})/;
+            const match = dateInput.match(isoRegex);
+            if (match) {
+                d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
             } else {
                 d = new Date(dateInput);
             }
@@ -322,17 +323,17 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
         const fields = {
-            employee_name: [getFullName(employee), 'employee_name', 'employee name', 'emp_name', 'applicant_name'],
-            date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied', 'date filed'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office', 'div_dept'],
-            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number', 'idnumber', 'id no'],
+            employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
+            date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office'],
+            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
             leave_dates: [leaveDatesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
-            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'total no of leave days', 'days'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose', 'details_reasons'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'i can be contacted at', 'contact number'],
-            approval_date: [leaveRequest.managedAt ? formatLocal(leaveRequest.managedAt, 'MM/dd/yyyy') : '', 'approval_date', 'approvaldate', 'date_approved'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'immediate superior', 'mgr_name'],
-            leave_type: [leaveRequest.type || '', 'leave_type', 'type_of_leave'],
+            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
+            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact'],
+            approval_date: [leaveRequest.managedAt ? formatLocal(leaveRequest.managedAt, 'MM/dd/yyyy') : '', 'approval_date', 'date_approved'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'mgr_name'],
+            leave_type: [leaveRequest.type || '', 'leave_type'],
         };
 
         const allFormFields = form.getFields();
@@ -425,19 +426,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         let weRequest: Leave | undefined = undefined;
         let weManager: Employee | undefined = undefined;
         let weDateStr = 'N/A';
-        let weHours = 'N/A';
         
         if (leaveRequest.claimedWorkExtensionId) {
             weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as Leave | undefined;
             if (weRequest) {
                 weDateStr = formatLocal(weRequest.startDate, 'MM/dd/yyyy');
-                if (weRequest.startTime && weRequest.endTime) {
-                    const start = parse(weRequest.startTime, 'HH:mm', new Date(weRequest.startDate));
-                    let end = parse(weRequest.endTime, 'HH:mm', new Date(weRequest.startDate));
-                    if (end < start) end = addDays(end, 1);
-                    let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                    weHours = diff.toFixed(2);
-                }
                 if (weRequest.managedBy) {
                     weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
                 }
@@ -476,14 +469,14 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         const fields: Record<string, string[]> = {
-            employee_name: [getFullName(employee), 'employee_name', 'employee name', 'emp_name', 'applicant_name'],
+            employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'employeeid', 'id_number'],
             date_filed: [formatLocal(leaveRequest.dateFiled || new Date(), 'MM/dd/yyyy'), 'date_filed', 'datefiled', 'date_applied'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'group'],
-            offset_dates: [offsetDatesDisplay, 'offset_dates', 'period_of_offset', 'inclusive_dates', 'leave_dates'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office'],
+            offset_dates: [offsetDatesDisplay, 'offset_dates', 'period_of_offset', 'inclusive_dates'],
             total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'offset_reason'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact_number'],
+            reason: [leaveRequest.reason || '', 'reason', 'offset_reason'],
+            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'mgr_name'],
         };
         

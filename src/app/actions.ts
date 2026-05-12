@@ -249,7 +249,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Robust date component extractor to prevent "one day off" errors.
- * Manually extracts MM/DD/YYYY from strings or Date objects via string representation
+ * Manually extracts MM/DD/YYYY from strings or Date objects via regex
  * to ensure we capture the intended day regardless of timezone.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
@@ -264,7 +264,7 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
             dateStr = new Date(dateInput).toISOString();
         }
 
-        // Regex matches YYYY-MM-DD
+        // Regex matches YYYY-MM-DD at the start of the string
         const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (match) {
             const [_, yyyy, mm, dd] = match;

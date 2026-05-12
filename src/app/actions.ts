@@ -249,28 +249,29 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Robust date component extractor to prevent "one day off" errors.
- * Manually extracts MM/DD/YYYY from strings or Date objects via regex
- * to ensure we capture the intended day regardless of timezone.
+ * Extracts MM/DD/YYYY from strings or Date objects via string patterns
+ * and local time methods to ensure accuracy regardless of server timezone.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        let dateStr = "";
-        if (dateInput instanceof Date) {
-            dateStr = dateInput.toISOString();
-        } else if (typeof dateInput === 'string') {
-            dateStr = dateInput;
-        } else {
-            dateStr = new Date(dateInput).toISOString();
+        // 1. If it's a string like "2024-05-11", parse it directly to avoid UTC shift
+        if (typeof dateInput === 'string') {
+            const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+                const [_, yyyy, mm, dd] = match;
+                return `${mm}/${dd}/${yyyy}`;
+            }
         }
-
-        // Regex matches YYYY-MM-DD at the start of the string
-        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-            const [_, yyyy, mm, dd] = match;
-            return `${mm}/${dd}/${yyyy}`;
-        }
-        return '';
+        
+        // 2. If it's a Date object or other type, use local time methods
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return '';
+        
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${month}/${day}/${year}`;
     } catch (e) {
         return '';
     }
@@ -343,7 +344,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                // EXCLUSION LOGIC to prevent cross-writing
+                // EXCLUSION LOGIC to prevent cross-writing names
                 if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr'))) continue;
                 if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
@@ -507,9 +508,9 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isWeFormField = fName.startsWith('we');
 
                 // 1. DATA POOL ISOLATION:
-                // If this is WE data (prefix we_), it MUST only go to a WE form field.
+                // If this is reference data (prefix we_), it MUST only go to a WE form field.
                 if (isWeDataKey && !isWeFormField) continue;
-                // If this is NOT WE data (regular Offset info), it MUST NOT go to a WE form field.
+                // If this is Offset info, it MUST NOT go to a WE form field.
                 if (!isWeDataKey && isWeFormField) continue;
 
                 // 2. NAME EXCLUSION rules:
@@ -533,7 +534,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                // Status boxes should not be in the WE namespace either
+                // Status boxes should not be in the WE namespace
                 if (currentFieldName.startsWith('we')) continue;
 
                 if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey) || currentFieldName === alternateKey || currentFieldName.endsWith(alternateKey)) {

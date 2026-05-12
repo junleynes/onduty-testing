@@ -248,34 +248,29 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 }
 
 /**
- * Hardened manual date formatting to MM/DD/YYYY to avoid any timezone shifts.
- * Extracts components directly from the input without relying on ambiguous library parsing.
+ * Robust date component extractor to prevent "one day off" errors.
+ * Manually extracts MM/DD/YYYY from strings or Date objects via string representation
+ * to ensure we capture the intended day regardless of timezone.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        let d: Date;
-        if (typeof dateInput === 'string') {
-            const isoDateOnly = dateInput.split('T')[0];
-            const parts = isoDateOnly.split('-');
-            if (parts.length === 3) {
-                // Return MM/DD/YYYY directly from parts
-                return `${parts[1].padStart(2, '0')}/${parts[2].padStart(2, '0')}/${parts[0]}`;
-            }
-            d = new Date(dateInput);
-        } else if (typeof dateInput === 'number') {
-            d = new Date(dateInput);
+        let dateStr = "";
+        if (dateInput instanceof Date) {
+            dateStr = dateInput.toISOString();
+        } else if (typeof dateInput === 'string') {
+            dateStr = dateInput;
         } else {
-            d = dateInput;
+            dateStr = new Date(dateInput).toISOString();
         }
 
-        if (isNaN(d.getTime())) return '';
-
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const yyyy = d.getFullYear();
-
-        return `${mm}/${dd}/${yyyy}`;
+        // Regex matches YYYY-MM-DD
+        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+            const [_, yyyy, mm, dd] = match;
+            return `${mm}/${dd}/${yyyy}`;
+        }
+        return '';
     } catch (e) {
         return '';
     }
@@ -471,7 +466,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         /**
-         * NAMESPACE MAPPING:
+         * STRICT NAMESPACE MAPPING:
          * Standard keys map to current Offset request.
          * keys prefixed with we_ map to the original Work Extension reference.
          */
@@ -504,20 +499,20 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         const allFormFields = form.getFields();
         for (const [key, [value, ...targets]] of Object.entries(fields)) {
+            const isWeDataKey = key.startsWith('we_');
             const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                
-                // CRITICAL SEPARATION LOGIC
-                const isWeDataKey = key.startsWith('we_');
                 const isWeFormField = fName.startsWith('we');
 
-                // 1. WE data must only go to WE fields
+                // 1. DATA POOL ISOLATION:
+                // If this is WE data (prefix we_), it MUST only go to a WE form field.
                 if (isWeDataKey && !isWeFormField) continue;
-                // 2. Offset data (not prefixed with we_) must NEVER go to WE fields
+                // If this is NOT WE data (regular Offset info), it MUST NOT go to a WE form field.
                 if (!isWeDataKey && isWeFormField) continue;
 
-                // 3. Name exclusion rules
+                // 2. NAME EXCLUSION rules:
                 if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
                 if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
@@ -525,7 +520,10 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isFuzzyMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 
                 if (isExactKey || isFuzzyMatch) {
-                    try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
+                    try {
+                        const textField = form.getTextField(field.getName());
+                        textField.setText(value || '');
+                    } catch (e) {}
                 }
             }
         }
@@ -535,6 +533,9 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             const alternateKey = statusKey === 'approved' ? 'approve' : 'reject';
             for (const field of allFormFields) {
                 const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                // Status boxes should not be in the WE namespace either
+                if (currentFieldName.startsWith('we')) continue;
+
                 if (currentFieldName === statusKey || currentFieldName.endsWith(statusKey) || currentFieldName === alternateKey || currentFieldName.endsWith(alternateKey)) {
                     try { form.getCheckBox(field.getName()).check(); } catch (e) {}
                     try { form.getTextField(field.getName()).setText('X'); } catch (e) {}

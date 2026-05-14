@@ -250,33 +250,33 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 /**
  * Literal date component extractor. 
  * Prevents "one day behind" error by manually extracting Month, Day, and Year 
- * without applying UTC timezone shifts.
+ * using regex for ISO strings or local components for objects, bypassing UTC shifts.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        let date: Date;
+        let dateStr = '';
         if (dateInput instanceof Date) {
-            date = dateInput;
+            dateStr = dateInput.toISOString();
         } else if (typeof dateInput === 'string') {
-            // Regex to check for YYYY-MM-DD pattern
-            const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
-            if (match) {
-                const [_, yyyy, mm, dd] = match;
-                return `${mm}/${dd}/${yyyy}`;
-            }
-            date = new Date(dateInput);
+            dateStr = dateInput;
         } else {
-            date = new Date(dateInput);
+            dateStr = new Date(dateInput).toISOString();
         }
 
-        if (isNaN(date.getTime())) return '';
+        // Match literal YYYY-MM-DD part of an ISO string or standalone date string
+        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+            const [_, yyyy, mm, dd] = match;
+            return `${mm}/${dd}/${yyyy}`;
+        }
 
-        // Extract using local methods to respect the intended calendar date
+        // Fallback for non-standard formats
+        const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+        if (isNaN(date.getTime())) return '';
         const mm = String(date.getMonth() + 1).padStart(2, '0');
         const dd = String(date.getDate()).padStart(2, '0');
         const yyyy = date.getFullYear();
-
         return `${mm}/${dd}/${yyyy}`;
     } catch (e) {
         return '';
@@ -287,7 +287,7 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
  * Checks if a PDF field name indicates it belongs to a manager/approver.
  */
 function isManagerPdfField(fName: string): boolean {
-    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver'];
+    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head'];
     return managers.some(m => fName.includes(m));
 }
 
@@ -295,8 +295,15 @@ function isManagerPdfField(fName: string): boolean {
  * Checks if a PDF field name indicates it belongs to an employee/requester.
  */
 function isEmployeePdfField(fName: string): boolean {
-    const employees = ['employee', 'applicant', 'emp', 'staff', 'requester'];
+    const employees = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user'];
     return employees.some(e => fName.includes(e));
+}
+
+/**
+ * Checks if a PDF field belongs to the Work Extension namespace.
+ */
+function isWorkExtensionField(fName: string): boolean {
+    return fName.startsWith('we') || fName.includes('workext') || fName.includes('extension');
 }
 
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
@@ -358,10 +365,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                // STRICT ROLE ISOLATION: 
-                // Employee data should never hit fields named for managers.
+                // STRICT ROLE ISOLATION
                 if (key === 'employee_name' && isManagerPdfField(fName)) continue;
-                // Manager data should never hit fields named for employees.
                 if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
@@ -371,7 +376,6 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
-        // Handle types and status
         if (leaveRequest.type) {
             const normalizedType = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
             for (const field of allFormFields) {
@@ -442,7 +446,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         };
         
         if (weRequest) {
-            // REFERENCE WORK EXTENSION FIELDS
+            // REFERENCE WORK EXTENSION FIELDS (WE NAMESPACE)
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
             fields['we_date_filed'] = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt), 'we_date_filed'];
@@ -460,16 +464,21 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const isWeField = fName.startsWith('we');
+                const isWeField = isWorkExtensionField(fName);
 
-                // STRICT NAMESPACE ISOLATION
+                // 1. STRICT NAMESPACE ISOLATION
+                // Work Extension data MUST match Work Extension fields.
+                // Offset data MUST NOT match Work Extension fields.
                 if (isWeKey && !isWeField) continue;
                 if (!isWeKey && isWeField) continue;
 
-                // STRICT ROLE ISOLATION
+                // 2. STRICT ROLE ISOLATION
+                // Employee data should never hit fields named for managers.
                 if (key === 'employee_name' && isManagerPdfField(fName)) continue;
+                // Manager data should never hit fields named for employees.
                 if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
 
+                // 3. TARGET MATCHING
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 if (isMatch) {
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}

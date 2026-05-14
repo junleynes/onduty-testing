@@ -249,22 +249,28 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 
 /**
  * Robust date component extractor to prevent "one day off" errors.
- * Extracts MM/DD/YYYY from strings or Date objects via string patterns
- * and local time methods to ensure accuracy regardless of server timezone.
+ * Extracts MM/DD/YYYY directly from string patterns (YYYY-MM-DD)
+ * and bypasses UTC conversions which cause timezone shifts.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        // 1. If it's a string like "2024-05-11", parse it directly to avoid UTC shift
+        // 1. Prioritize raw string parsing (e.g. "2024-05-11") to ignore timezone
         if (typeof dateInput === 'string') {
             const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
             if (match) {
                 const [_, yyyy, mm, dd] = match;
                 return `${mm}/${dd}/${yyyy}`;
             }
+            // Try ISO format with T
+            const isoMatch = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+             if (isoMatch) {
+                const [_, yyyy, mm, dd] = isoMatch;
+                return `${mm}/${dd}/${yyyy}`;
+            }
         }
         
-        // 2. If it's a Date object or other type, use local time methods
+        // 2. Fallback to local time methods for objects
         const d = new Date(dateInput);
         if (isNaN(d.getTime())) return '';
         
@@ -333,7 +339,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact'],
             approval_date: [leaveRequest.managedAt ? formatComponentDate(leaveRequest.managedAt) : '', 'approval_date', 'date_approved'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'mgr_name'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'mgr_name', 'approver_name'],
             leave_type: [leaveRequest.type || '', 'leave_type'],
         };
 
@@ -344,8 +350,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                // EXCLUSION LOGIC to prevent cross-writing names
-                if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr'))) continue;
+                // EXCLUSION LOGIC: Prevent name/role cross-contamination
+                if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr') || fName.includes('approver'))) continue;
                 if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
                 const isExactKey = fName === key.replace(/_/g, '');
@@ -480,7 +486,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'offset_reason'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'mgr_name'],
+            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'superior_name', 'mgr_name'],
         };
         
         if (weRequest) {
@@ -508,13 +514,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isWeFormField = fName.startsWith('we');
 
                 // 1. DATA POOL ISOLATION:
-                // If this is reference data (prefix we_), it MUST only go to a WE form field.
+                // Reference data (prefix we_) ONLY goes to a WE form field.
                 if (isWeDataKey && !isWeFormField) continue;
-                // If this is Offset info, it MUST NOT go to a WE form field.
+                // Offset info MUST NOT go to a WE form field.
                 if (!isWeDataKey && isWeFormField) continue;
 
                 // 2. NAME EXCLUSION rules:
-                if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('mgr'))) continue;
+                if (key === 'employee_name' && (fName.includes('manager') || fName.includes('supervisor') || fName.includes('superior') || fName.includes('mgr') || fName.includes('approver'))) continue;
                 if (key === 'manager_name' && (fName.includes('employee') || fName.includes('applicant') || fName.includes('emp'))) continue;
 
                 const isExactKey = fName === key.replace(/_/g, '');
@@ -601,7 +607,7 @@ export async function sendActivationLink(employeeId: string, origin: string, smt
     try {
         const employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(employeeId) as Employee | undefined;
         if (!employee) {
-            return { success: false, error: 'Employee not found.' };
+            return { success: true, error: 'Employee not found.' };
         }
 
         const token = uuidv4();

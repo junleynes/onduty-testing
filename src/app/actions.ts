@@ -257,11 +257,19 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
     try {
         let dateStr = '';
         if (dateInput instanceof Date) {
-            dateStr = dateInput.toISOString();
+            // For Date objects, use local methods to avoid UTC shift
+            const mm = String(dateInput.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateInput.getDate()).padStart(2, '0');
+            const yyyy = dateInput.getFullYear();
+            return `${mm}/${dd}/${yyyy}`;
         } else if (typeof dateInput === 'string') {
             dateStr = dateInput;
         } else {
-            dateStr = new Date(dateInput).toISOString();
+            const d = new Date(dateInput);
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${mm}/${dd}/${yyyy}`;
         }
 
         // Match literal YYYY-MM-DD part of an ISO string or standalone date string
@@ -272,7 +280,7 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
         }
 
         // Fallback for non-standard formats
-        const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+        const date = new Date(dateInput);
         if (isNaN(date.getTime())) return '';
         const mm = String(date.getMonth() + 1).padStart(2, '0');
         const dd = String(date.getDate()).padStart(2, '0');
@@ -366,7 +374,9 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
                 // STRICT ROLE ISOLATION
+                // Prevent Employee Name from matching Manager fields
                 if (key === 'employee_name' && isManagerPdfField(fName)) continue;
+                // Prevent Manager Name from matching Employee fields
                 if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
@@ -467,16 +477,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isWeField = isWorkExtensionField(fName);
 
                 // 1. STRICT NAMESPACE ISOLATION
-                // Work Extension data MUST match Work Extension fields.
-                // Offset data MUST NOT match Work Extension fields.
                 if (isWeKey && !isWeField) continue;
                 if (!isWeKey && isWeField) continue;
 
                 // 2. STRICT ROLE ISOLATION
-                // Employee data should never hit fields named for managers.
-                if (key === 'employee_name' && isManagerPdfField(fName)) continue;
-                // Manager data should never hit fields named for employees.
-                if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
+                if (key.includes('employee_name') && isManagerPdfField(fName)) continue;
+                if (key.includes('manager_name') && isEmployeePdfField(fName)) continue;
 
                 // 3. TARGET MATCHING
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));

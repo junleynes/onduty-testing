@@ -250,41 +250,30 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 /**
  * Literal date component extractor. 
  * Prevents "one day behind" error by manually extracting Month, Day, and Year 
- * using regex for ISO strings or local components for objects, bypassing UTC shifts.
+ * using local methods or raw regex parsing.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        let dateStr = '';
+        let dateObj: Date;
         if (dateInput instanceof Date) {
-            // For Date objects, use local methods to avoid UTC shift
-            const mm = String(dateInput.getMonth() + 1).padStart(2, '0');
-            const dd = String(dateInput.getDate()).padStart(2, '0');
-            const yyyy = dateInput.getFullYear();
-            return `${mm}/${dd}/${yyyy}`;
+            dateObj = dateInput;
         } else if (typeof dateInput === 'string') {
-            dateStr = dateInput;
+            const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+                const [_, yyyy, mm, dd] = match;
+                return `${mm}/${dd}/${yyyy}`;
+            }
+            dateObj = new Date(dateInput);
         } else {
-            const d = new Date(dateInput);
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            const yyyy = d.getFullYear();
-            return `${mm}/${dd}/${yyyy}`;
+            dateObj = new Date(dateInput);
         }
 
-        // Match literal YYYY-MM-DD part of an ISO string or standalone date string
-        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-            const [_, yyyy, mm, dd] = match;
-            return `${mm}/${dd}/${yyyy}`;
-        }
-
-        // Fallback for non-standard formats
-        const date = new Date(dateInput);
-        if (isNaN(date.getTime())) return '';
-        const mm = String(date.getMonth() + 1).padStart(2, '0');
-        const dd = String(date.getDate()).padStart(2, '0');
-        const yyyy = date.getFullYear();
+        if (isNaN(dateObj.getTime())) return '';
+        
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        const yyyy = dateObj.getFullYear();
         return `${mm}/${dd}/${yyyy}`;
     } catch (e) {
         return '';
@@ -295,7 +284,7 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
  * Checks if a PDF field name indicates it belongs to a manager/approver.
  */
 function isManagerPdfField(fName: string): boolean {
-    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head'];
+    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized_rep'];
     return managers.some(m => fName.includes(m));
 }
 
@@ -365,6 +354,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose'],
             contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
+            approval_date: [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
         };
 
         const allFormFields = form.getFields();
@@ -453,6 +443,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             total_days: [totalDaysValue, 'total_days', 'days'],
             reason: [leaveRequest.reason || '', 'reason', 'offset_reason'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
+            approval_date: [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
         };
         
         if (weRequest) {

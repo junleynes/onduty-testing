@@ -248,19 +248,36 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 }
 
 /**
- * Robust date component extractor to prevent "one day off" errors.
- * Extracts MM/DD/YYYY directly from literal YYYY-MM-DD strings.
+ * Literal date component extractor. 
+ * Prevents "one day behind" error by manually extracting Month, Day, and Year 
+ * without applying UTC timezone shifts.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        const dateStr = (typeof dateInput === 'string') ? dateInput : new Date(dateInput).toISOString();
-        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-            const [_, yyyy, mm, dd] = match;
-            return `${mm}/${dd}/${yyyy}`;
+        let date: Date;
+        if (dateInput instanceof Date) {
+            date = dateInput;
+        } else if (typeof dateInput === 'string') {
+            // Regex to check for YYYY-MM-DD pattern
+            const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+                const [_, yyyy, mm, dd] = match;
+                return `${mm}/${dd}/${yyyy}`;
+            }
+            date = new Date(dateInput);
+        } else {
+            date = new Date(dateInput);
         }
-        return '';
+
+        if (isNaN(date.getTime())) return '';
+
+        // Extract using local methods to respect the intended calendar date
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const yyyy = date.getFullYear();
+
+        return `${mm}/${dd}/${yyyy}`;
     } catch (e) {
         return '';
     }
@@ -278,7 +295,7 @@ function isManagerPdfField(fName: string): boolean {
  * Checks if a PDF field name indicates it belongs to an employee/requester.
  */
 function isEmployeePdfField(fName: string): boolean {
-    const employees = ['employee', 'applicant', 'emp', 'staff'];
+    const employees = ['employee', 'applicant', 'emp', 'staff', 'requester'];
     return employees.some(e => fName.includes(e));
 }
 
@@ -341,8 +358,10 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                // CRITICAL ROLE ISOLATION
+                // STRICT ROLE ISOLATION: 
+                // Employee data should never hit fields named for managers.
                 if (key === 'employee_name' && isManagerPdfField(fName)) continue;
+                // Manager data should never hit fields named for employees.
                 if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
@@ -411,6 +430,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const totalDaysValue = (leaveRequest.durationCategory === 'minutes') ? `${leaveRequest.totalMinutes} mins` : String(differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1 + (leaveRequest.isAllDay === false ? -0.5 : 0));
 
         const fields: Record<string, string[]> = {
+            // CURRENT OFFSET FIELDS
             employee_name: [getFullName(employee), 'employee_name', 'emp_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
             date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
@@ -422,6 +442,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         };
         
         if (weRequest) {
+            // REFERENCE WORK EXTENSION FIELDS
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
             fields['we_date_filed'] = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt), 'we_date_filed'];
@@ -441,9 +462,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isWeField = fName.startsWith('we');
 
-                // STRICT NAMESPACE & ROLE ISOLATION
+                // STRICT NAMESPACE ISOLATION
                 if (isWeKey && !isWeField) continue;
                 if (!isWeKey && isWeField) continue;
+
+                // STRICT ROLE ISOLATION
                 if (key === 'employee_name' && isManagerPdfField(fName)) continue;
                 if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
 

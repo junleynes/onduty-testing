@@ -248,27 +248,22 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 }
 
 /**
- * Literal date component extractor. 
- * Prevents "one day behind" error by manually extracting Month, Day, and Year 
- * using local methods or raw regex parsing.
+ * Robust date component extractor. 
+ * Extracts Year, Month, Day directly from string or local date object 
+ * to bypass UTC shifts that cause "one day behind" errors.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        let dateObj: Date;
-        if (dateInput instanceof Date) {
-            dateObj = dateInput;
-        } else if (typeof dateInput === 'string') {
+        if (typeof dateInput === 'string') {
             const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
             if (match) {
                 const [_, yyyy, mm, dd] = match;
                 return `${mm}/${dd}/${yyyy}`;
             }
-            dateObj = new Date(dateInput);
-        } else {
-            dateObj = new Date(dateInput);
         }
-
+        
+        const dateObj = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
         if (isNaN(dateObj.getTime())) return '';
         
         const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -284,7 +279,7 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
  * Checks if a PDF field name indicates it belongs to a manager/approver.
  */
 function isManagerPdfField(fName: string): boolean {
-    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized_rep'];
+    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized_rep', 'officer', 'station_mgr', 'depthead'];
     return managers.some(m => fName.includes(m));
 }
 
@@ -292,7 +287,7 @@ function isManagerPdfField(fName: string): boolean {
  * Checks if a PDF field name indicates it belongs to an employee/requester.
  */
 function isEmployeePdfField(fName: string): boolean {
-    const employees = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user'];
+    const employees = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user', 'member'];
     return employees.some(e => fName.includes(e));
 }
 
@@ -364,10 +359,10 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 
                 // STRICT ROLE ISOLATION
-                // Prevent Employee Name from matching Manager fields
-                if (key === 'employee_name' && isManagerPdfField(fName)) continue;
-                // Prevent Manager Name from matching Employee fields
-                if (key === 'manager_name' && isEmployeePdfField(fName)) continue;
+                // Prevent Employee data from matching Manager fields
+                if (key.includes('employee_name') && isManagerPdfField(fName)) continue;
+                // Prevent Manager data from matching Employee fields
+                if (key.includes('manager_name') && isEmployeePdfField(fName)) continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 if (isMatch) {

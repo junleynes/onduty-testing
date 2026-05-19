@@ -1,3 +1,4 @@
+
 # OnDuty - Modern Duty Scheduling
 
 A comprehensive scheduling and shift management application built with Next.js, React, Tailwind CSS, and SQLite.

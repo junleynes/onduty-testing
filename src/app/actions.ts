@@ -208,55 +208,14 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
     }
 }
 
-async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefined, fieldNames: string[]) {
-    if (!sigData || !sigData.includes('base64,')) return;
-    const form = pdfDoc.getForm();
-    const allFormFields = form.getFields();
-    
-    try {
-        const sigBase64 = sigData.split('base64,')[1];
-        if (!sigBase64) return;
-        const buffer = Buffer.from(sigBase64, 'base64');
-        
-        let image;
-        if (sigData.includes('image/jpeg') || sigData.includes('image/jpg')) {
-            image = await pdfDoc.embedJpg(buffer);
-        } else if (sigData.includes('image/png')) {
-            image = await pdfDoc.embedPng(buffer);
-        } else {
-            try { image = await pdfDoc.embedPng(buffer); } catch (e) { return; }
-        }
-
-        const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
-
-        for (const field of allFormFields) {
-            const currentFieldName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-            const isMatch = normalizedTargets.some(target => 
-                currentFieldName === target || 
-                (target.length > 5 && currentFieldName.endsWith(target))
-            );
-
-            if (isMatch) {
-                try {
-                    const button = form.getButton(field.getName());
-                    button.setImage(image);
-                } catch (e) {}
-            }
-        }
-    } catch (sigErr) {
-        console.error("Signature processing error:", sigErr);
-    }
-}
-
 /**
  * Robust date component extractor. 
- * Extracts Year, Month, Day directly from string or local date object 
- * bypasses UTC shifts that cause "one day behind" errors.
+ * Prevents "one day behind" error by manually extracting Month, Day, and Year literal values.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
-        // Method 1: Literal string parsing (safest for database ISO strings)
+        // Method 1: Raw String Splitting (Safest for ISO strings from DB)
         if (typeof dateInput === 'string') {
             const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
             if (match) {
@@ -267,7 +226,8 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
         const dateObj = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
         if (isNaN(dateObj.getTime())) return '';
         
-        // Method 2: Check for midnight (indicates calendar date from DB)
+        // Method 2: UTC detection. Calendar dates are usually stored as midnight UTC.
+        // If we detect midnight, we extract UTC components to avoid local timezone shifts.
         const isMidnight = dateObj.getUTCHours() === 0 && dateObj.getUTCMinutes() === 0;
         
         const mm = String((isMidnight ? dateObj.getUTCMonth() : dateObj.getMonth()) + 1).padStart(2, '0');
@@ -280,98 +240,108 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
 }
 
 /**
- * Checks if a PDF field name indicates it belongs to a manager/approver.
+ * STRICT ROLE ISOLATION HELPERS
+ * Categorizes PDF field names and data keys to prevent Employee/Manager overlaps.
  */
+
+const MANAGER_KEYWORDS = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized', 'officer', 'station_mgr', 'approving'];
+const EMPLOYEE_KEYWORDS = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user', 'member', 'filing_party'];
+
 function isManagerPdfField(fName: string): boolean {
-    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized_rep', 'officer', 'station_mgr', 'depthead', 'authorized'];
-    return managers.some(m => fName.includes(m));
+    const name = fName.toLowerCase();
+    // Special check: exclude "employee_name" or "emp_name" from manager detection even if they contain keyword partials
+    if (name.includes('employee') || name.includes('applicant') || name.startsWith('emp_')) return false;
+    return MANAGER_KEYWORDS.some(m => name.includes(m));
 }
 
-/**
- * Checks if a PDF field name indicates it belongs to an employee/requester.
- */
 function isEmployeePdfField(fName: string): boolean {
-    const employees = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user', 'member'];
-    return employees.some(e => fName.includes(e));
+    const name = fName.toLowerCase();
+    // Exclude manager fields from employee detection
+    if (MANAGER_KEYWORDS.some(m => name.includes(m))) return false;
+    return EMPLOYEE_KEYWORDS.some(e => name.includes(e));
 }
 
-/**
- * Returns the intended role of a PDF field based on its name.
- */
 function getFieldRole(fName: string): 'employee' | 'manager' | 'neutral' {
     if (isManagerPdfField(fName)) return 'manager';
     if (isEmployeePdfField(fName)) return 'employee';
     return 'neutral';
 }
 
-/**
- * Checks if a PDF field belongs to the Work Extension namespace.
- */
-function isWorkExtensionField(fName: string): boolean {
-    return fName.startsWith('we') || fName.includes('workext') || fName.includes('extension');
+function getDataRole(key: string): 'employee' | 'manager' | 'neutral' {
+    const k = key.toLowerCase();
+    if (k.includes('manager') || k.includes('approval') || k.includes('we_manager')) return 'manager';
+    if (k.includes('employee') || k.includes('emp_') || k.includes('applicant') || k.includes('we_employee')) return 'employee';
+    return 'neutral';
 }
 
-/**
- * Categorizes a data key based on whether it belongs to an employee or manager.
- */
-function getDataRole(key: string): 'employee' | 'manager' | 'neutral' {
-    if (key.includes('manager') || key.includes('approval') || key.includes('we_manager')) return 'manager';
-    if (key.includes('employee') || key.includes('emp_') || key.includes('applicant') || key.includes('we_employee')) return 'employee';
-    return 'neutral';
+function isWorkExtensionField(fName: string): boolean {
+    const name = fName.toLowerCase();
+    return name.startsWith('we') || name.includes('workext') || name.includes('extension');
+}
+
+async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefined, fieldNames: string[], dataRole: 'employee' | 'manager') {
+    if (!sigData || !sigData.includes('base64,')) return;
+    const form = pdfDoc.getForm();
+    const allFormFields = form.getFields();
+    
+    try {
+        const sigBase64 = sigData.split('base64,')[1];
+        const buffer = Buffer.from(sigBase64, 'base64');
+        let image;
+        try { image = await pdfDoc.embedPng(buffer); } catch (e) { 
+            try { image = await pdfDoc.embedJpg(buffer); } catch (e2) { return; }
+        }
+
+        const normalizedTargets = fieldNames.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+        for (const field of allFormFields) {
+            const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+            const fieldRole = getFieldRole(fName);
+            
+            // STRICT ROLE ENFORCEMENT
+            if (dataRole === 'manager' && fieldRole !== 'manager') continue;
+            if (dataRole === 'employee' && fieldRole === 'manager') continue;
+
+            const isMatch = normalizedTargets.some(target => 
+                fName === target || (target.length > 5 && fName.endsWith(target))
+            );
+
+            if (isMatch) {
+                try {
+                    const button = form.getButton(field.getName());
+                    button.setImage(image);
+                } catch (e) {}
+            }
+        }
+    } catch (err) {}
 }
 
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
     const db = getDb();
     try {
         const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'alafTemplate'").get() as { value: string } | undefined;
-        if (!templateData || !templateData.value) {
-            return { success: false, error: "ALAF template not found. Please upload one in the Reports section." };
-        }
+        if (!templateData || !templateData.value) return { success: false, error: "ALAF template not found." };
 
         const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.employeeId) as Employee | undefined;
         if (!employee) return { success: false, error: "Employee not found." };
         const manager = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
-        const templateBytes = Buffer.from(templateData.value, 'base64');
-        const pdfDoc = await PDFDocument.load(templateBytes);
+        const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
         const form = pdfDoc.getForm();
-
-        let totalDaysValue = "";
-        if (leaveRequest.durationCategory === 'minutes' && leaveRequest.totalMinutes) {
-            totalDaysValue = `${leaveRequest.totalMinutes} mins`;
-        } else {
-            let days = differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1;
-            if (leaveRequest.isAllDay === false && days === 1) days = 0.5;
-            totalDaysValue = String(days);
-        }
 
         const startDateStr = formatComponentDate(leaveRequest.startDate);
         const endDateStr = formatComponentDate(leaveRequest.endDate);
-        let leaveDatesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate))
-            ? startDateStr
-            : `${startDateStr} to ${endDateStr}`;
-        
-        if (!leaveRequest.isAllDay && leaveRequest.durationCategory !== 'minutes') {
-            if (leaveRequest.durationCategory === 'half' && leaveRequest.originalStartTime && leaveRequest.originalEndTime) {
-                leaveDatesDisplay += ` (Half Day: ${leaveRequest.halfDaySegment === 'first' ? '1st Half' : '2nd Half'} of ${leaveRequest.originalStartTime}-${leaveRequest.originalEndTime})`;
-            } else if (leaveRequest.startTime && leaveRequest.endTime) {
-                leaveDatesDisplay += ` (${leaveRequest.startTime} - ${leaveRequest.endTime})`;
-            }
-        } else if (leaveRequest.durationCategory === 'minutes' && leaveRequest.startTime) {
-            leaveDatesDisplay += ` @ ${leaveRequest.startTime}`;
-        }
+        const datesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
         const fields = {
             employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
-            date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept', 'office'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
-            leave_dates: [leaveDatesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
-            total_days: [totalDaysValue, 'total_days', 'no_of_days', 'days'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks', 'purpose'],
-            contact_info: [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact'],
+            department: [leaveRequest.department || employee.group || '', 'department', 'dept'],
+            leave_dates: [datesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
+            reason: [leaveRequest.reason || '', 'reason', 'remarks'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
             approval_date: [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
+            date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
         };
 
         const allFormFields = form.getFields();
@@ -383,10 +353,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const fieldRole = getFieldRole(fName);
                 
-                // STRICT ROLE ISOLATION
-                // 1. Manager data MUST match a manager field
+                // CRITICAL OVERLAP PROTECTION
                 if (dataRole === 'manager' && fieldRole !== 'manager') continue;
-                // 2. Employee data is allowed in employee OR neutral fields
                 if (dataRole === 'employee' && fieldRole === 'manager') continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
@@ -396,31 +364,20 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             }
         }
         
+        // Handle checkboxes for types and status
         if (leaveRequest.type) {
-            const normalizedType = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
-            for (const field of allFormFields) {
-                const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (fName === normalizedType || fName === `chk${normalizedType}` || (normalizedType.length > 3 && fName.includes(normalizedType))) {
-                    try { form.getCheckBox(field.getName()).check(); } catch (e) {}
-                    try { form.getTextField(field.getName()).setText('X'); } catch (e) {}
+            const t = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
+            allFormFields.forEach(f => {
+                const fn = f.getName().toLowerCase();
+                if (fn === t || fn.includes(`chk${t}`)) {
+                    try { form.getCheckBox(f.getName()).check(); } catch (e) {}
                 }
-            }
-        }
-        
-        if (['approved', 'rejected', 'processed'].includes(leaveRequest.status)) {
-            const statusKey = leaveRequest.status === 'processed' ? 'approved' : leaveRequest.status.toLowerCase();
-            for (const field of allFormFields) {
-                const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (fName === statusKey || fName === `chk${statusKey}` || fName === (statusKey === 'approved' ? 'approve' : 'reject')) {
-                    try { form.getCheckBox(field.getName()).check(); } catch (e) {}
-                    try { form.getTextField(field.getName()).setText('X'); } catch (e) {}
-                }
-            }
+            });
         }
 
         form.updateFieldAppearances();
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'signature_employee', 'signature_1']);
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image', 'signature_manager', 'signature_2']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'signature_employee'], 'employee');
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image', 'signature_manager'], 'manager');
 
         const pdfBytes = await pdfDoc.save();
         return { success: true, pdfDataUri: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}` };
@@ -436,7 +393,6 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (!templateData || !templateData.value) return { success: false, error: "Offset template not found." };
 
         const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.employeeId) as Employee | undefined;
-        if (!employee) return { success: false, error: "Employee not found." };
         const manager = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
         let weRequest: Leave | undefined;
@@ -449,25 +405,20 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
         const form = pdfDoc.getForm();
 
-        const startDateStr = formatComponentDate(leaveRequest.startDate);
-        const endDateStr = formatComponentDate(leaveRequest.endDate);
-        const totalDaysValue = (leaveRequest.durationCategory === 'minutes') ? `${leaveRequest.totalMinutes} mins` : String(differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1 + (leaveRequest.isAllDay === false ? -0.5 : 0));
-
         const fields: Record<string, string[]> = {
             employee_name: [getFullName(employee), 'employee_name', 'emp_name'],
-            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
-            date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept'],
-            offset_dates: [isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDateStr : `${startDateStr} to ${endDateStr}`, 'offset_dates', 'period_of_offset'],
-            total_days: [totalDaysValue, 'total_days', 'days'],
+            employee_id: [leaveRequest.idNumber || employee?.employeeNumber || '', 'employee_id', 'id_number'],
+            department: [leaveRequest.department || employee?.group || '', 'department', 'dept'],
+            offset_dates: [formatComponentDate(leaveRequest.startDate), 'offset_dates', 'period_of_offset'],
             reason: [leaveRequest.reason || '', 'reason', 'offset_reason'],
             manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
             approval_date: [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
+            date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
         };
         
         if (weRequest) {
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
-            fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
+            fields['we_department'] = [weRequest.department || employee?.group || '', 'we_department'];
             fields['we_date_filed'] = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt), 'we_date_filed'];
             fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
             fields['we_date'] = [formatComponentDate(weRequest.startDate), 'we_date'];
@@ -487,28 +438,24 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isWeField = isWorkExtensionField(fName);
                 const fieldRole = getFieldRole(fName);
 
-                // 1. NAMESPACE ISOLATION
+                // NAMESPACE & ROLE ISOLATION
                 if (isWeKey && !isWeField) continue;
                 if (!isWeKey && isWeField) continue;
-
-                // 2. STRICT ROLE ISOLATION
                 if (dataRole === 'manager' && fieldRole !== 'manager') continue;
                 if (dataRole === 'employee' && fieldRole === 'manager') continue;
 
-                // 3. TARGET MATCHING
-                const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
-                if (isMatch) {
+                if (normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)))) {
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
                 }
             }
         }
 
         form.updateFieldAppearances();
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image']);
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image']);
+        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image'], 'manager');
         if (weRequest) {
-            await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image']);
-            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature, ['we_manager_signature_af_image']);
+            await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image'], 'employee');
+            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature, ['we_manager_signature_af_image'], 'manager');
         }
 
         const pdfBytes = await pdfDoc.save();

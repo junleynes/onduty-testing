@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState, useMemo, useTransition } from 'react';
@@ -294,7 +295,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                     paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
                 } else if (dayData.holiday || dayData.shift?.isHolidayOff) {
-                    day_status = ''; // "HOL OFF" removed as requested
+                    day_status = ''; // Status blank for Holiday as requested
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -302,7 +303,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = templateSched.paidbreak_start;
                     paidbreak_end = templateSched.paidbreak_end;
                 } else if (dayData.leave) {
-                    day_status = ''; // Leave types (VL, SL, Offset) hidden for Work Schedule
+                    day_status = ''; 
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;

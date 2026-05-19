@@ -1,3 +1,4 @@
+
 'use server';
 
 import type { SmtpSettings, Employee, Shift, AppVisibility, Leave } from '@/types';
@@ -255,6 +256,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
     try {
+        // Method 1: Literal string parsing (safest for database ISO strings)
         if (typeof dateInput === 'string') {
             const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
             if (match) {
@@ -265,14 +267,12 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
         const dateObj = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
         if (isNaN(dateObj.getTime())) return '';
         
-        // Intelligent fallback: 
-        // If hours/mins/secs are all zero, it's a calendar date from a DB string (UTC midnight).
-        // Otherwise, it's a local timestamp (like "now").
-        const isUTC = dateObj.getHours() === 0 && dateObj.getMinutes() === 0 && dateObj.getSeconds() === 0;
+        // Method 2: Check for midnight (indicates calendar date from DB)
+        const isMidnight = dateObj.getUTCHours() === 0 && dateObj.getUTCMinutes() === 0;
         
-        const mm = String((isUTC ? dateObj.getUTCMonth() : dateObj.getMonth()) + 1).padStart(2, '0');
-        const dd = String(isUTC ? dateObj.getUTCDate() : dateObj.getDate()).padStart(2, '0');
-        const yyyy = isUTC ? dateObj.getUTCFullYear() : dateObj.getFullYear();
+        const mm = String((isMidnight ? dateObj.getUTCMonth() : dateObj.getMonth()) + 1).padStart(2, '0');
+        const dd = String(isMidnight ? dateObj.getUTCDate() : dateObj.getDate()).padStart(2, '0');
+        const yyyy = isMidnight ? dateObj.getUTCFullYear() : dateObj.getFullYear();
         return `${mm}/${dd}/${yyyy}`;
     } catch (e) {
         return '';
@@ -309,6 +309,15 @@ function getFieldRole(fName: string): 'employee' | 'manager' | 'neutral' {
  */
 function isWorkExtensionField(fName: string): boolean {
     return fName.startsWith('we') || fName.includes('workext') || fName.includes('extension');
+}
+
+/**
+ * Categorizes a data key based on whether it belongs to an employee or manager.
+ */
+function getDataRole(key: string): 'employee' | 'manager' | 'neutral' {
+    if (key.includes('manager') || key.includes('approval') || key.includes('we_manager')) return 'manager';
+    if (key.includes('employee') || key.includes('emp_') || key.includes('applicant') || key.includes('we_employee')) return 'employee';
+    return 'neutral';
 }
 
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
@@ -367,15 +376,18 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const allFormFields = form.getFields();
         for (const [key, [value, ...targets]] of Object.entries(fields)) {
-            const dataRole = key.includes('manager') || key.includes('approval') ? 'manager' : (key.includes('employee') ? 'employee' : 'neutral');
+            const dataRole = getDataRole(key);
             const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
             
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const fieldRole = getFieldRole(fName);
                 
-                // STRICT ROLE ISOLATION: Data Role must match Field Role if both are specific
-                if (dataRole !== 'neutral' && fieldRole !== 'neutral' && dataRole !== fieldRole) continue;
+                // STRICT ROLE ISOLATION
+                // 1. Manager data MUST match a manager field
+                if (dataRole === 'manager' && fieldRole !== 'manager') continue;
+                // 2. Employee data is allowed in employee OR neutral fields
+                if (dataRole === 'employee' && fieldRole === 'manager') continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 if (isMatch) {
@@ -442,7 +454,6 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const totalDaysValue = (leaveRequest.durationCategory === 'minutes') ? `${leaveRequest.totalMinutes} mins` : String(differenceInCalendarDays(new Date(leaveRequest.endDate), new Date(leaveRequest.startDate)) + 1 + (leaveRequest.isAllDay === false ? -0.5 : 0));
 
         const fields: Record<string, string[]> = {
-            // CURRENT OFFSET FIELDS
             employee_name: [getFullName(employee), 'employee_name', 'emp_name'],
             employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
             date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
@@ -455,7 +466,6 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         };
         
         if (weRequest) {
-            // REFERENCE WORK EXTENSION FIELDS (WE NAMESPACE)
             fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
             fields['we_department'] = [weRequest.department || employee.group || '', 'we_department'];
             fields['we_date_filed'] = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt), 'we_date_filed'];
@@ -469,7 +479,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const allFormFields = form.getFields();
         for (const [key, [value, ...targets]] of Object.entries(fields)) {
             const isWeKey = key.startsWith('we_');
-            const dataRole = key.includes('manager') || key.includes('approval') ? 'manager' : (key.includes('employee') ? 'employee' : 'neutral');
+            const dataRole = getDataRole(key);
             const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
             for (const field of allFormFields) {
@@ -477,12 +487,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 const isWeField = isWorkExtensionField(fName);
                 const fieldRole = getFieldRole(fName);
 
-                // 1. STRICT NAMESPACE ISOLATION
+                // 1. NAMESPACE ISOLATION
                 if (isWeKey && !isWeField) continue;
                 if (!isWeKey && isWeField) continue;
 
                 // 2. STRICT ROLE ISOLATION
-                if (dataRole !== 'neutral' && fieldRole !== 'neutral' && dataRole !== fieldRole) continue;
+                if (dataRole === 'manager' && fieldRole !== 'manager') continue;
+                if (dataRole === 'employee' && fieldRole === 'manager') continue;
 
                 // 3. TARGET MATCHING
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));

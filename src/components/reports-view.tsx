@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useState, useMemo, useTransition } from 'react';
@@ -295,7 +294,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                     paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
                 } else if (dayData.holiday || dayData.shift?.isHolidayOff) {
-                    day_status = 'HOL OFF';
+                    day_status = ''; // "HOL OFF" removed as requested
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;
@@ -1074,7 +1073,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             });
     
             if (templateRowNumber === -1) {
-                throw new Error("Template row with `{{employee_name}}` not found.");
+                throw new Error("Template row with `{{employee_name}}` found.");
             }
             
             const templateRow = worksheet.getRow(templateRowNumber);

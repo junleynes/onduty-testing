@@ -250,7 +250,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 /**
  * Robust date component extractor. 
  * Extracts Year, Month, Day directly from string or local date object 
- * to bypass UTC shifts that cause "one day behind" errors.
+ * bypasses UTC shifts that cause "one day behind" errors.
  */
 function formatComponentDate(dateInput: Date | string | number | undefined): string {
     if (!dateInput) return '';
@@ -258,17 +258,21 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
         if (typeof dateInput === 'string') {
             const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
             if (match) {
-                const [_, yyyy, mm, dd] = match;
-                return `${mm}/${dd}/${yyyy}`;
+                return `${match[2]}/${match[3]}/${match[1]}`;
             }
         }
         
         const dateObj = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
         if (isNaN(dateObj.getTime())) return '';
         
-        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const dd = String(dateObj.getDate()).padStart(2, '0');
-        const yyyy = dateObj.getFullYear();
+        // Intelligent fallback: 
+        // If hours/mins/secs are all zero, it's a calendar date from a DB string (UTC midnight).
+        // Otherwise, it's a local timestamp (like "now").
+        const isUTC = dateObj.getHours() === 0 && dateObj.getMinutes() === 0 && dateObj.getSeconds() === 0;
+        
+        const mm = String((isUTC ? dateObj.getUTCMonth() : dateObj.getMonth()) + 1).padStart(2, '0');
+        const dd = String(isUTC ? dateObj.getUTCDate() : dateObj.getDate()).padStart(2, '0');
+        const yyyy = isUTC ? dateObj.getUTCFullYear() : dateObj.getFullYear();
         return `${mm}/${dd}/${yyyy}`;
     } catch (e) {
         return '';
@@ -279,7 +283,7 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
  * Checks if a PDF field name indicates it belongs to a manager/approver.
  */
 function isManagerPdfField(fName: string): boolean {
-    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized_rep', 'officer', 'station_mgr', 'depthead'];
+    const managers = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized_rep', 'officer', 'station_mgr', 'depthead', 'authorized'];
     return managers.some(m => fName.includes(m));
 }
 
@@ -289,6 +293,15 @@ function isManagerPdfField(fName: string): boolean {
 function isEmployeePdfField(fName: string): boolean {
     const employees = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user', 'member'];
     return employees.some(e => fName.includes(e));
+}
+
+/**
+ * Returns the intended role of a PDF field based on its name.
+ */
+function getFieldRole(fName: string): 'employee' | 'manager' | 'neutral' {
+    if (isManagerPdfField(fName)) return 'manager';
+    if (isEmployeePdfField(fName)) return 'employee';
+    return 'neutral';
 }
 
 /**
@@ -354,15 +367,15 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const allFormFields = form.getFields();
         for (const [key, [value, ...targets]] of Object.entries(fields)) {
+            const dataRole = key.includes('manager') || key.includes('approval') ? 'manager' : (key.includes('employee') ? 'employee' : 'neutral');
             const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
+            
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                const fieldRole = getFieldRole(fName);
                 
-                // STRICT ROLE ISOLATION
-                // Prevent Employee data from matching Manager fields
-                if (key.includes('employee_name') && isManagerPdfField(fName)) continue;
-                // Prevent Manager data from matching Employee fields
-                if (key.includes('manager_name') && isEmployeePdfField(fName)) continue;
+                // STRICT ROLE ISOLATION: Data Role must match Field Role if both are specific
+                if (dataRole !== 'neutral' && fieldRole !== 'neutral' && dataRole !== fieldRole) continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 if (isMatch) {
@@ -456,19 +469,20 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const allFormFields = form.getFields();
         for (const [key, [value, ...targets]] of Object.entries(fields)) {
             const isWeKey = key.startsWith('we_');
+            const dataRole = key.includes('manager') || key.includes('approval') ? 'manager' : (key.includes('employee') ? 'employee' : 'neutral');
             const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const isWeField = isWorkExtensionField(fName);
+                const fieldRole = getFieldRole(fName);
 
                 // 1. STRICT NAMESPACE ISOLATION
                 if (isWeKey && !isWeField) continue;
                 if (!isWeKey && isWeField) continue;
 
                 // 2. STRICT ROLE ISOLATION
-                if (key.includes('employee_name') && isManagerPdfField(fName)) continue;
-                if (key.includes('manager_name') && isEmployeePdfField(fName)) continue;
+                if (dataRole !== 'neutral' && fieldRole !== 'neutral' && dataRole !== fieldRole) continue;
 
                 // 3. TARGET MATCHING
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));

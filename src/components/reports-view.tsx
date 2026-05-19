@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useState, useMemo, useTransition } from 'react';
@@ -200,36 +199,27 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     
     const getDefaultShiftTemplate = (employee: Employee): ShiftTemplate | undefined => {
         const empShifts = shifts.filter(s => s.employeeId === employee.id && !s.isDayOff && !s.isHolidayOff);
-        let commonDuration = 0;
         
         if (empShifts.length > 0) {
-            const durations = empShifts.map(s => {
-                const start = parse(s.startTime, 'HH:mm', new Date());
-                let end = parse(s.endTime, 'HH:mm', new Date());
-                if (end < start) end = addDays(end, 1);
-                return (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-            });
-            
-            const counts = durations.reduce((acc, d) => {
-                acc[d] = (acc[d] || 0) + 1;
+            // Find the most frequent shift pattern used by this employee
+            const counts = empShifts.reduce((acc, s) => {
+                const key = `${s.startTime}-${s.endTime}`;
+                acc[key] = (acc[key] || 0) + 1;
                 return acc;
-            }, {} as Record<number, number>);
+            }, {} as Record<string, number>);
             
-            commonDuration = Number(Object.keys(counts).reduce((a, b) => counts[Number(a)] > counts[Number(b)] ? a : b));
+            const mostFrequentKey = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+            const [start, end] = mostFrequentKey.split('-');
+            
+            // Try to find a template that matches these times
+            const matchedTemplate = shiftTemplates.find(t => t.startTime === start && t.endTime === end);
+            if (matchedTemplate) return matchedTemplate;
         }
 
-        let preferred: ShiftTemplate | undefined;
-        if (commonDuration === 11) {
-            preferred = shiftTemplates.find(t => t.name.toLowerCase().includes("10hour manager shift1"));
-        } else if (commonDuration === 10) {
-            preferred = shiftTemplates.find(t => t.name.toLowerCase().includes("10hour mid shift"));
-        }
-
-        if (preferred) return preferred;
-
+        // Fallback: Use position-based guessing if no shifts found
         const isMgr = employee.role === 'manager' || employee.role === 'admin';
         const preferredName = isMgr ? "manager shift" : "mid shift";
-        preferred = shiftTemplates.find(t => t.name.toLowerCase().includes(preferredName));
+        const preferred = shiftTemplates.find(t => t.name.toLowerCase().includes(preferredName));
         
         return preferred || shiftTemplates[0];
     };
@@ -295,7 +285,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     paidbreak_start = !dayData.shift.isUnpaidBreak ? dayData.shift.breakStartTime || '' : '';
                     paidbreak_end = !dayData.shift.isUnpaidBreak ? dayData.shift.breakEndTime || '' : '';
                 } else if (dayData.holiday || dayData.shift?.isHolidayOff) {
-                    day_status = ''; // Status blank for Holiday as requested
+                    day_status = ''; // Blank for holidays
                     schedule_start = templateSched.schedule_start;
                     schedule_end = templateSched.schedule_end;
                     unpaidbreak_start = templateSched.unpaidbreak_start;

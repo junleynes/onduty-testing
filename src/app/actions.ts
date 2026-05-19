@@ -1,4 +1,3 @@
-
 'use server';
 
 import type { SmtpSettings, Employee, Shift, AppVisibility, Leave } from '@/types';
@@ -8,7 +7,7 @@ import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument } from 'pdf-lib';
-import { differenceInCalendarDays, isSameDay } from 'date-fns';
+import { isSameDay } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { getFullName } from '@/lib/utils';
 
@@ -243,14 +242,13 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
  * STRICT ROLE ISOLATION HELPERS
  * Categorizes PDF field names and data keys to prevent Employee/Manager overlaps.
  */
-
 const MANAGER_KEYWORDS = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized', 'officer', 'station_mgr', 'approving'];
 const EMPLOYEE_KEYWORDS = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user', 'member', 'filing_party'];
 
 function isManagerPdfField(fName: string): boolean {
     const name = fName.toLowerCase();
-    // Special check: exclude "employee_name" or "emp_name" from manager detection even if they contain keyword partials
-    if (name.includes('employee') || name.includes('applicant') || name.startsWith('emp_')) return false;
+    // Exclude employee variants from manager detection
+    if (name.includes('employee_name') || name.includes('emp_name') || name.includes('applicant_name')) return false;
     return MANAGER_KEYWORDS.some(m => name.includes(m));
 }
 

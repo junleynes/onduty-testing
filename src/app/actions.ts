@@ -380,12 +380,18 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // ── Fill fields directly by exact template field name ─────────────────────
         // Pre-clear all text fields first to remove any default/pre-filled values
         // that might bleed into the rendered output alongside our new values.
-        form.getFields().forEach(f => {
+        const allFields = form.getFields();
+        allFields.forEach(f => {
             try { form.getTextField(f.getName()).setText(''); } catch (e) {}
         });
 
+        // trySet: strict exact-name match — finds the field by getName() === fieldName
+        // exactly, avoiding any fuzzy/partial matching from form.getTextField().
         const trySet = (fieldName: string, value: string) => {
-            try { form.getTextField(fieldName).setText(value || ''); } catch (e) {}
+            const field = allFields.find(f => f.getName() === fieldName);
+            if (field) {
+                try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
+            }
         };
 
         // Employee fields — only employee data, never manager
@@ -474,15 +480,20 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         // ── PASS 1: Fill ALAF (offset) section fields directly by exact name ──────
-        // Using getTextField by exact name instead of a loop completely eliminates
-        // any risk of a WE field being matched by an ALAF data key or vice-versa.
         // Pre-clear all text fields first to remove any default/pre-filled values.
-        form.getFields().forEach(f => {
+        const allFields = form.getFields();
+        allFields.forEach(f => {
             try { form.getTextField(f.getName()).setText(''); } catch (e) {}
         });
 
+        // trySet: strict exact-name match — iterates fields and only writes to the
+        // field whose getName() === fieldName exactly. Avoids pdf-lib's getTextField()
+        // which can do case-insensitive or partial matching in some template layouts.
         const trySet = (fieldName: string, value: string) => {
-            try { form.getTextField(fieldName).setText(value || ''); } catch (e) {}
+            const field = allFields.find(f => f.getName() === fieldName);
+            if (field) {
+                try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
+            }
         };
 
         trySet('employee_name',  getFullName(employee));

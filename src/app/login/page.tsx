@@ -31,7 +31,10 @@ export default function LoginPage() {
           title: 'Login Successful',
           description: `Welcome back, ${result.user.firstName}!`,
         });
-        localStorage.setItem('currentUser', JSON.stringify(result.user));
+        // FIX #2: strip password before storing in localStorage — server action
+        // already strips it, but guard here too in case type changes
+        const { password: _pw, ...safeUser } = result.user as any;
+        localStorage.setItem('currentUser', JSON.stringify(safeUser));
         router.push('/');
       } else {
         toast({

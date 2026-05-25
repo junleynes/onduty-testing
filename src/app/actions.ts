@@ -3,13 +3,18 @@
 import type { SmtpSettings, Employee, Shift, AppVisibility, Leave } from '@/types';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { isSameDay } from 'date-fns';
-import { v4 as uuidv4 } from 'uuid';
 import { getFullName } from '@/lib/utils';
+
+// Login attempt tracking for rate limiting (in-memory, resets on server restart)
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 
 type Attachment = {
@@ -68,27 +73,58 @@ export async function sendEmail(
 
 export async function verifyUser(email: string, password: string): Promise<{ success: boolean; user?: Employee; error?: string; }> {
     const db = getDb();
+    const key = email.toLowerCase().trim();
+
+    // ── Rate limiting ─────────────────────────────────────────────────────────
+    const now = Date.now();
+    const record = loginAttempts.get(key);
+    if (record && record.lockedUntil > now) {
+        const mins = Math.ceil((record.lockedUntil - now) / 60000);
+        return { success: false, error: `Too many failed attempts. Try again in ${mins} minute${mins !== 1 ? 's' : ''}.` };
+    }
+
     try {
-        const userRow = db.prepare('SELECT * FROM employees WHERE email = ?').get(email.toLowerCase()) as any;
+        const userRow = db.prepare('SELECT * FROM employees WHERE email = ?').get(key) as any;
 
         if (userRow) {
             const user = JSON.parse(JSON.stringify(userRow)) as Employee;
-            
+
+            let isMatch = false;
             if (user.password && user.password.startsWith('$2')) {
-                const isMatch = await bcrypt.compare(password, user.password);
+                // Bcrypt hash — compare securely
+                isMatch = await bcrypt.compare(password, user.password);
+            } else if (user.password) {
+                // FIX #1: plaintext password in DB — compare then immediately upgrade to bcrypt
+                // This handles accounts created before bcrypt was introduced.
+                // After this login, the account is bcrypt-protected going forward.
+                isMatch = user.password === password;
                 if (isMatch) {
-                    return { success: true, user: user };
+                    const hashed = await bcrypt.hash(password, 12);
+                    db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashed, user.id);
                 }
-            } 
-            else if (user.password === password) {
-                return { success: true, user: user };
+            }
+
+            if (isMatch) {
+                // Clear failed attempts on success
+                loginAttempts.delete(key);
+                // FIX #2: strip password from returned user object — never send to client
+                const { password: _pw, ...safeUser } = user as any;
+                return { success: true, user: safeUser as Employee };
             }
         }
-        
+
+        // Track failed attempt
+        const attempts = loginAttempts.get(key) || { count: 0, lockedUntil: 0 };
+        attempts.count += 1;
+        if (attempts.count >= MAX_ATTEMPTS) {
+            attempts.lockedUntil = now + LOCKOUT_MS;
+            attempts.count = 0;
+        }
+        loginAttempts.set(key, attempts);
+
         return { success: false, error: 'Invalid email or password.' };
 
     } catch (error) {
-        console.error('Login verification failed:', error);
         return { success: false, error: (error as Error).message };
     }
 }
@@ -535,7 +571,7 @@ export async function sendPasswordResetLink(email: string, origin: string, smtpS
             return { success: true };
         }
 
-        const token = uuidv4();
+        const token = crypto.randomBytes(32).toString('hex'); // FIX #3: cryptographically secure token
         const expiresAt = new Date(Date.now() + 3600000); 
 
         db.prepare('INSERT INTO password_reset_tokens (token, employeeId, expiresAt) VALUES (?, ?, ?)')
@@ -566,7 +602,7 @@ export async function sendActivationLink(employeeId: string, origin: string, smt
             return { success: true, error: 'Employee not found.' };
         }
 
-        const token = uuidv4();
+        const token = crypto.randomBytes(32).toString('hex'); // FIX #3: cryptographically secure token
         const expiresAt = new Date(Date.now() + 24 * 3600000); 
 
         db.prepare('INSERT INTO password_reset_tokens (token, employeeId, expiresAt) VALUES (?, ?, ?)')

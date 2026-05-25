@@ -181,7 +181,7 @@ function AppContent() {
               firstName: "Super",
               lastName: "Admin",
               email: "admin@onduty.local",
-              password: "P@ssw0rd",
+              // FIX #2: never store or expose password in client-side state
               phone: "123-456-7890",
               position: "System Administrator",
               role: "admin",

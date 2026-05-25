@@ -378,6 +378,12 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         }
 
         // ── Fill fields directly by exact template field name ─────────────────────
+        // Pre-clear all text fields first to remove any default/pre-filled values
+        // that might bleed into the rendered output alongside our new values.
+        form.getFields().forEach(f => {
+            try { form.getTextField(f.getName()).setText(''); } catch (e) {}
+        });
+
         const trySet = (fieldName: string, value: string) => {
             try { form.getTextField(fieldName).setText(value || ''); } catch (e) {}
         };
@@ -400,11 +406,15 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         const allFormFields = form.getFields();
 
         // 1. Leave type checkbox (e.g. AVL, VL, SL, Offset, etc.)
+        // BUG FIX: fn.endsWith(t) caused 'avl' to match when t='vl'.
+        // Use EXACT match only: fn === t or fn === 'chk'+t.
+        // Also check the raw (non-normalized) field name for exact match.
         if (leaveRequest.type) {
             const t = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
             allFormFields.forEach(f => {
                 const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (fn === t || fn === `chk${t}` || fn.endsWith(`_${t}`) || fn.endsWith(t)) {
+                const fnRaw = f.getName().toLowerCase();
+                if (fn === t || fn === `chk${t}` || fnRaw === t || fnRaw === `chk_${t}` || fnRaw === `chk${t}`) {
                     try { form.getCheckBox(f.getName()).check(); } catch (e) {}
                 }
             });
@@ -415,7 +425,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         if (status === 'approved' || status === 'rejected') {
             allFormFields.forEach(f => {
                 const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (fn === status || fn === `chk${status}` || fn.includes(status)) {
+                // Exact match only — avoid partial matches like 'disapproved' matching 'approved'
+                if (fn === status || fn === `chk${status}`) {
                     try { form.getCheckBox(f.getName()).check(); } catch (e) {}
                 }
             });
@@ -465,6 +476,11 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         // ── PASS 1: Fill ALAF (offset) section fields directly by exact name ──────
         // Using getTextField by exact name instead of a loop completely eliminates
         // any risk of a WE field being matched by an ALAF data key or vice-versa.
+        // Pre-clear all text fields first to remove any default/pre-filled values.
+        form.getFields().forEach(f => {
+            try { form.getTextField(f.getName()).setText(''); } catch (e) {}
+        });
+
         const trySet = (fieldName: string, value: string) => {
             try { form.getTextField(fieldName).setText(value || ''); } catch (e) {}
         };

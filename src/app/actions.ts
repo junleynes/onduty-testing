@@ -303,9 +303,10 @@ function getDataRole(key: string): 'employee' | 'manager' | 'neutral' {
 
 // FIX 1: require the explicit "we_" prefix (with underscore) so short "we" alone
 // does not accidentally match unrelated field names like "weight", "week", "welcome".
+// Also recognises 'extended_date' which is a WE-section field without the we_ prefix.
 function isWorkExtensionField(fName: string): boolean {
     const name = fName.toLowerCase();
-    return name.startsWith('we_') || name.includes('workext') || name.includes('workextension');
+    return name.startsWith('we_') || name === 'extended_date' || name.includes('workext') || name.includes('workextension');
 }
 
 async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefined, fieldNames: string[], dataRole: 'employee' | 'manager') {
@@ -467,47 +468,40 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         }
 
         const fields: Record<string, string[]> = {
-            // OFFSET section fields
-            employee_name:  [getFullName(employee), 'employee_name', 'emp_name'],
-            employee_id:    [leaveRequest.idNumber || employee?.employeeNumber || '', 'employee_id', 'id_number'],
-            department:     [leaveRequest.department || employee?.group || '', 'department', 'dept'],
-            // FIX: contact_info was missing — now mapped from leaveRequest or employee phone
-            contact_info:   [leaveRequest.contactInfo || employee?.phone || '', 'contact_info', 'contact', 'phone', 'contact_number'],
-            offset_dates:   [formatComponentDate(leaveRequest.startDate), 'offset_dates', 'period_of_offset', 'offset_date'],
-            // FIX 1: 'reason' key was neutral so it bled into WE reason field.
-            // Renamed key to 'offset_reason' so getDataRole returns 'neutral' but the
-            // we_ namespace guard still blocks it from any we_* field.
-            offset_reason:  [leaveRequest.reason || '', 'offset_reason', 'reason'],
-            manager_name:   [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
-            approval_date:  [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved'],
-            // FIX 2: 'date_filed' was neutral so it matched BOTH the offset date_filed
-            // field AND the WE section date_filed field. Now uses a distinct key name
-            // so it cannot accidentally match WE fields (blocked by we_ namespace guard).
-            offset_date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
-            // FIX 3: total_days was missing entirely — now included
-            total_days:     [totalDaysValue, 'total_days', 'no_of_days', 'number_of_days', 'days'],
+            // ALAF section — exact field names from template
+            employee_name:     [getFullName(employee),                                      'employee_name'],
+            employee_id:       [leaveRequest.idNumber || employee?.employeeNumber || '',    'employee_id'],
+            department:        [leaveRequest.department || employee?.group || '',           'department'],
+            contact_info:      [leaveRequest.contactInfo || employee?.phone || '',          'contact_info'],
+            leave_dates:       [formatComponentDate(leaveRequest.startDate),                'leave_dates'],
+            offset_reason:     [leaveRequest.reason || '',                                  'offset_reason'],
+            total_days:        [totalDaysValue,                                             'total_days'],
+            manager_name:      [manager ? getFullName(manager) : '',                        'manager_name'],
+            approval_date:     [formatComponentDate(leaveRequest.managedAt),                'approval_date'],
+            // Key renamed so it won't bleed into we_date_filed (different namespace)
+            offset_date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()),  'date_filed'],
         };
         
         if (weRequest) {
-            // WE section fields — all prefixed 'we_' to stay in the WE namespace
-            fields['we_employee_name']  = [getFullName(employee), 'we_employee_name', 'we_emp_name'];
-            fields['we_department']     = [weRequest.department || employee?.group || '', 'we_department', 'we_dept'];
-            fields['we_contact_info']   = [weRequest.contactInfo || employee?.phone || '', 'we_contact_info', 'we_contact', 'we_phone'];
-            // FIX 4: work schedule from/to — the regular shift schedule the employee
-            // was on before extending. Stored in originalStartTime/originalEndTime.
-            fields['we_schedule_from']  = [weRequest.originalStartTime || '', 'we_schedule_from', 'we_work_schedule_from', 'we_sched_start', 'we_schedule_time_from'];
-            fields['we_schedule_to']    = [weRequest.originalEndTime   || '', 'we_schedule_to',   'we_work_schedule_to',   'we_sched_end',   'we_schedule_time_to'];
-            // FIX 5: extension time from/to — the actual period the employee extended.
-            // The WE record's startTime/endTime holds the extension window itself.
-            fields['we_extension_from'] = [weRequest.startTime || '', 'we_extension_from', 'we_ext_from', 'we_time_from', 'we_timein'];
-            fields['we_extension_to']   = [weRequest.endTime   || '', 'we_extension_to',   'we_ext_to',   'we_time_to',   'we_timeout'];
-            fields['we_date']           = [formatComponentDate(weRequest.startDate), 'we_date', 'we_date_of_extension'];
-            // FIX 1 (WE side): own key so it cannot clash with offset reason field
-            fields['we_reason']         = [weRequest.reason || '', 'we_reason', 'we_remarks'];
-            // FIX 2 (WE side): own we_ key so it writes only to WE date_filed field
-            fields['we_date_filed']     = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()), 'we_date_filed', 'we_date_applied'];
-            fields['we_manager_name']   = [weManager ? getFullName(weManager) : '', 'we_manager_name', 'we_supervisor_name', 'we_approver_name'];
-            fields['we_approval_date']  = [formatComponentDate(weRequest.managedAt), 'we_approval_date', 'we_date_approved'];
+            // WE section — exact field names from template
+            fields['we_employee_name'] = [getFullName(employee),                                                            'we_employee_name'];
+            fields['we_department']    = [weRequest.department || employee?.group || '',                                    'we_department'];
+            // we_date_filed — exact field name in WE section
+            fields['we_date_filed']    = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()),  'we_date_filed'];
+            // extended_date — date of the work extension (exact field name)
+            fields['we_extended_date'] = [formatComponentDate(weRequest.startDate),                                         'extended_date'];
+            // Shift schedule from/to — we_shiftfrom / we_shiftto
+            fields['we_shiftfrom']     = [weRequest.originalStartTime || '',   'we_shiftfrom'];
+            fields['we_shiftto']       = [weRequest.originalEndTime   || '',   'we_shiftto'];
+            // Time in/out of the work extension — we_timein / we_timeout
+            fields['we_timein']        = [weRequest.startTime || '',           'we_timein'];
+            fields['we_timeout']       = [weRequest.endTime   || '',           'we_timeout'];
+            // Extended time from/to — we_extendfrom / we_extendto
+            fields['we_extendfrom']    = [weRequest.startTime || '',           'we_extendfrom'];
+            fields['we_extendto']      = [weRequest.endTime   || '',           'we_extendto'];
+            // Reason and manager — exact field names
+            fields['we_reason']        = [weRequest.reason || '',                          'we_reason'];
+            fields['we_manager_name']  = [weManager ? getFullName(weManager) : '',         'we_manager_name'];
         }
 
         const allFormFields = form.getFields();

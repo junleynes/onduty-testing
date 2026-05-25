@@ -15,6 +15,21 @@ function safeParseJSON(jsonString: string | null | undefined, defaultValue: any)
   }
 }
 
+/**
+ * Formats a Date to a local YYYY-MM-DD string WITHOUT converting to UTC first.
+ * Using toISOString().split('T')[0] incorrectly converts to UTC, which shifts
+ * the date back by one day for timezones east of UTC (e.g. UTC+8 Philippines).
+ * This function always uses the local calendar date as the user intended.
+ */
+function toLocalDateString(date: Date | string | undefined | null): string {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export async function getData() {
   const db = getDb();
   try {
@@ -284,7 +299,7 @@ export async function saveAllData({
         
         const shiftStmt = db.prepare('INSERT INTO shifts (id, employeeId, label, startTime, endTime, date, color, isDayOff, isHolidayOff, status, breakStartTime, breakEndTime, isUnpaidBreak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         for(const shift of shifts) {
-            shiftStmt.run(shift.id, shift.employeeId, shift.label, shift.startTime, shift.endTime, new Date(shift.date).toISOString().split('T')[0], shift.color, shift.isDayOff ? 1 : 0, shift.isHolidayOff ? 1 : 0, shift.status, shift.breakStartTime, shift.breakEndTime, shift.isUnpaidBreak ? 1 : 0);
+            shiftStmt.run(shift.id, shift.employeeId, shift.label, shift.startTime, shift.endTime, toLocalDateString(shift.date), shift.color, shift.isDayOff ? 1 : 0, shift.isHolidayOff ? 1 : 0, shift.status, shift.breakStartTime, shift.breakEndTime, shift.isUnpaidBreak ? 1 : 0);
         }
 
         const leaveInsertStmt = db.prepare(`
@@ -298,8 +313,8 @@ export async function saveAllData({
                 employeeId: l.employeeId,
                 type: l.type,
                 color: l.color,
-                startDate: new Date(l.startDate).toISOString(),
-                endDate: new Date(l.endDate || l.startDate).toISOString(),
+                startDate: toLocalDateString(l.startDate),
+                endDate: toLocalDateString(l.endDate || l.startDate),
                 isAllDay: l.isAllDay ? 1 : 0, 
                 startTime: l.startTime, 
                 endTime: l.endTime, 
@@ -308,11 +323,11 @@ export async function saveAllData({
                 requestedAt: l.requestedAt?.toISOString(), 
                 managedBy: l.managedBy, 
                 managedAt: l.managedAt?.toISOString(),
-                originalShiftDate: l.originalShiftDate?.toISOString(),
+                originalShiftDate: l.originalShiftDate ? toLocalDateString(l.originalShiftDate) : null,
                 originalStartTime: l.originalStartTime,
                 originalEndTime: l.originalEndTime,
                 halfDaySegment: l.halfDaySegment || null,
-                dateFiled: l.dateFiled?.toISOString(),
+                dateFiled: l.dateFiled ? toLocalDateString(l.dateFiled) : toLocalDateString(new Date()),
                 department: l.department,
                 idNumber: l.idNumber,
                 contactInfo: l.contactInfo,
@@ -327,12 +342,12 @@ export async function saveAllData({
 
         const noteStmt = db.prepare('INSERT INTO notes (id, date, title, description) VALUES (?, ?, ?, ?)');
         notes.forEach(note => {
-            noteStmt.run(note.id, new Date(note.date).toISOString().split('T')[0], note.title, note.description);
+            noteStmt.run(note.id, toLocalDateString(note.date), note.title, note.description);
         });
 
         const holidayInsertStmt = db.prepare('INSERT INTO holidays (id, date, title) VALUES (@id, @date, @title)');
         for(const holiday of holidays) {
-            holidayInsertStmt.run({id: holiday.id, date: new Date(holiday.date).toISOString().split('T')[0], title: holiday.title});
+            holidayInsertStmt.run({id: holiday.id, date: toLocalDateString(holiday.date), title: holiday.title});
         }
 
         const taskStmt = db.prepare('INSERT INTO tasks (id, shiftId, assigneeId, scope, title, description, status, acknowledgedAt, completedAt, dueDate, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -366,7 +381,7 @@ export async function saveAllData({
 
         const tardyStmt = db.prepare('INSERT INTO tardy_records (employeeId, employeeName, date, schedule, timeIn, timeOut, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)');
         for(const record of tardyRecords) {
-            tardyStmt.run(record.employeeId, record.employeeName, new Date(record.date).toISOString().split('T')[0], record.schedule, record.timeIn, record.timeOut, record.remarks);
+            tardyStmt.run(record.employeeId, record.employeeName, toLocalDateString(record.date), record.schedule, record.timeIn, record.timeOut, record.remarks);
         }
         
         const shiftTemplateInsertStmt = db.prepare('INSERT INTO shift_templates (id, name, label, startTime, endTime, color, breakStartTime, breakEndTime, isUnpaidBreak) VALUES (@id, @name, @label, @startTime, @endTime, @color, @breakStartTime, @breakEndTime, @isUnpaidBreak)');

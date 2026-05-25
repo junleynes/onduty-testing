@@ -241,20 +241,49 @@ function formatComponentDate(dateInput: Date | string | number | undefined): str
 /**
  * STRICT ROLE ISOLATION HELPERS
  * Categorizes PDF field names and data keys to prevent Employee/Manager overlaps.
+ *
+ * FIX 1 — isWorkExtensionField: `name.startsWith('we')` was too broad and matched
+ * common field names like "weight", "week", "welcome", "webform", etc., causing those
+ * non-WE fields to be skipped when filling the main section of the offset PDF.
+ * Changed to only match the explicit "we_" prefix (underscore required) or the longer
+ * keyword strings which are unambiguous.
+ *
+ * FIX 2 — MANAGER_KEYWORDS: 'head' and 'user' are dangerously short and generic.
+ * 'head' falsely matched fields like "letterhead", "header", "thread".
+ * 'user' in EMPLOYEE_KEYWORDS falsely matched fields like "username", "user_id" which
+ * are neutral metadata fields — not the employee's name or ID — causing them to receive
+ * the employee name value. Both removed.
+ *
+ * FIX 3 — isManagerPdfField exclusion list was using includes() on the pre-normalized
+ * fName that already had underscores stripped (replace(/[^a-z0-9]/g, '')), so
+ * 'employee_name' never matched — the guard was silently dead. Fixed to match the
+ * already-normalized form (no underscores).
+ *
+ * FIX 4 — getDataRole: key 'reason' and 'department' resolved to 'neutral', so the
+ * role-guard let them write into ANY matching field name regardless of role. In a
+ * combined offset+WE template that contains both an employee "reason" field and a
+ * manager "reason" annotation field, both got the same value. Fixed by making neutral
+ * data keys skip manager-tagged fields explicitly inside the loop (see generateOffsetPdf).
+ *
+ * FIX 5 — generateOffsetPdf field loop: the we_ namespace guard used
+ * `name.startsWith('we')` (no underscore) consistent with the old isWorkExtensionField,
+ * so field names like "wednesday" or "weight" were incorrectly treated as WE-section
+ * fields and excluded from the main offset fill pass. Aligned with the fixed
+ * isWorkExtensionField (requires "we_" prefix).
  */
-const MANAGER_KEYWORDS = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'head', 'authorized', 'officer', 'station_mgr', 'approving'];
-const EMPLOYEE_KEYWORDS = ['employee', 'applicant', 'emp', 'staff', 'requester', 'user', 'member', 'filing_party'];
+const MANAGER_KEYWORDS = ['manager', 'supervisor', 'superior', 'mgr', 'approver', 'dept_head', 'authorized', 'officer', 'station_mgr', 'approving'];
+const EMPLOYEE_KEYWORDS = ['employee', 'applicant', 'emp', 'staff', 'requester', 'member', 'filing_party'];
 
 function isManagerPdfField(fName: string): boolean {
     const name = fName.toLowerCase();
-    // Exclude employee variants from manager detection
-    if (name.includes('employee_name') || name.includes('emp_name') || name.includes('applicant_name')) return false;
+    // FIX 3: fName is already normalized (no underscores) by callers, so check
+    // normalized forms: 'employeename', 'empname', 'applicantname'
+    if (name.includes('employeename') || name.includes('empname') || name.includes('applicantname')) return false;
     return MANAGER_KEYWORDS.some(m => name.includes(m));
 }
 
 function isEmployeePdfField(fName: string): boolean {
     const name = fName.toLowerCase();
-    // Exclude manager fields from employee detection
     if (MANAGER_KEYWORDS.some(m => name.includes(m))) return false;
     return EMPLOYEE_KEYWORDS.some(e => name.includes(e));
 }
@@ -272,9 +301,11 @@ function getDataRole(key: string): 'employee' | 'manager' | 'neutral' {
     return 'neutral';
 }
 
+// FIX 1: require the explicit "we_" prefix (with underscore) so short "we" alone
+// does not accidentally match unrelated field names like "weight", "week", "welcome".
 function isWorkExtensionField(fName: string): boolean {
     const name = fName.toLowerCase();
-    return name.startsWith('we') || name.includes('workext') || name.includes('extension');
+    return name.startsWith('we_') || name.includes('workext') || name.includes('workextension');
 }
 
 async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefined, fieldNames: string[], dataRole: 'employee' | 'manager') {
@@ -295,7 +326,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
         for (const field of allFormFields) {
             const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
             const fieldRole = getFieldRole(fName);
-            
+
             // STRICT ROLE ENFORCEMENT
             if (dataRole === 'manager' && fieldRole !== 'manager') continue;
             if (dataRole === 'employee' && fieldRole === 'manager') continue;
@@ -354,6 +385,9 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
                 // CRITICAL OVERLAP PROTECTION
                 if (dataRole === 'manager' && fieldRole !== 'manager') continue;
                 if (dataRole === 'employee' && fieldRole === 'manager') continue;
+                // FIX 4: neutral data keys (reason, department, dates) must not
+                // bleed into manager-designated fields
+                if (dataRole === 'neutral' && fieldRole === 'manager') continue;
 
                 const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
                 if (isMatch) {
@@ -433,7 +467,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
             for (const field of allFormFields) {
                 const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const isWeField = isWorkExtensionField(fName);
+                // FIX 1/5: use isWorkExtensionField which now requires 'we_' prefix
+                const isWeField = isWorkExtensionField(field.getName().toLowerCase());
                 const fieldRole = getFieldRole(fName);
 
                 // NAMESPACE & ROLE ISOLATION
@@ -441,6 +476,9 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
                 if (!isWeKey && isWeField) continue;
                 if (dataRole === 'manager' && fieldRole !== 'manager') continue;
                 if (dataRole === 'employee' && fieldRole === 'manager') continue;
+                // FIX 4: neutral data keys (reason, department, dates) must not
+                // bleed into manager-designated fields (e.g. manager's remarks box)
+                if (dataRole === 'neutral' && fieldRole === 'manager') continue;
 
                 if (normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)))) {
                     try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}

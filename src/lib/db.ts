@@ -71,6 +71,8 @@ function initializeDatabase() {
         { name: 'claimedWorkExtensionId', type: 'TEXT' },
         { name: 'isAvlClaimed', type: 'INTEGER DEFAULT 0' },
         { name: 'halfDaySegment', type: 'TEXT' },
+        { name: 'durationCategory', type: 'TEXT' },
+        { name: 'totalMinutes', type: 'INTEGER' },
     ];
     
     leaveColumns.forEach(col => {

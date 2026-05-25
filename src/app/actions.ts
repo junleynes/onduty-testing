@@ -358,10 +358,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 
         const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
         const form = pdfDoc.getForm();
+        const allFields = form.getFields();
 
+        // Compute dates display
         const startDateStr = formatComponentDate(leaveRequest.startDate);
         const endDateStr = formatComponentDate(leaveRequest.endDate);
-        const datesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDateStr : `${startDateStr} to ${endDateStr}`;
+        const datesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate))
+            ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
         // Compute total days
         let leaveTotalDays = '';
@@ -372,75 +375,62 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             leaveTotalDays = '0.5';
         } else {
             const start = new Date(leaveRequest.startDate);
-            const end = new Date(leaveRequest.endDate);
-            const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-            leaveTotalDays = String(days);
+            const end   = new Date(leaveRequest.endDate);
+            leaveTotalDays = String(Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         }
 
-        // ── Fill fields directly by exact template field name ─────────────────────
-        // Pre-clear all text fields first to remove any default/pre-filled values
-        // that might bleed into the rendered output alongside our new values.
-        const allFields = form.getFields();
-        allFields.forEach(f => {
-            try { form.getTextField(f.getName()).setText(''); } catch (e) {}
-        });
-
-        // trySet: strict exact-name match — finds the field by getName() === fieldName
-        // exactly, avoiding any fuzzy/partial matching from form.getTextField().
+        // Strict exact-name field setter — finds field by getName() === fieldName only
         const trySet = (fieldName: string, value: string) => {
             const field = allFields.find(f => f.getName() === fieldName);
-            if (field) {
-                try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
-            }
+            if (field) { try { form.getTextField(fieldName).setText(value || ''); } catch (e) {} }
+        };
+        const tryCheck = (fieldName: string) => {
+            const field = allFields.find(f => f.getName() === fieldName);
+            if (field) { try { form.getCheckBox(fieldName).check(); } catch (e) {} }
         };
 
-        // Employee fields — only employee data, never manager
-        trySet('employee_name',  getFullName(employee));
-        trySet('employee_id',    leaveRequest.idNumber || employee.employeeNumber || '');
-        trySet('department',     leaveRequest.department || employee.group || '');
-        trySet('contact_info',   leaveRequest.contactInfo || employee.phone || '');
-        trySet('leave_dates',    datesDisplay);
-        trySet('total_days',     leaveTotalDays);
-        trySet('reason',         leaveRequest.reason || '');
-        trySet('date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
+        // ── Text fields (exact names from ALAF_Template_Image_Sig.pdf) ────────────
+        trySet('employee_name', getFullName(employee));
+        trySet('employee_id',   leaveRequest.idNumber || employee.employeeNumber || '');
+        trySet('department',    leaveRequest.department || employee.group || '');
+        trySet('contact_info',  leaveRequest.contactInfo || employee.phone || '');
+        trySet('date_filed',    formatComponentDate(leaveRequest.dateFiled || new Date()));
+        trySet('leave_dates',   datesDisplay);
+        trySet('total_days',    leaveTotalDays);
+        trySet('reason',        leaveRequest.reason || '');
+        trySet('manager_name',  manager ? getFullName(manager) : '');
+        trySet('approval_date', formatComponentDate(leaveRequest.managedAt));
 
-        // Manager fields — only manager data, never employee
-        trySet('manager_name',   manager ? getFullName(manager) : '');
-        trySet('approval_date',  formatComponentDate(leaveRequest.managedAt));
+        // TARDY is a text field (not checkbox) used for the "Others" label
+        if (leaveRequest.type === 'Tardy') trySet('TARDY', 'TARDY');
 
-        // ── Checkboxes ────────────────────────────────────────────────────────────
-        const allFormFields = form.getFields();
-
-        // 1. Leave type checkbox (e.g. AVL, VL, SL, Offset, etc.)
-        // BUG FIX: fn.endsWith(t) caused 'avl' to match when t='vl'.
-        // Use EXACT match only: fn === t or fn === 'chk'+t.
-        // Also check the raw (non-normalized) field name for exact match.
+        // ── Leave type checkboxes (exact names: AVL, EL, VL, SL, PL, ML, BL, SPL, SLW, VAWC)
+        // Map leave type values to exact PDF checkbox field names
+        const leaveTypeMap: Record<string, string> = {
+            'avl': 'AVL', 'el': 'EL', 'emergencyleave': 'EL',
+            'vl': 'VL', 'vacationleave': 'VL',
+            'sl': 'SL', 'sickleave': 'SL',
+            'pl': 'PL', 'personalleave': 'PL',
+            'ml': 'ML', 'maternityleave': 'ML',
+            'bl': 'BL', 'bereavementleave': 'BL',
+            'spl': 'SPL', 'specialleave': 'SPL',
+            'slw': 'SLW', 'specialleaveforwomen': 'SLW',
+            'vawc': 'VAWC', 'vawcleave': 'VAWC',
+        };
         if (leaveRequest.type) {
-            const t = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
-            allFormFields.forEach(f => {
-                const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const fnRaw = f.getName().toLowerCase();
-                if (fn === t || fn === `chk${t}` || fnRaw === t || fnRaw === `chk_${t}` || fnRaw === `chk${t}`) {
-                    try { form.getCheckBox(f.getName()).check(); } catch (e) {}
-                }
-            });
+            const key = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const checkboxName = leaveTypeMap[key];
+            if (checkboxName) tryCheck(checkboxName);
         }
 
-        // 2. Approved / Rejected status checkbox
+        // ── Status checkboxes (exact names: approved, rejected) ───────────────────
         const status = leaveRequest.status?.toLowerCase();
-        if (status === 'approved' || status === 'rejected') {
-            allFormFields.forEach(f => {
-                const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                // Exact match only — avoid partial matches like 'disapproved' matching 'approved'
-                if (fn === status || fn === `chk${status}`) {
-                    try { form.getCheckBox(f.getName()).check(); } catch (e) {}
-                }
-            });
-        }
+        if (status === 'approved') tryCheck('approved');
+        if (status === 'rejected') tryCheck('rejected');
 
         form.updateFieldAppearances();
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image', 'signature_employee'], 'employee');
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image', 'signature_manager'], 'manager');
+        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image'], 'employee');
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image'], 'manager');
 
         const pdfBytes = await pdfDoc.save();
         return { success: true, pdfDataUri: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}` };
@@ -456,7 +446,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (!templateData || !templateData.value) return { success: false, error: "Offset template not found." };
 
         const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.employeeId) as Employee | undefined;
-        const manager = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
+        const manager  = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
         let weRequest: Leave | undefined;
         let weManager: Employee | undefined;
@@ -467,47 +457,45 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
 
         const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
         const form = pdfDoc.getForm();
+        const allFields = form.getFields();
 
-        // Compute total days for the offset request
-        let totalDaysValue = '';
+        // Compute total days
+        let totalDaysValue = '1';
         if (leaveRequest.durationCategory === 'minutes') {
             const mins = leaveRequest.totalMinutes || 0;
             totalDaysValue = `${mins} min${mins !== 1 ? 's' : ''}`;
         } else if (leaveRequest.durationCategory === 'half') {
             totalDaysValue = '0.5';
-        } else {
-            totalDaysValue = '1';
         }
 
-        // ── PASS 1: Fill ALAF (offset) section fields directly by exact name ──────
-        // Pre-clear all text fields first to remove any default/pre-filled values.
-        const allFields = form.getFields();
-        allFields.forEach(f => {
-            try { form.getTextField(f.getName()).setText(''); } catch (e) {}
-        });
-
-        // trySet: strict exact-name match — iterates fields and only writes to the
-        // field whose getName() === fieldName exactly. Avoids pdf-lib's getTextField()
-        // which can do case-insensitive or partial matching in some template layouts.
+        // Strict exact-name field setter using getName() === fieldName
         const trySet = (fieldName: string, value: string) => {
             const field = allFields.find(f => f.getName() === fieldName);
-            if (field) {
-                try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
-            }
+            if (field) { try { form.getTextField(fieldName).setText(value || ''); } catch (e) {} }
+        };
+        const tryCheck = (fieldName: string) => {
+            const field = allFields.find(f => f.getName() === fieldName);
+            if (field) { try { form.getCheckBox(fieldName).check(); } catch (e) {} }
         };
 
+        // ── ALAF section (exact names from ALAF_WEF_Template_Image_Sig_V2.pdf) ────
         trySet('employee_name',  getFullName(employee));
         trySet('employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
         trySet('department',     leaveRequest.department || employee?.group || '');
         trySet('contact_info',   leaveRequest.contactInfo || employee?.phone || '');
+        trySet('date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
         trySet('leave_dates',    formatComponentDate(leaveRequest.startDate));
         trySet('offset_reason',  leaveRequest.reason || '');
         trySet('total_days',     totalDaysValue);
         trySet('manager_name',   manager ? getFullName(manager) : '');
         trySet('approval_date',  formatComponentDate(leaveRequest.managedAt));
-        trySet('date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
 
-        // ── PASS 2: Fill WE section fields directly by exact name ────────────────
+        // Status checkboxes (exact names: approved, rejected)
+        const status = leaveRequest.status?.toLowerCase();
+        if (status === 'approved') tryCheck('approved');
+        if (status === 'rejected') tryCheck('rejected');
+
+        // ── WE section (exact names from ALAF_WEF_Template_Image_Sig_V2.pdf) ──────
         if (weRequest) {
             trySet('we_employee_name', getFullName(employee));
             trySet('we_department',    weRequest.department || employee?.group || '');
@@ -523,24 +511,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
-        // ── Checkboxes — approved / rejected status ───────────────────────────────
-        const allOffsetFormFields = form.getFields();
-        const offsetStatus = leaveRequest.status?.toLowerCase();
-        if (offsetStatus === 'approved' || offsetStatus === 'rejected') {
-            allOffsetFormFields.forEach(f => {
-                const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (fn === offsetStatus || fn === `chk${offsetStatus}` || fn.includes(offsetStatus)) {
-                    try { form.getCheckBox(f.getName()).check(); } catch (e) {}
-                }
-            });
-        }
-
         form.updateFieldAppearances();
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image'], 'manager');
+        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
         if (weRequest) {
             await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image'], 'employee');
-            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature, ['we_manager_signature_af_image'], 'manager');
+            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature,  ['we_manager_signature_af_image'],  'manager');
         }
 
         const pdfBytes = await pdfDoc.save();

@@ -362,15 +362,33 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         const endDateStr = formatComponentDate(leaveRequest.endDate);
         const datesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
+        // Compute total days for the leave request
+        let leaveTotalDays = '';
+        if (leaveRequest.durationCategory === 'minutes') {
+            const mins = leaveRequest.totalMinutes || 0;
+            leaveTotalDays = `${mins} min${mins !== 1 ? 's' : ''}`;
+        } else if (leaveRequest.durationCategory === 'half') {
+            leaveTotalDays = '0.5';
+        } else {
+            // whole-day: count calendar days between start and end inclusive
+            const start = new Date(leaveRequest.startDate);
+            const end = new Date(leaveRequest.endDate);
+            const diffMs = end.getTime() - start.getTime();
+            const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+            leaveTotalDays = String(days);
+        }
+
         const fields = {
-            employee_name: [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
-            employee_id: [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
-            department: [leaveRequest.department || employee.group || '', 'department', 'dept'],
-            leave_dates: [datesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
-            reason: [leaveRequest.reason || '', 'reason', 'remarks'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
-            approval_date: [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
-            date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
+            employee_name:  [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
+            employee_id:    [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
+            department:     [leaveRequest.department || employee.group || '', 'department', 'dept'],
+            contact_info:   [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'contact_number'],
+            leave_dates:    [datesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
+            total_days:     [leaveTotalDays, 'total_days', 'no_of_days', 'number_of_days', 'days'],
+            reason:         [leaveRequest.reason || '', 'reason', 'remarks'],
+            manager_name:   [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
+            approval_date:  [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
+            date_filed:     [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
         };
 
         const allFormFields = form.getFields();
@@ -437,26 +455,59 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
         const form = pdfDoc.getForm();
 
+        // Compute total days for the offset request
+        let totalDaysValue = '';
+        if (leaveRequest.durationCategory === 'minutes') {
+            const mins = leaveRequest.totalMinutes || 0;
+            totalDaysValue = `${mins} min${mins !== 1 ? 's' : ''}`;
+        } else if (leaveRequest.durationCategory === 'half') {
+            totalDaysValue = '0.5';
+        } else {
+            totalDaysValue = '1';
+        }
+
         const fields: Record<string, string[]> = {
-            employee_name: [getFullName(employee), 'employee_name', 'emp_name'],
-            employee_id: [leaveRequest.idNumber || employee?.employeeNumber || '', 'employee_id', 'id_number'],
-            department: [leaveRequest.department || employee?.group || '', 'department', 'dept'],
-            offset_dates: [formatComponentDate(leaveRequest.startDate), 'offset_dates', 'period_of_offset'],
-            reason: [leaveRequest.reason || '', 'reason', 'offset_reason'],
-            manager_name: [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
-            approval_date: [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
-            date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
+            // OFFSET section fields
+            employee_name:  [getFullName(employee), 'employee_name', 'emp_name'],
+            employee_id:    [leaveRequest.idNumber || employee?.employeeNumber || '', 'employee_id', 'id_number'],
+            department:     [leaveRequest.department || employee?.group || '', 'department', 'dept'],
+            // FIX: contact_info was missing — now mapped from leaveRequest or employee phone
+            contact_info:   [leaveRequest.contactInfo || employee?.phone || '', 'contact_info', 'contact', 'phone', 'contact_number'],
+            offset_dates:   [formatComponentDate(leaveRequest.startDate), 'offset_dates', 'period_of_offset', 'offset_date'],
+            // FIX 1: 'reason' key was neutral so it bled into WE reason field.
+            // Renamed key to 'offset_reason' so getDataRole returns 'neutral' but the
+            // we_ namespace guard still blocks it from any we_* field.
+            offset_reason:  [leaveRequest.reason || '', 'offset_reason', 'reason'],
+            manager_name:   [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
+            approval_date:  [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved'],
+            // FIX 2: 'date_filed' was neutral so it matched BOTH the offset date_filed
+            // field AND the WE section date_filed field. Now uses a distinct key name
+            // so it cannot accidentally match WE fields (blocked by we_ namespace guard).
+            offset_date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
+            // FIX 3: total_days was missing entirely — now included
+            total_days:     [totalDaysValue, 'total_days', 'no_of_days', 'number_of_days', 'days'],
         };
         
         if (weRequest) {
-            fields['we_employee_name'] = [getFullName(employee), 'we_employee_name'];
-            fields['we_department'] = [weRequest.department || employee?.group || '', 'we_department'];
-            fields['we_date_filed'] = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt), 'we_date_filed'];
-            fields['we_reason'] = [weRequest.reason || '', 'we_reason'];
-            fields['we_date'] = [formatComponentDate(weRequest.startDate), 'we_date'];
-            fields['we_timein'] = [weRequest.startTime || '', 'we_timein'];
-            fields['we_timeout'] = [weRequest.endTime || '', 'we_timeout'];
-            fields['we_manager_name'] = [weManager ? getFullName(weManager) : '', 'we_manager_name'];
+            // WE section fields — all prefixed 'we_' to stay in the WE namespace
+            fields['we_employee_name']  = [getFullName(employee), 'we_employee_name', 'we_emp_name'];
+            fields['we_department']     = [weRequest.department || employee?.group || '', 'we_department', 'we_dept'];
+            fields['we_contact_info']   = [weRequest.contactInfo || employee?.phone || '', 'we_contact_info', 'we_contact', 'we_phone'];
+            // FIX 4: work schedule from/to — the regular shift schedule the employee
+            // was on before extending. Stored in originalStartTime/originalEndTime.
+            fields['we_schedule_from']  = [weRequest.originalStartTime || '', 'we_schedule_from', 'we_work_schedule_from', 'we_sched_start', 'we_schedule_time_from'];
+            fields['we_schedule_to']    = [weRequest.originalEndTime   || '', 'we_schedule_to',   'we_work_schedule_to',   'we_sched_end',   'we_schedule_time_to'];
+            // FIX 5: extension time from/to — the actual period the employee extended.
+            // The WE record's startTime/endTime holds the extension window itself.
+            fields['we_extension_from'] = [weRequest.startTime || '', 'we_extension_from', 'we_ext_from', 'we_time_from', 'we_timein'];
+            fields['we_extension_to']   = [weRequest.endTime   || '', 'we_extension_to',   'we_ext_to',   'we_time_to',   'we_timeout'];
+            fields['we_date']           = [formatComponentDate(weRequest.startDate), 'we_date', 'we_date_of_extension'];
+            // FIX 1 (WE side): own key so it cannot clash with offset reason field
+            fields['we_reason']         = [weRequest.reason || '', 'we_reason', 'we_remarks'];
+            // FIX 2 (WE side): own we_ key so it writes only to WE date_filed field
+            fields['we_date_filed']     = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()), 'we_date_filed', 'we_date_applied'];
+            fields['we_manager_name']   = [weManager ? getFullName(weManager) : '', 'we_manager_name', 'we_supervisor_name', 'we_approver_name'];
+            fields['we_approval_date']  = [formatComponentDate(weRequest.managedAt), 'we_approval_date', 'we_date_approved'];
         }
 
         const allFormFields = form.getFields();

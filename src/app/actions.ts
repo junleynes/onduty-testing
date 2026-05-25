@@ -467,68 +467,38 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             totalDaysValue = '1';
         }
 
-        const fields: Record<string, string[]> = {
-            // ALAF section — exact field names from template
-            employee_name:     [getFullName(employee),                                      'employee_name'],
-            employee_id:       [leaveRequest.idNumber || employee?.employeeNumber || '',    'employee_id'],
-            department:        [leaveRequest.department || employee?.group || '',           'department'],
-            contact_info:      [leaveRequest.contactInfo || employee?.phone || '',          'contact_info'],
-            leave_dates:       [formatComponentDate(leaveRequest.startDate),                'leave_dates'],
-            offset_reason:     [leaveRequest.reason || '',                                  'offset_reason'],
-            total_days:        [totalDaysValue,                                             'total_days'],
-            manager_name:      [manager ? getFullName(manager) : '',                        'manager_name'],
-            approval_date:     [formatComponentDate(leaveRequest.managedAt),                'approval_date'],
-            // Key renamed so it won't bleed into we_date_filed (different namespace)
-            offset_date_filed: [formatComponentDate(leaveRequest.dateFiled || new Date()),  'date_filed'],
+        // ── PASS 1: Fill ALAF (offset) section fields directly by exact name ──────
+        // Using getTextField by exact name instead of a loop completely eliminates
+        // any risk of a WE field being matched by an ALAF data key or vice-versa.
+        const trySet = (fieldName: string, value: string) => {
+            try { form.getTextField(fieldName).setText(value || ''); } catch (e) {}
         };
-        
+
+        trySet('employee_name',  getFullName(employee));
+        trySet('employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
+        trySet('department',     leaveRequest.department || employee?.group || '');
+        trySet('contact_info',   leaveRequest.contactInfo || employee?.phone || '');
+        trySet('leave_dates',    formatComponentDate(leaveRequest.startDate));
+        trySet('offset_reason',  leaveRequest.reason || '');
+        trySet('total_days',     totalDaysValue);
+        trySet('manager_name',   manager ? getFullName(manager) : '');
+        trySet('approval_date',  formatComponentDate(leaveRequest.managedAt));
+        trySet('date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
+
+        // ── PASS 2: Fill WE section fields directly by exact name ────────────────
         if (weRequest) {
-            // WE section — exact field names from template
-            fields['we_employee_name'] = [getFullName(employee),                                                            'we_employee_name'];
-            fields['we_department']    = [weRequest.department || employee?.group || '',                                    'we_department'];
-            // we_date_filed — exact field name in WE section
-            fields['we_date_filed']    = [formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()),  'we_date_filed'];
-            // extended_date — date of the work extension (exact field name)
-            fields['we_extended_date'] = [formatComponentDate(weRequest.startDate),                                         'extended_date'];
-            // Shift schedule from/to — we_shiftfrom / we_shiftto
-            fields['we_shiftfrom']     = [weRequest.originalStartTime || '',   'we_shiftfrom'];
-            fields['we_shiftto']       = [weRequest.originalEndTime   || '',   'we_shiftto'];
-            // Time in/out of the work extension — we_timein / we_timeout
-            fields['we_timein']        = [weRequest.startTime || '',           'we_timein'];
-            fields['we_timeout']       = [weRequest.endTime   || '',           'we_timeout'];
-            // Extended time from/to — we_extendfrom / we_extendto
-            fields['we_extendfrom']    = [weRequest.startTime || '',           'we_extendfrom'];
-            fields['we_extendto']      = [weRequest.endTime   || '',           'we_extendto'];
-            // Reason and manager — exact field names
-            fields['we_reason']        = [weRequest.reason || '',                          'we_reason'];
-            fields['we_manager_name']  = [weManager ? getFullName(weManager) : '',         'we_manager_name'];
-        }
-
-        const allFormFields = form.getFields();
-        for (const [key, [value, ...targets]] of Object.entries(fields)) {
-            const isWeKey = key.startsWith('we_');
-            const dataRole = getDataRole(key);
-            const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
-
-            for (const field of allFormFields) {
-                const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                // FIX 1/5: use isWorkExtensionField which now requires 'we_' prefix
-                const isWeField = isWorkExtensionField(field.getName().toLowerCase());
-                const fieldRole = getFieldRole(fName);
-
-                // NAMESPACE & ROLE ISOLATION
-                if (isWeKey && !isWeField) continue;
-                if (!isWeKey && isWeField) continue;
-                if (dataRole === 'manager' && fieldRole !== 'manager') continue;
-                if (dataRole === 'employee' && fieldRole === 'manager') continue;
-                // FIX 4: neutral data keys (reason, department, dates) must not
-                // bleed into manager-designated fields (e.g. manager's remarks box)
-                if (dataRole === 'neutral' && fieldRole === 'manager') continue;
-
-                if (normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)))) {
-                    try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
-                }
-            }
+            trySet('we_employee_name', getFullName(employee));
+            trySet('we_department',    weRequest.department || employee?.group || '');
+            trySet('we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
+            trySet('extended_date',    formatComponentDate(weRequest.startDate));
+            trySet('we_shiftfrom',     weRequest.originalStartTime || '');
+            trySet('we_shiftto',       weRequest.originalEndTime   || '');
+            trySet('we_timein',        weRequest.startTime || '');
+            trySet('we_timeout',       weRequest.endTime   || '');
+            trySet('we_extendfrom',    weRequest.startTime || '');
+            trySet('we_extendto',      weRequest.endTime   || '');
+            trySet('we_reason',        weRequest.reason || '');
+            trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
         form.updateFieldAppearances();

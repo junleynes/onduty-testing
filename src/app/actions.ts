@@ -363,7 +363,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         const endDateStr = formatComponentDate(leaveRequest.endDate);
         const datesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
-        // Compute total days for the leave request
+        // Compute total days
         let leaveTotalDays = '';
         if (leaveRequest.durationCategory === 'minutes') {
             const mins = leaveRequest.totalMinutes || 0;
@@ -371,56 +371,51 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         } else if (leaveRequest.durationCategory === 'half') {
             leaveTotalDays = '0.5';
         } else {
-            // whole-day: count calendar days between start and end inclusive
             const start = new Date(leaveRequest.startDate);
             const end = new Date(leaveRequest.endDate);
-            const diffMs = end.getTime() - start.getTime();
-            const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+            const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
             leaveTotalDays = String(days);
         }
 
-        const fields = {
-            employee_name:  [getFullName(employee), 'employee_name', 'emp_name', 'applicant_name'],
-            employee_id:    [leaveRequest.idNumber || employee.employeeNumber || '', 'employee_id', 'id_number'],
-            department:     [leaveRequest.department || employee.group || '', 'department', 'dept'],
-            contact_info:   [leaveRequest.contactInfo || employee.phone || '', 'contact_info', 'contact', 'phone', 'contact_number'],
-            leave_dates:    [datesDisplay, 'leave_dates', 'inclusive_dates', 'period_of_leave'],
-            total_days:     [leaveTotalDays, 'total_days', 'no_of_days', 'number_of_days', 'days'],
-            reason:         [leaveRequest.reason || '', 'reason', 'remarks'],
-            manager_name:   [manager ? getFullName(manager) : '', 'manager_name', 'supervisor_name', 'approver_name'],
-            approval_date:  [formatComponentDate(leaveRequest.managedAt), 'approval_date', 'date_approved', 'managed_at'],
-            date_filed:     [formatComponentDate(leaveRequest.dateFiled || new Date()), 'date_filed', 'date_applied'],
+        // ── Fill fields directly by exact template field name ─────────────────────
+        const trySet = (fieldName: string, value: string) => {
+            try { form.getTextField(fieldName).setText(value || ''); } catch (e) {}
         };
 
-        const allFormFields = form.getFields();
-        for (const [key, [value, ...targets]] of Object.entries(fields)) {
-            const dataRole = getDataRole(key);
-            const normalizedTargets = targets.map(t => t.toLowerCase().replace(/[^a-z0-9]/g, ''));
-            
-            for (const field of allFormFields) {
-                const fName = field.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const fieldRole = getFieldRole(fName);
-                
-                // CRITICAL OVERLAP PROTECTION
-                if (dataRole === 'manager' && fieldRole !== 'manager') continue;
-                if (dataRole === 'employee' && fieldRole === 'manager') continue;
-                // FIX 4: neutral data keys (reason, department, dates) must not
-                // bleed into manager-designated fields
-                if (dataRole === 'neutral' && fieldRole === 'manager') continue;
+        // Employee fields — only employee data, never manager
+        trySet('employee_name',  getFullName(employee));
+        trySet('employee_id',    leaveRequest.idNumber || employee.employeeNumber || '');
+        trySet('department',     leaveRequest.department || employee.group || '');
+        trySet('contact_info',   leaveRequest.contactInfo || employee.phone || '');
+        trySet('leave_dates',    datesDisplay);
+        trySet('total_days',     leaveTotalDays);
+        trySet('reason',         leaveRequest.reason || '');
+        trySet('date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
 
-                const isMatch = normalizedTargets.some(t => fName === t || (t.length > 5 && fName.endsWith(t)));
-                if (isMatch) {
-                    try { form.getTextField(field.getName()).setText(value || ''); } catch (e) {}
-                }
-            }
-        }
-        
-        // Handle checkboxes for types and status
+        // Manager fields — only manager data, never employee
+        trySet('manager_name',   manager ? getFullName(manager) : '');
+        trySet('approval_date',  formatComponentDate(leaveRequest.managedAt));
+
+        // ── Checkboxes ────────────────────────────────────────────────────────────
+        const allFormFields = form.getFields();
+
+        // 1. Leave type checkbox (e.g. AVL, VL, SL, Offset, etc.)
         if (leaveRequest.type) {
             const t = leaveRequest.type.toLowerCase().replace(/[^a-z0-9]/g, '');
             allFormFields.forEach(f => {
-                const fn = f.getName().toLowerCase();
-                if (fn === t || fn.includes(`chk${t}`)) {
+                const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (fn === t || fn === `chk${t}` || fn.endsWith(`_${t}`) || fn.endsWith(t)) {
+                    try { form.getCheckBox(f.getName()).check(); } catch (e) {}
+                }
+            });
+        }
+
+        // 2. Approved / Rejected status checkbox
+        const status = leaveRequest.status?.toLowerCase();
+        if (status === 'approved' || status === 'rejected') {
+            allFormFields.forEach(f => {
+                const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (fn === status || fn === `chk${status}` || fn.includes(status)) {
                     try { form.getCheckBox(f.getName()).check(); } catch (e) {}
                 }
             });
@@ -499,6 +494,18 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             trySet('we_extendto',      weRequest.endTime   || '');
             trySet('we_reason',        weRequest.reason || '');
             trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
+        }
+
+        // ── Checkboxes — approved / rejected status ───────────────────────────────
+        const allOffsetFormFields = form.getFields();
+        const offsetStatus = leaveRequest.status?.toLowerCase();
+        if (offsetStatus === 'approved' || offsetStatus === 'rejected') {
+            allOffsetFormFields.forEach(f => {
+                const fn = f.getName().toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (fn === offsetStatus || fn === `chk${offsetStatus}` || fn.includes(offsetStatus)) {
+                    try { form.getCheckBox(f.getName()).check(); } catch (e) {}
+                }
+            });
         }
 
         form.updateFieldAppearances();

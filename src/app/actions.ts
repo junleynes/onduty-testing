@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import { isSameDay } from 'date-fns';
 import { getFullName } from '@/lib/utils';
 
@@ -15,6 +15,72 @@ import { getFullName } from '@/lib/utils';
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * pdf-lib's updateFieldAppearances() silently skips multiline text fields (Ff bit 13 = 0x1000).
+ * This leaves their /AP appearance stream stale — so PDF viewers render the old /AP (wrong data)
+ * when the field is not focused, and only render the correct /V when clicked.
+ *
+ * This function manually writes a correct /AP /N stream for any text field,
+ * whether single-line or multiline, so both focused and unfocused states show the same value.
+ *
+ * Also fixes fields whose Rect is on a child widget rather than the field dict itself
+ * (which causes updateFieldAppearances to silently produce an empty stream).
+ */
+function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, value: string): void {
+    try {
+        const allFields = form.getFields();
+        const field = allFields.find((f: any) => f.getName() === fieldName);
+        if (!field) return;
+
+        const dict = field.acroField.dict;
+
+        // Find the widget that has the Rect — may be on the field or a child widget
+        let rectArray: any = dict.lookup(PDFName.of('Rect'));
+        let widgetDict: any = dict;
+        if (!rectArray) {
+            const kids: any = dict.lookup(PDFName.of('Kids'));
+            if (kids) {
+                for (let i = 0; i < kids.size(); i++) {
+                    const kid = pdfDoc.context.lookup(kids.get(i)) as any;
+                    if (kid?.get?.(PDFName.of('Rect'))) {
+                        rectArray = kid.get(PDFName.of('Rect'));
+                        widgetDict = kid;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!rectArray) return;
+
+        const w = (rectArray.get(2) as any).asNumber() - (rectArray.get(0) as any).asNumber();
+        const h = (rectArray.get(3) as any).asNumber() - (rectArray.get(1) as any).asNumber();
+        const fontSize = 8;
+        const margin = 2;
+        const lineHeight = fontSize * 1.35;
+
+        const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+
+        const lines = (value || '').split('\n');
+        let y = h - margin - fontSize;
+        let content = `/Tx BMC\nBT\n/Helv ${fontSize} Tf\n0 g\n`;
+        for (const line of lines) {
+            content += `${margin} ${y.toFixed(2)} Td\n(${escape(line)}) Tj\n0 ${(-lineHeight).toFixed(2)} Td\n`;
+            y -= lineHeight;
+        }
+        content += `ET\nEMC\n`;
+
+        const streamBytes = Buffer.from(content, 'latin1');
+        const apStream = pdfDoc.context.stream(streamBytes, {
+            Subtype: 'Form',
+            BBox: pdfDoc.context.obj([0, 0, w, h]),
+        });
+        const apStreamRef = pdfDoc.context.register(apStream);
+        widgetDict.set(PDFName.of('AP'), pdfDoc.context.obj({ N: apStreamRef }));
+    } catch (_) {
+        // Silently ignore — field will still show correct /V when focused
+    }
+}
 
 
 type Attachment = {
@@ -464,7 +530,20 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         if (status === 'approved') tryCheck('approved');
         if (status === 'rejected') tryCheck('rejected');
 
+        // updateFieldAppearances handles single-line fields but silently skips multiline.
+        // fixFieldAppearance manually writes /AP for fields it misses so both focused
+        // and unfocused states render correctly (fixes the click/no-click value mismatch).
         form.updateFieldAppearances();
+        fixFieldAppearance(pdfDoc, form, 'employee_name', getFullName(employee));
+        fixFieldAppearance(pdfDoc, form, 'manager_name',  manager ? getFullName(manager) : '');
+        fixFieldAppearance(pdfDoc, form, 'reason',        leaveRequest.reason || '');
+        fixFieldAppearance(pdfDoc, form, 'date_filed',    formatComponentDate(leaveRequest.dateFiled || new Date()));
+        fixFieldAppearance(pdfDoc, form, 'leave_dates',   datesDisplay);
+        fixFieldAppearance(pdfDoc, form, 'total_days',    leaveTotalDays);
+        fixFieldAppearance(pdfDoc, form, 'department',    leaveRequest.department || employee.group || '');
+        fixFieldAppearance(pdfDoc, form, 'contact_info',  leaveRequest.contactInfo || employee.phone || '');
+        fixFieldAppearance(pdfDoc, form, 'employee_id',   leaveRequest.idNumber || employee.employeeNumber || '');
+        fixFieldAppearance(pdfDoc, form, 'approval_date', formatComponentDate(leaveRequest.managedAt));
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image'], 'manager');
 
@@ -557,12 +636,37 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
             trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
-        // updateFieldAppearances() regenerates the /AP appearance stream for every
-        // field so that both the focused and unfocused states render the correct /V.
-        // Without this, fields with a pre-baked /AP (from when the template was saved
-        // with data) show the old /AP value when not focused, and only show the correct
-        // /V when clicked. Must be called AFTER all setText() calls and BEFORE signatures.
         form.updateFieldAppearances();
+
+        // fixFieldAppearance manually rebuilds /AP for every field — fixing both:
+        // 1. Multiline fields (Ff bit 13) that updateFieldAppearances silently skips
+        // 2. Fields whose Rect is on a child widget where updateFieldAppearances
+        //    produces an empty stream
+        // This ensures the unfocused (rendered) state matches the focused (/V) state.
+        fixFieldAppearance(pdfDoc, form, 'employee_name',  getFullName(employee));
+        fixFieldAppearance(pdfDoc, form, 'employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
+        fixFieldAppearance(pdfDoc, form, 'department',     leaveRequest.department || employee?.group || '');
+        fixFieldAppearance(pdfDoc, form, 'contact_info',   leaveRequest.contactInfo || employee?.phone || '');
+        fixFieldAppearance(pdfDoc, form, 'date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
+        fixFieldAppearance(pdfDoc, form, 'leave_dates',    formatComponentDate(leaveRequest.startDate));
+        fixFieldAppearance(pdfDoc, form, 'offset_reason',  leaveRequest.reason || '');
+        fixFieldAppearance(pdfDoc, form, 'total_days',     totalDaysValue);
+        fixFieldAppearance(pdfDoc, form, 'manager_name',   manager ? getFullName(manager) : '');
+        fixFieldAppearance(pdfDoc, form, 'approval_date',  formatComponentDate(leaveRequest.managedAt));
+        if (weRequest) {
+            fixFieldAppearance(pdfDoc, form, 'we_employee_name', getFullName(employee));
+            fixFieldAppearance(pdfDoc, form, 'we_department',    weRequest.department || employee?.group || '');
+            fixFieldAppearance(pdfDoc, form, 'we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
+            fixFieldAppearance(pdfDoc, form, 'extended_date',    formatComponentDate(weRequest.startDate));
+            fixFieldAppearance(pdfDoc, form, 'we_shiftfrom',     weRequest.originalStartTime || '');
+            fixFieldAppearance(pdfDoc, form, 'we_shiftto',       weRequest.originalEndTime   || '');
+            fixFieldAppearance(pdfDoc, form, 'we_timein',        weRequest.startTime || '');
+            fixFieldAppearance(pdfDoc, form, 'we_timeout',       weRequest.endTime   || '');
+            fixFieldAppearance(pdfDoc, form, 'we_extendfrom',    weRequest.startTime || '');
+            fixFieldAppearance(pdfDoc, form, 'we_extendto',      weRequest.endTime   || '');
+            fixFieldAppearance(pdfDoc, form, 'we_reason',        weRequest.reason || '');
+            fixFieldAppearance(pdfDoc, form, 'we_manager_name',  weManager ? getFullName(weManager) : '');
+        }
 
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');

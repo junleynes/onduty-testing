@@ -287,7 +287,18 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
         
         const generatorAction = finalUpdatedRequest.type === 'Offset' ? generateOffsetPdf : generateLeavePdf;
-        const result = await generatorAction(finalUpdatedRequest);
+        
+        // For Offset requests, pass the linked WE record directly from client state
+        // so generateOffsetPdf doesn't need to re-fetch from DB (which may be missing
+        // columns like dateFiled, department, durationCategory from pending migrations)
+        let pdfResult;
+        if (finalUpdatedRequest.type === 'Offset' && finalUpdatedRequest.claimedWorkExtensionId) {
+            const weRecord = leaveRequests.find(r => r.id === finalUpdatedRequest!.claimedWorkExtensionId);
+            pdfResult = await generateOffsetPdf(finalUpdatedRequest, weRecord);
+        } else {
+            pdfResult = await generatorAction(finalUpdatedRequest);
+        }
+        const result = pdfResult;
         
         if (result.success && result.pdfDataUri) {
             setLeaveRequests(prev => prev.map(req => req.id === requestId ? { ...req, pdfDataUri: result.pdfDataUri } : req));

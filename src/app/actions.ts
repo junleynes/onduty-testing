@@ -475,7 +475,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
     }
 }
 
-export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
+export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
     const db = getDb();
     try {
         const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'offsetTemplate'").get() as { value: string } | undefined;
@@ -484,11 +484,15 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.employeeId) as Employee | undefined;
         const manager  = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
-        let weRequest: Leave | undefined;
+        // Prefer the client-supplied WE record (has all fields including dateFiled,
+        // department, durationCategory etc). Fall back to DB fetch only if not provided.
+        let weRequest: Leave | undefined = clientWeRequest;
         let weManager: Employee | undefined;
-        if (leaveRequest.claimedWorkExtensionId) {
+        if (!weRequest && leaveRequest.claimedWorkExtensionId) {
             weRequest = db.prepare("SELECT * FROM leave WHERE id = ?").get(leaveRequest.claimedWorkExtensionId) as Leave | undefined;
-            if (weRequest?.managedBy) weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
+        }
+        if (weRequest?.managedBy) {
+            weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
         }
 
         const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
@@ -538,19 +542,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         if (status === 'rejected') tryCheck('rejected');
 
         // ── WE section — WE record data only ─────────────────────────────────────
-        // weRequest is fetched from DB; some columns may be missing if migrations
-        // haven't run yet — use leaveRequest fields as authoritative fallback for
-        // shared employee data, but keep reason/dateFiled strictly from weRequest.
         if (weRequest) {
-            const weDateFiled = (weRequest as any).dateFiled
-                || (weRequest as any).requestedAt
-                || '';
             trySet('we_employee_name', getFullName(employee));
-            trySet('we_department',    (weRequest as any).department || employee?.group || '');
-            trySet('we_date_filed',    formatComponentDate(weDateFiled || new Date()));
+            trySet('we_department',    weRequest.department || employee?.group || '');
+            trySet('we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
             trySet('extended_date',    formatComponentDate(weRequest.startDate));
-            trySet('we_shiftfrom',     (weRequest as any).originalStartTime || '');
-            trySet('we_shiftto',       (weRequest as any).originalEndTime   || '');
+            trySet('we_shiftfrom',     weRequest.originalStartTime || '');
+            trySet('we_shiftto',       weRequest.originalEndTime   || '');
             trySet('we_timein',        weRequest.startTime || '');
             trySet('we_timeout',       weRequest.endTime   || '');
             trySet('we_extendfrom',    weRequest.startTime || '');
@@ -569,8 +567,8 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
         if (weRequest) {
-            await embedSignatureToPdf(pdfDoc, (weRequest as any).employeeSignature, ['we_employee_signature_af_image'], 'employee');
-            await embedSignatureToPdf(pdfDoc, (weRequest as any).managerSignature,  ['we_manager_signature_af_image'],  'manager');
+            await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image'], 'employee');
+            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature,  ['we_manager_signature_af_image'],  'manager');
         }
 
         const pdfBytes = await pdfDoc.save();

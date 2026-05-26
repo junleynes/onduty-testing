@@ -559,9 +559,13 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
-        // Do NOT call form.updateFieldAppearances() — it can cause fields sharing
-        // appearance streams to render with wrong values. Instead embed signatures
-        // and save directly. Signatures are images set on button fields (not text).
+        // updateFieldAppearances() regenerates the /AP appearance stream for every
+        // field so that both the focused and unfocused states render the correct /V.
+        // Without this, fields with a pre-baked /AP (from when the template was saved
+        // with data) show the old /AP value when not focused, and only show the correct
+        // /V when clicked. Must be called AFTER all setText() calls and BEFORE signatures.
+        form.updateFieldAppearances();
+
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
         if (weRequest) {

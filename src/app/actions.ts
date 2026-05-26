@@ -495,6 +495,12 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         const form = pdfDoc.getForm();
         const allFields = form.getFields();
 
+        // Clear ALL text fields first — prevents any stale/default values
+        // from showing through in fields we don't explicitly write to
+        allFields.forEach(f => {
+            try { form.getTextField(f.getName()).setText(''); } catch (_) {}
+        });
+
         // Compute total days
         let totalDaysValue = '1';
         if (leaveRequest.durationCategory === 'minutes') {
@@ -514,7 +520,7 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             if (field) { try { form.getCheckBox(fieldName).check(); } catch (e) {} }
         };
 
-        // ── ALAF section (exact names from ALAF_WEF_Template_Image_Sig_V2.pdf) ────
+        // ── ALAF section — offset data only ──────────────────────────────────────
         trySet('employee_name',  getFullName(employee));
         trySet('employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
         trySet('department',     leaveRequest.department || employee?.group || '');
@@ -526,19 +532,25 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
         trySet('manager_name',   manager ? getFullName(manager) : '');
         trySet('approval_date',  formatComponentDate(leaveRequest.managedAt));
 
-        // Status checkboxes (exact names: approved, rejected)
+        // Status checkboxes
         const status = leaveRequest.status?.toLowerCase();
         if (status === 'approved') tryCheck('approved');
         if (status === 'rejected') tryCheck('rejected');
 
-        // ── WE section (exact names from ALAF_WEF_Template_Image_Sig_V2.pdf) ──────
+        // ── WE section — WE record data only ─────────────────────────────────────
+        // weRequest is fetched from DB; some columns may be missing if migrations
+        // haven't run yet — use leaveRequest fields as authoritative fallback for
+        // shared employee data, but keep reason/dateFiled strictly from weRequest.
         if (weRequest) {
+            const weDateFiled = (weRequest as any).dateFiled
+                || (weRequest as any).requestedAt
+                || '';
             trySet('we_employee_name', getFullName(employee));
-            trySet('we_department',    weRequest.department || employee?.group || '');
-            trySet('we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
+            trySet('we_department',    (weRequest as any).department || employee?.group || '');
+            trySet('we_date_filed',    formatComponentDate(weDateFiled || new Date()));
             trySet('extended_date',    formatComponentDate(weRequest.startDate));
-            trySet('we_shiftfrom',     weRequest.originalStartTime || '');
-            trySet('we_shiftto',       weRequest.originalEndTime   || '');
+            trySet('we_shiftfrom',     (weRequest as any).originalStartTime || '');
+            trySet('we_shiftto',       (weRequest as any).originalEndTime   || '');
             trySet('we_timein',        weRequest.startTime || '');
             trySet('we_timeout',       weRequest.endTime   || '');
             trySet('we_extendfrom',    weRequest.startTime || '');
@@ -547,12 +559,14 @@ export async function generateOffsetPdf(leaveRequest: Leave): Promise<{ success:
             trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
-        form.updateFieldAppearances();
+        // Do NOT call form.updateFieldAppearances() — it can cause fields sharing
+        // appearance streams to render with wrong values. Instead embed signatures
+        // and save directly. Signatures are images set on button fields (not text).
         await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
         if (weRequest) {
-            await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image'], 'employee');
-            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature,  ['we_manager_signature_af_image'],  'manager');
+            await embedSignatureToPdf(pdfDoc, (weRequest as any).employeeSignature, ['we_employee_signature_af_image'], 'employee');
+            await embedSignatureToPdf(pdfDoc, (weRequest as any).managerSignature,  ['we_manager_signature_af_image'],  'manager');
         }
 
         const pdfBytes = await pdfDoc.save();

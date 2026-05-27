@@ -13,7 +13,7 @@ import { WorkExtensionRequestDialog } from './work-extension-request-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
-import { purgeData } from '@/app/actions';
+import { purgeData, saveLeaveSignatures } from '@/app/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
@@ -130,6 +130,10 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         color: '#f39c12',
       } as Leave;
       setLeaveRequests(prev => [newRequest, ...prev]);
+      // Save employee signature directly to DB — bypasses payload size limit
+      if (targetEmployee.signature) {
+        saveLeaveSignatures(newRequest.id, targetEmployee.signature, undefined).catch(() => {});
+      }
       toast({ title: 'Request Submitted' });
     }
     setIsRequestDialogOpen(false);
@@ -151,6 +155,10 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         return req;
       })
     );
+    // Save manager signature directly to DB — bypasses payload size limit
+    if (currentUser.signature) {
+      saveLeaveSignatures(requestId, undefined, currentUser.signature).catch(() => {});
+    }
     toast({ title: `Request ${newStatus}` });
   };
   

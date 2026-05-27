@@ -791,3 +791,38 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
         return { success: false, error: (error as Error).message };
     }
 }
+
+// ── Dedicated binary field save actions ──────────────────────────────────────
+// These write large binary fields directly to DB without going through the
+// general saveAllData payload, preventing NetworkError from oversized payloads.
+
+export async function savePdfDataUri(leaveId: string, pdfDataUri: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const db = getDb();
+        db.prepare('UPDATE leave SET pdfDataUri = ? WHERE id = ?').run(pdfDataUri, leaveId);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function saveLeaveSignatures(leaveId: string, employeeSignature?: string, managerSignature?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const db = getDb();
+        if (employeeSignature) db.prepare('UPDATE leave SET employeeSignature = ? WHERE id = ?').run(employeeSignature, leaveId);
+        if (managerSignature)  db.prepare('UPDATE leave SET managerSignature  = ? WHERE id = ?').run(managerSignature,  leaveId);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function saveAllowanceScreenshot(allowanceId: string, screenshot: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const db = getDb();
+        db.prepare('UPDATE communication_allowances SET screenshot = ? WHERE id = ?').run(screenshot, allowanceId);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

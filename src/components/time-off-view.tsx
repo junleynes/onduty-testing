@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaveTypeOption } from './leave-type-editor';
-import { generateLeavePdf, generateOffsetPdf, sendEmail } from '@/app/actions';
+import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures } from '@/app/actions';
 import type { SmtpSettings } from '@/types';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
@@ -217,6 +217,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         color: leaveTypeDetails?.color || '#6b7280',
       } as Leave;
       setLeaveRequests(prev => [newRequest, ...prev]);
+      // Save employee signature directly to DB — bypasses the save payload size limit
+      if (currentUser.signature) {
+        saveLeaveSignatures(newRequest.id, currentUser.signature, undefined).catch(() => {});
+      }
       toast({ title: 'Request Submitted' });
     }
     setIsRequestDialogOpen(false);
@@ -238,12 +242,18 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             ...originalRequest,
             status: newStatus,
             managedBy: currentUser.id,
-            managedAt: originalRequest.managedAt || new Date(), // Keep managedAt if already approved
+            managedAt: originalRequest.managedAt || new Date(),
             managerSignature: originalRequest.managerSignature || currentUser.signature,
             color: leaveTypeDetails?.color || originalRequest.color
         };
 
         newLeaveRequests[requestIndex] = finalUpdatedRequest;
+
+        // Save manager signature directly to DB — bypasses the save payload size limit
+        const sigToSave = originalRequest.managerSignature || currentUser.signature;
+        if (sigToSave) {
+            saveLeaveSignatures(requestId, undefined, sigToSave).catch(() => {});
+        }
 
         if (newStatus === 'rejected' && originalRequest.type === 'Offset' && originalRequest.claimedWorkExtensionId) {
              const weIndex = newLeaveRequests.findIndex(r => r.id === originalRequest.claimedWorkExtensionId);
@@ -301,6 +311,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         const result = pdfResult;
         
         if (result.success && result.pdfDataUri) {
+            // Save PDF directly to DB — bypasses the save payload size limit
+            savePdfDataUri(requestId, result.pdfDataUri).catch(() => {});
             setLeaveRequests(prev => prev.map(req => req.id === requestId ? { ...req, pdfDataUri: result.pdfDataUri } : req));
             toast({ title: "PDF Generated", description: "The form has been created." });
         } else {

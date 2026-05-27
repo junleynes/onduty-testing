@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DatePicker } from './ui/date-picker';
 import { Separator } from './ui/separator';
 import { AllowanceImporter, type ImportedAllowance } from './allowance-importer';
-import { sendEmail } from '@/app/actions';
+import { sendEmail, saveAllowanceScreenshot } from '@/app/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Textarea } from './ui/textarea';
 
@@ -261,11 +261,13 @@ export default function AllowanceView({ employees, setEmployees, allowances, set
   const handleSaveBalance = () => {
     if (!editingAllowance) return;
     
+    let savedId = editingAllowance.id;
     setAllowances(prev => {
         const existingIndex = prev.findIndex(a => a.id === editingAllowance.id || (a.employeeId === editingAllowance.employeeId && a.year === editingAllowance.year && a.month === editingAllowance.month));
         if (existingIndex !== -1) {
             const updated = [...prev];
             updated[existingIndex] = { ...updated[existingIndex], ...editingAllowance } as CommunicationAllowance;
+            savedId = updated[existingIndex].id;
             return updated;
         } else {
             const newAllowance: CommunicationAllowance = {
@@ -273,9 +275,14 @@ export default function AllowanceView({ employees, setEmployees, allowances, set
                 balance: 0,
                 ...editingAllowance,
             } as CommunicationAllowance;
+            savedId = newAllowance.id;
             return [...prev, newAllowance];
         }
     });
+    // Save screenshot directly to DB — bypasses payload size limit
+    if (editingAllowance.screenshot && savedId) {
+        saveAllowanceScreenshot(savedId, editingAllowance.screenshot).catch(() => {});
+    }
     toast({ title: 'Balance Updated'});
     setIsBalanceEditorOpen(false);
     setEditingAllowance(null);

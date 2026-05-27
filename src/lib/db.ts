@@ -115,6 +115,8 @@ function initializeDatabase() {
     runMigration(`CREATE INDEX IF NOT EXISTS idx_tardy_employee  ON tardy_records(employeeId);`,            "idx_tardy_employee");
     runMigration(`CREATE INDEX IF NOT EXISTS idx_tardy_date      ON tardy_records(date);`,                  "idx_tardy_date");
     runMigration(`CREATE INDEX IF NOT EXISTS idx_allowance_emp   ON communication_allowances(employeeId);`, "idx_allowance_emp");
+
+    return db;
 }
 
 export function getDb() {

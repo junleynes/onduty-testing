@@ -108,18 +108,41 @@ function AppContent() {
     if (!initialDataLoaded || isLoading) return;
     
     const dataToSave = {
-        employees,
+        employees: employees.map(e => ({
+            ...e,
+            // Strip large binary fields — avatar and signature are saved separately
+            // via dedicated upload actions and must not round-trip on every state change
+            avatar: undefined,
+            signature: undefined,
+        })),
         shifts,
-        leave,
+        // Strip all binary fields from leave records — these are written directly
+        // to DB by their respective actions and must not bloat the save payload
+        leave: leave.map(l => ({
+            ...l,
+            pdfDataUri: undefined,
+            employeeSignature: undefined,
+            managerSignature: undefined,
+        })),
         notes,
         holidays,
         tasks,
-        allowances,
+        allowances: allowances.map(a => ({
+            ...a,
+            screenshot: undefined, // saved by dedicated allowance action
+        })),
         groups,
         smtpSettings,
         tardyRecords,
         templates: {
-            ...templates,
+            // Strip PDF template binaries — they are large (~200KB each) and only
+            // change when the user explicitly uploads a new template. They are saved
+            // by the template uploader action, not by the general save loop.
+            ...Object.fromEntries(
+                Object.entries(templates).filter(([k]) =>
+                    k !== 'alafTemplate' && k !== 'offsetTemplate'
+                )
+            ),
             import_api_key: localStorage.getItem('import_api_key') || 'onduty_secret_key'
         },
         shiftTemplates,

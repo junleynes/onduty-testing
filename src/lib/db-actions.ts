@@ -264,11 +264,46 @@ export async function saveAllData({
         const employeeIdsInState = new Set(employees.map(e => e.id));
         const employeesToDelete = [...allDbEmployeeIds].filter(id => !employeeIdsInState.has(id) && id !== 'emp-admin-01');
         if (employeesToDelete.length > 0) {
-            const deleteStmt = db.prepare(`DELETE FROM employees WHERE id IN (${employeesToDelete.map(() => '?').join(',')})`);
-            deleteStmt.run(...employeesToDelete);
+            db.prepare(`DELETE FROM employees WHERE id IN (${employeesToDelete.map(() => '?').join(',')})`).run(...employeesToDelete);
         }
-        const employeeUpdateStmt = db.prepare(`UPDATE employees SET avlAllotted = ?, avlBeginningBalance = ? WHERE id = ?`);
-        employees.forEach(e => employeeUpdateStmt.run(e.avlAllotted || 0, e.avlBeginningBalance || 0, e.id));
+        // Upsert all non-binary employee fields. avatar and signature are stripped
+        // from the payload to keep it small — preserve whatever is already in DB.
+        const empUpsertStmt = db.prepare(`
+            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password,
+                position, role, "group", birthDate, startDate, loadAllocation, visibility, lastPromotionDate,
+                reportsTo, gender, employeeClassification, personnelNumber, avlAllotted, avlBeginningBalance)
+            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password,
+                @position, @role, @group, @birthDate, @startDate, @loadAllocation, @visibility, @lastPromotionDate,
+                @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlAllotted, @avlBeginningBalance)
+            ON CONFLICT(id) DO UPDATE SET
+                employeeNumber=excluded.employeeNumber, firstName=excluded.firstName, lastName=excluded.lastName,
+                middleInitial=excluded.middleInitial, email=excluded.email, phone=excluded.phone,
+                position=excluded.position, role=excluded.role, "group"=excluded."group",
+                birthDate=excluded.birthDate, startDate=excluded.startDate, loadAllocation=excluded.loadAllocation,
+                visibility=excluded.visibility, lastPromotionDate=excluded.lastPromotionDate,
+                reportsTo=excluded.reportsTo, gender=excluded.gender,
+                employeeClassification=excluded.employeeClassification,
+                personnelNumber=excluded.personnelNumber, avlAllotted=excluded.avlAllotted,
+                avlBeginningBalance=excluded.avlBeginningBalance
+                -- avatar and signature intentionally excluded: preserved from DB, updated by dedicated actions
+        `);
+        for (const e of employees) {
+            empUpsertStmt.run({
+                id: e.id, employeeNumber: e.employeeNumber || null,
+                firstName: e.firstName, lastName: e.lastName, middleInitial: e.middleInitial || null,
+                email: e.email, phone: e.phone || null, password: e.password || null,
+                position: e.position || null, role: e.role, group: e.group || null,
+                birthDate: e.birthDate ? new Date(e.birthDate).toISOString().split('T')[0] : null,
+                startDate: e.startDate ? new Date(e.startDate).toISOString().split('T')[0] : null,
+                loadAllocation: e.loadAllocation || 0,
+                visibility: e.visibility ? JSON.stringify(e.visibility) : null,
+                lastPromotionDate: e.lastPromotionDate ? new Date(e.lastPromotionDate).toISOString().split('T')[0] : null,
+                reportsTo: e.reportsTo || null, gender: e.gender || null,
+                employeeClassification: e.employeeClassification || null,
+                personnelNumber: e.personnelNumber || null,
+                avlAllotted: e.avlAllotted || 0, avlBeginningBalance: e.avlBeginningBalance || 0,
+            });
+        }
 
         // ── Groups: sync additions and removals ───────────────────────────────
         const dbGroups = new Set(db.prepare('SELECT name FROM groups').all().map((g: any) => g.name));
@@ -306,8 +341,18 @@ export async function saveAllData({
             db.prepare(`DELETE FROM leave WHERE id IN (${leaveToDelete.map(() => '?').join(',')})`).run(...leaveToDelete);
         }
         const leaveInsertStmt = db.prepare(`
-        INSERT OR REPLACE INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime, status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime, halfDaySegment, dateFiled, department, idNumber, contactInfo, employeeSignature, managerSignature, pdfDataUri, workExtensionStatus, claimedWorkExtensionId, isAvlClaimed) 
-        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime, @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime, @halfDaySegment, @dateFiled, @department, @idNumber, @contactInfo, @employeeSignature, @managerSignature, @pdfDataUri, @workExtensionStatus, @claimedWorkExtensionId, @isAvlClaimed)
+        INSERT OR REPLACE INTO leave (id, employeeId, type, color, startDate, endDate, isAllDay, startTime, endTime,
+            status, reason, requestedAt, managedBy, managedAt, originalShiftDate, originalStartTime, originalEndTime,
+            halfDaySegment, dateFiled, department, idNumber, contactInfo, durationCategory, totalMinutes,
+            workExtensionStatus, claimedWorkExtensionId, isAvlClaimed,
+            employeeSignature, managerSignature, pdfDataUri)
+        VALUES (@id, @employeeId, @type, @color, @startDate, @endDate, @isAllDay, @startTime, @endTime,
+            @status, @reason, @requestedAt, @managedBy, @managedAt, @originalShiftDate, @originalStartTime, @originalEndTime,
+            @halfDaySegment, @dateFiled, @department, @idNumber, @contactInfo, @durationCategory, @totalMinutes,
+            @workExtensionStatus, @claimedWorkExtensionId, @isAvlClaimed,
+            COALESCE(@employeeSignature, (SELECT employeeSignature FROM leave WHERE id=@id)),
+            COALESCE(@managerSignature,  (SELECT managerSignature  FROM leave WHERE id=@id)),
+            COALESCE(@pdfDataUri,        (SELECT pdfDataUri        FROM leave WHERE id=@id)))
         `);
         for (const l of leave) {
             leaveInsertStmt.run({
@@ -323,10 +368,15 @@ export async function saveAllData({
                 halfDaySegment: l.halfDaySegment || null,
                 dateFiled: l.dateFiled ? toLocalDateString(l.dateFiled) : toLocalDateString(new Date()),
                 department: l.department, idNumber: l.idNumber, contactInfo: l.contactInfo,
-                employeeSignature: l.employeeSignature, managerSignature: l.managerSignature,
-                pdfDataUri: l.pdfDataUri, workExtensionStatus: l.workExtensionStatus || null,
+                durationCategory: (l as any).durationCategory || null,
+                totalMinutes: (l as any).totalMinutes || null,
+                workExtensionStatus: l.workExtensionStatus || null,
                 claimedWorkExtensionId: l.claimedWorkExtensionId || null,
                 isAvlClaimed: l.isAvlClaimed ? 1 : 0,
+                // Binary fields stripped from payload — COALESCE in SQL preserves DB value
+                employeeSignature: null,
+                managerSignature: null,
+                pdfDataUri: null,
             });
         }
 
@@ -362,16 +412,28 @@ export async function saveAllData({
             taskStmt.run(task.id, task.shiftId, task.assigneeId, task.scope, task.title, task.description, task.status, task.acknowledgedAt?.toISOString(), task.completedAt?.toISOString(), task.dueDate?.toISOString(), task.createdBy);
         }
 
-        // ── Allowances: upsert ────────────────────────────────────────────────
+        // ── Allowances: upsert, preserve screenshot from DB ───────────────────
         const dbAllowanceIds = new Set(db.prepare('SELECT id FROM communication_allowances').all().map((r: any) => r.id));
         const stateAllowanceIds = new Set(allowances.map(a => a.id));
         const allowancesToDelete = [...dbAllowanceIds].filter(id => !stateAllowanceIds.has(id));
         if (allowancesToDelete.length > 0) {
             db.prepare(`DELETE FROM communication_allowances WHERE id IN (${allowancesToDelete.map(() => '?').join(',')})`).run(...allowancesToDelete);
         }
-        const allowanceStmt = db.prepare('INSERT OR REPLACE INTO communication_allowances (id, employeeId, year, month, balance, asOfDate, screenshot) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        const allowanceStmt = db.prepare(`
+            INSERT INTO communication_allowances (id, employeeId, year, month, balance, asOfDate, screenshot)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                employeeId=excluded.employeeId, year=excluded.year, month=excluded.month,
+                balance=excluded.balance, asOfDate=excluded.asOfDate,
+                screenshot=COALESCE(excluded.screenshot, screenshot)
+        `);
         for (const allowance of allowances) {
-            allowanceStmt.run(allowance.id, allowance.employeeId, allowance.year, allowance.month, allowance.balance, allowance.asOfDate ? new Date(allowance.asOfDate).toISOString() : null, allowance.screenshot);
+            allowanceStmt.run(
+                allowance.id, allowance.employeeId, allowance.year, allowance.month,
+                allowance.balance,
+                allowance.asOfDate ? new Date(allowance.asOfDate).toISOString() : null,
+                allowance.screenshot || null  // null means COALESCE keeps existing DB value
+            );
         }
 
         // ── Tardy records: upsert ─────────────────────────────────────────────

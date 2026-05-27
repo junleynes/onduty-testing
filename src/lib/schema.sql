@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS employees (
     gender TEXT,
     employeeClassification TEXT,
     personnelNumber TEXT,
+    avlAllotted REAL DEFAULT 0,
+    avlBeginningBalance REAL DEFAULT 0,
     FOREIGN KEY(reportsTo) REFERENCES employees(id) ON DELETE SET NULL,
     FOREIGN KEY("group") REFERENCES groups(name) ON DELETE SET NULL
 );
@@ -51,10 +53,10 @@ CREATE TABLE IF NOT EXISTS leave (
     color TEXT,
     startDate TEXT NOT NULL,
     endDate TEXT NOT NULL,
-    isAllDay INTEGER NOT NULL,
+    isAllDay INTEGER NOT NULL DEFAULT 1,
     startTime TEXT,
     endTime TEXT,
-    status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')),
+    status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
     reason TEXT,
     requestedAt TEXT,
     managedBy TEXT,
@@ -69,10 +71,15 @@ CREATE TABLE IF NOT EXISTS leave (
     employeeSignature TEXT,
     managerSignature TEXT,
     pdfDataUri TEXT,
+    workExtensionStatus TEXT,
+    claimedWorkExtensionId TEXT,
+    isAvlClaimed INTEGER DEFAULT 0,
+    halfDaySegment TEXT,
+    durationCategory TEXT,
+    totalMinutes INTEGER,
     FOREIGN KEY(employeeId) REFERENCES employees(id) ON DELETE CASCADE,
     FOREIGN KEY(managedBy) REFERENCES employees(id) ON DELETE SET NULL
 );
-
 
 CREATE TABLE IF NOT EXISTS notes (
     id TEXT PRIMARY KEY,
@@ -83,7 +90,7 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE TABLE IF NOT EXISTS holidays (
     id TEXT PRIMARY KEY,
-    date TEXT NOT NULL,
+    date TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL
 );
 
@@ -103,7 +110,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     FOREIGN KEY(assigneeId) REFERENCES employees(id) ON DELETE CASCADE,
     FOREIGN KEY(createdBy) REFERENCES employees(id) ON DELETE CASCADE
 );
-
 
 CREATE TABLE IF NOT EXISTS communication_allowances (
     id TEXT PRIMARY KEY,
@@ -128,7 +134,6 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
     fromName TEXT
 );
 
-
 CREATE TABLE IF NOT EXISTS groups (
     name TEXT PRIMARY KEY
 );
@@ -142,7 +147,8 @@ CREATE TABLE IF NOT EXISTS tardy_records (
     timeIn TEXT,
     timeOut TEXT,
     remarks TEXT,
-    FOREIGN KEY(employeeId) REFERENCES employees(id) ON DELETE CASCADE
+    FOREIGN KEY(employeeId) REFERENCES employees(id) ON DELETE CASCADE,
+    UNIQUE(employeeId, date)
 );
 
 CREATE TABLE IF NOT EXISTS key_value_store (
@@ -179,21 +185,45 @@ CREATE TABLE IF NOT EXISTS permissions (
     allowed_views TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS preferred_avl (
+    id TEXT PRIMARY KEY,
+    employeeId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    plottedDays TEXT,
+    FOREIGN KEY(employeeId) REFERENCES employees(id) ON DELETE CASCADE,
+    UNIQUE(employeeId, year, month)
+);
 
--- Ensure default admin user exists
+-- Indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_shifts_date        ON shifts(date);
+CREATE INDEX IF NOT EXISTS idx_shifts_employee    ON shifts(employeeId);
+CREATE INDEX IF NOT EXISTS idx_shifts_emp_date    ON shifts(employeeId, date);
+CREATE INDEX IF NOT EXISTS idx_leave_dates        ON leave(startDate, endDate);
+CREATE INDEX IF NOT EXISTS idx_leave_employee     ON leave(employeeId);
+CREATE INDEX IF NOT EXISTS idx_leave_status       ON leave(status);
+CREATE INDEX IF NOT EXISTS idx_leave_type         ON leave(type);
+CREATE INDEX IF NOT EXISTS idx_leave_emp_status   ON leave(employeeId, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee     ON tasks(assigneeId);
+CREATE INDEX IF NOT EXISTS idx_tasks_shift        ON tasks(shiftId);
+CREATE INDEX IF NOT EXISTS idx_tardy_employee     ON tardy_records(employeeId);
+CREATE INDEX IF NOT EXISTS idx_tardy_date         ON tardy_records(date);
+CREATE INDEX IF NOT EXISTS idx_allowance_emp_ym   ON communication_allowances(employeeId, year, month);
+CREATE INDEX IF NOT EXISTS idx_preferred_avl_emp  ON preferred_avl(employeeId, year, month);
+
+-- Default admin user
 INSERT INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group")
 SELECT 'emp-admin-01', '001', 'Super', 'Admin', 'admin@onduty.local', '123-456-7890', 'System Administrator', 'admin', 'Administration'
 WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'emp-admin-01');
 
--- Ensure default groups exist
+-- Default groups
 INSERT INTO groups (name) VALUES ('Administration') ON CONFLICT(name) DO NOTHING;
-INSERT INTO groups (name) VALUES ('Management') ON CONFLICT(name) DO NOTHING;
-INSERT INTO groups (name) VALUES ('Operations') ON CONFLICT(name) DO NOTHING;
+INSERT INTO groups (name) VALUES ('Management')     ON CONFLICT(name) DO NOTHING;
+INSERT INTO groups (name) VALUES ('Operations')     ON CONFLICT(name) DO NOTHING;
 
-
--- Ensure default permissions exist
-INSERT INTO permissions (role, allowed_views) VALUES 
-('admin', '["admin","smtp-settings","permissions","danger-zone","dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","report-alaf"]'),
+-- Default permissions
+INSERT INTO permissions (role, allowed_views) VALUES
+('admin',   '["admin","smtp-settings","permissions","danger-zone","dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","report-alaf"]'),
 ('manager', '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime"]'),
-('member', '["dashboard","my-schedule","my-tasks","onduty","time-off","allowance","team","org-chart","celebrations","holidays","faq","reports","report-wfh"]')
+('member',  '["dashboard","my-schedule","my-tasks","onduty","time-off","allowance","team","org-chart","celebrations","holidays","faq","reports","report-wfh"]')
 ON CONFLICT(role) DO NOTHING;

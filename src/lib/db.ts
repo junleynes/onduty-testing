@@ -95,7 +95,26 @@ function initializeDatabase() {
 
     runMigration("ALTER TABLE preferred_avl ADD COLUMN plottedDays TEXT;", "Added 'plottedDays' column to 'preferred_avl'");
 
-    return db;
+    // Add UNIQUE constraint to preferred_avl (recreate if missing)
+    runMigration(`CREATE UNIQUE INDEX IF NOT EXISTS idx_preferred_avl_unique ON preferred_avl(employeeId, year, month);`, "Added unique index to 'preferred_avl'");
+
+    // Add UNIQUE constraint to tardy_records to prevent duplicates
+    runMigration(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tardy_unique ON tardy_records(employeeId, date);`, "Added unique index to 'tardy_records'");
+
+    // Performance indexes
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_shifts_date     ON shifts(date);`,                         "idx_shifts_date");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_shifts_employee ON shifts(employeeId);`,                   "idx_shifts_employee");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_shifts_emp_date ON shifts(employeeId, date);`,             "idx_shifts_emp_date");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_leave_dates     ON leave(startDate, endDate);`,            "idx_leave_dates");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_leave_employee  ON leave(employeeId);`,                    "idx_leave_employee");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_leave_status    ON leave(status);`,                        "idx_leave_status");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_leave_type      ON leave(type);`,                          "idx_leave_type");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_leave_emp_status ON leave(employeeId, status);`,           "idx_leave_emp_status");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_tasks_assignee  ON tasks(assigneeId);`,                    "idx_tasks_assignee");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_tasks_shift     ON tasks(shiftId);`,                       "idx_tasks_shift");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_tardy_employee  ON tardy_records(employeeId);`,            "idx_tardy_employee");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_tardy_date      ON tardy_records(date);`,                  "idx_tardy_date");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_allowance_emp   ON communication_allowances(employeeId);`, "idx_allowance_emp");
 }
 
 export function getDb() {

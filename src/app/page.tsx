@@ -196,22 +196,6 @@ function AppContent() {
       const storedUser: Employee = JSON.parse(storedUserJson);
       let userToSet: Employee | null = null;
       
-      // Handle special admin user first to avoid unnecessary DB calls if it's them
-      if (storedUser.email === 'admin@onduty.local' && storedUser.id === 'emp-admin-01') {
-          userToSet = {
-              id: "emp-admin-01",
-              employeeNumber: "001",
-              firstName: "Super",
-              lastName: "Admin",
-              email: "admin@onduty.local",
-              // FIX #2: never store or expose password in client-side state
-              phone: "123-456-7890",
-              position: "System Administrator",
-              role: "admin",
-              group: "Administration"
-          };
-      }
-      
       const result = await getData();
 
       if (result.success && result.data) {
@@ -238,7 +222,7 @@ function AppContent() {
             localStorage.setItem('import_api_key', result.data.templates.import_api_key);
         }
         
-        // If it wasn't the special admin, find the user from the DB
+        // Find current user from DB employees (works for all users including admin)
         if (!userToSet) {
           const userFromDb = result.data.employees.find(emp => emp.id === storedUser.id);
           if (userFromDb) {

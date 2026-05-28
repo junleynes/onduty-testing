@@ -826,3 +826,16 @@ export async function saveAllowanceScreenshot(allowanceId: string, screenshot: s
         return { success: false, error: (error as Error).message };
     }
 }
+
+export async function saveTemplate(key: string, value: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const db = getDb();
+        db.prepare(`
+            INSERT INTO key_value_store (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `).run(key, value);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

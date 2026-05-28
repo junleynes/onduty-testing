@@ -27,7 +27,7 @@ import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { OvertimeTemplateUploader } from './overtime-template-uploader';
-import { sendEmail } from '@/app/actions';
+import { sendEmail, saveTemplate } from '@/app/actions';
 import { Textarea } from './ui/textarea';
 
 const tryParseExcelNumber = (val: any) => {
@@ -1937,22 +1937,22 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             <ReportTemplateUploader
                 isOpen={isWorkScheduleUploaderOpen}
                 setIsOpen={setIsWorkScheduleUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, workScheduleTemplate: data}))}
+                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, workScheduleTemplate: data})); saveTemplate('workScheduleTemplate', data).catch(() => {}); }}
             />
             <AttendanceTemplateUploader
                 isOpen={isAttendanceUploaderOpen}
                 setIsOpen={setIsAttendanceUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, attendanceSheetTemplate: data}))}
+                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, attendanceSheetTemplate: data})); saveTemplate('attendanceSheetTemplate', data).catch(() => {}); }}
             />
              <WorkExtensionTemplateUploader
                 isOpen={isWorkExtensionUploaderOpen}
                 setIsOpen={setIsWorkExtensionUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, workExtensionTemplate: data}))}
+                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, workExtensionTemplate: data})); saveTemplate('workExtensionTemplate', data).catch(() => {}); }}
             />
             <WfhCertificationTemplateUploader
                 isOpen={isWfhCertUploaderOpen}
                 setIsOpen={setIsWfhCertUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, wfhCertificationTemplate: data}))}
+                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, wfhCertificationTemplate: data})); saveTemplate('wfhCertificationTemplate', data).catch(() => {}); }}
             />
              <TardyImporter
                 isOpen={isTardyImporterOpen}
@@ -1963,7 +1963,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             <OvertimeTemplateUploader
                 isOpen={isOvertimeUploaderOpen}
                 setIsOpen={setIsOvertimeUploaderOpen}
-                onTemplateUpload={(data) => setTemplates(prev => ({...prev, overtimeTemplate: data}))}
+                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, overtimeTemplate: data})); saveTemplate('overtimeTemplate', data).catch(() => {}); }}
             />
             <Dialog open={isOvertimeSettingsOpen} onOpenChange={setIsOvertimeSettingsOpen}>
                 <DialogContent>

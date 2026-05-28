@@ -12,6 +12,7 @@ import { useNotifications } from '@/hooks/use-notifications';
 import { isSameDay, getMonth, getDate, getYear, format, differenceInYears, addDays, isBefore, startOfDay, isWithinInterval } from 'date-fns';
 import { getData, saveAllData } from '@/lib/db-actions';
 import { addEmployee, updateEmployee } from '@/app/employee-actions';
+import { saveTemplate } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -945,12 +946,18 @@ function AppContent() {
      <AlafTemplateUploader 
         isOpen={isAlafUploaderOpen}
         setIsOpen={setIsAlafUploaderOpen}
-        onTemplateUpload={(data) => setTemplates(prev => ({...prev, alafTemplate: data}))}
+        onTemplateUpload={(data) => {
+            setTemplates(prev => ({...prev, alafTemplate: data}));
+            saveTemplate('alafTemplate', data).catch(() => {});
+        }}
     />
     <OffsetTemplateUploader
         isOpen={isOffsetUploaderOpen}
         setIsOpen={setIsOffsetUploaderOpen}
-        onTemplateUpload={(data) => setTemplates(prev => ({...prev, offsetTemplate: data}))}
+        onTemplateUpload={(data) => {
+            setTemplates(prev => ({...prev, offsetTemplate: data}));
+            saveTemplate('offsetTemplate', data).catch(() => {});
+        }}
     />
     </>
   );

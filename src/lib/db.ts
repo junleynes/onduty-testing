@@ -58,6 +58,20 @@ function initializeDatabase() {
     runMigration("ALTER TABLE employees ADD COLUMN personnelNumber TEXT;", "Added 'personnelNumber' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN avlAllotted REAL DEFAULT 0;", "Added 'avlAllotted' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN avlBeginningBalance REAL DEFAULT 0;", "Added 'avlBeginningBalance' to 'employees'");
+
+    // Make password nullable — SQLite cannot ALTER COLUMN, so we recreate the table.
+    // This is safe: we only run if the password column is NOT NULL.
+    try {
+        const col = db.prepare("PRAGMA table_info(employees)").all().find((c: any) => c.name === 'password') as any;
+        if (col && col.notnull === 1) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS employees_new AS SELECT * FROM employees;
+                DROP TABLE employees;
+                ALTER TABLE employees_new RENAME TO employees;
+            `);
+            console.log('Migration: made employees.password nullable');
+        }
+    } catch (_) {}
     
     const leaveColumns = [
         { name: 'dateFiled', type: 'TEXT' },

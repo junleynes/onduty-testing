@@ -73,9 +73,15 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
 
     const db = getDb();
     try {
-        let hashedPassword = null;
+        let hashedPassword: string;
         if (data.password) {
+            // Use provided password
             hashedPassword = await bcrypt.hash(data.password, 10);
+        } else {
+            // No password supplied — generate a secure random one.
+            // The user will need to reset their password via the forgot-password flow.
+            const randomPassword = require('crypto').randomBytes(16).toString('hex');
+            hashedPassword = await bcrypt.hash(randomPassword, 10);
         }
 
         const newEmployee: Employee = {

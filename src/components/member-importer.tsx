@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState } from 'react';
@@ -18,12 +16,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Label } from './ui/label';
 import { Loader2 } from 'lucide-react';
 import type { Employee, UserRole } from '@/types';
-import { findEmployeeByName } from '@/lib/utils';
 
 type MemberImporterProps = {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  onImport: (newMembers: Partial<Employee>[]) => void;
+  onImport: (newMembers: Partial<Employee>[]) => Promise<void>;
   employees: Employee[];
 };
 
@@ -32,10 +29,14 @@ export function MemberImporter({ isOpen, setIsOpen, onImport, employees }: Membe
   const [isImporting, setIsImporting] = useState(false);
   const { toast } = useToast();
 
+  const handleClose = () => {
+    if (isImporting) return;
+    setFile(null);
+    setIsOpen(false);
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      setFile(event.target.files[0]);
-    }
+    if (event.target.files) setFile(event.target.files[0]);
   };
 
   const handleImport = () => {
@@ -48,44 +49,27 @@ export function MemberImporter({ isOpen, setIsOpen, onImport, employees }: Membe
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         try {
           if (results.errors.length) {
-            console.error("CSV parsing errors:", results.errors);
             throw new Error(`Error parsing CSV on row ${results.errors[0].row}: ${results.errors[0].message}`);
           }
-          
+
           const requiredHeaders = ['First Name', 'Last Name', 'Email'];
           const headers = results.meta.fields || [];
           const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-
           if (missingHeaders.length > 0) {
-            throw new Error(`Missing required columns in CSV: ${missingHeaders.join(', ')}`);
+            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
           }
 
           const newMembers: Partial<Employee>[] = results.data.map((row: any) => {
             const parseDate = (dateStr: string) => {
-                if (!dateStr) return undefined;
-                const date = new Date(dateStr);
-                return isNaN(date.getTime()) ? undefined : date;
-            }
-            
-            const role = (row['Role']?.toLowerCase() || 'member') as UserRole;
-            if (!['admin', 'manager', 'member'].includes(role)) {
-                console.warn(`Invalid role "${row['Role']}" for user ${row['First Name']}. Defaulting to 'member'.`);
-            }
-            
-            const loadAllocationValue = parseFloat(row['Load Allocation']);
-            
-            const visibility = {
-                schedule: (row['Show in Schedule'] || 'true').toLowerCase() === 'true',
-                onDuty: (row['Show in On Duty'] || 'true').toLowerCase() === 'true',
-                orgChart: (row['Show in Org Chart'] || 'true').toLowerCase() === 'true',
-                mobileLoad: (row['Show in Mobile Load'] || 'true').toLowerCase() === 'true',
+              if (!dateStr) return undefined;
+              const date = new Date(dateStr);
+              return isNaN(date.getTime()) ? undefined : date;
             };
-
-            const reportsToName = row['Reports To'] || null;
-
+            const role = (row['Role']?.toLowerCase() || 'member') as UserRole;
+            const loadAllocationValue = parseFloat(row['Load Allocation']);
             return {
               firstName: row['First Name'] || '',
               lastName: row['Last Name'] || '',
@@ -99,52 +83,59 @@ export function MemberImporter({ isOpen, setIsOpen, onImport, employees }: Membe
               phone: row['Phone'] || '',
               employeeNumber: row['ID Number'] || '',
               personnelNumber: row['Employee Number'] || '',
-              password: row['Password'] || 'password', // Default password if not provided
+              // Password optional — addEmployee generates a secure random one if omitted
+              password: row['Password'] || undefined,
               role: ['admin', 'manager', 'member'].includes(role) ? role : 'member',
               loadAllocation: !isNaN(loadAllocationValue) ? loadAllocationValue : 0,
-              visibility: visibility,
-              reportsTo: reportsToName, // Keep name for now, resolve to ID later
+              visibility: {
+                schedule: (row['Show in Schedule'] || 'true').toLowerCase() === 'true',
+                onDuty: (row['Show in On Duty'] || 'true').toLowerCase() === 'true',
+                orgChart: (row['Show in Org Chart'] || 'true').toLowerCase() === 'true',
+                mobileLoad: (row['Show in Mobile Load'] || 'true').toLowerCase() === 'true',
+              },
+              reportsTo: row['Reports To'] || null,
               gender: row['Gender'] as 'Male' | 'Female' | undefined,
               employeeClassification: row['Employee Classification'] as 'Rank-and-File' | 'Confidential' | 'Managerial' | undefined,
             };
           });
 
-          onImport(newMembers);
+          // Await so dialog only closes after all employees are processed
+          await onImport(newMembers);
+          setFile(null);
           setIsOpen(false);
 
         } catch (error) {
-          console.error("Import failed:", error);
           toast({ title: 'Import Failed', description: (error as Error).message, variant: 'destructive' });
         } finally {
           setIsImporting(false);
-          setFile(null);
         }
       },
       error: (error) => {
         toast({ title: 'Import Failed', description: error.message, variant: 'destructive' });
         setIsImporting(false);
-      }
+      },
     });
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Import Members from CSV</DialogTitle>
           <DialogDescription>
-            Upload a CSV file with member data. Required headers are: First Name, Last Name, Email. Other headers are M.I., Position, Group, Phone, etc.
+            Required columns: First Name, Last Name, Email. Password is optional — a secure random password is assigned if omitted (employee resets via Forgot Password).
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-            <Label htmlFor="member-file">CSV File</Label>
-            <Input id="member-file" type="file" onChange={handleFileChange} accept=".csv" />
+          <Label htmlFor="member-file">CSV File</Label>
+          <Input id="member-file" type="file" onChange={handleFileChange} accept=".csv" disabled={isImporting} />
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={handleClose} disabled={isImporting}>
+            Cancel
+          </Button>
           <Button onClick={handleImport} disabled={isImporting || !file}>
-            {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Import Members
+            {isImporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Importing...</> : 'Import Members'}
           </Button>
         </DialogFooter>
       </DialogContent>

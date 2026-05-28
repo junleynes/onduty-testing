@@ -476,7 +476,7 @@ function AppContent() {
     }
   };
   
-  const handleImportMembers = async (newMembers: Partial<Employee>[]) => {
+  const handleImportMembers = async (newMembers: Partial<Employee>[]): Promise<void> => {
     let successCount = 0;
     let errorCount = 0;
     let updatedEmployees = [...employees];

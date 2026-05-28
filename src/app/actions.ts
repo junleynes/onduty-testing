@@ -888,3 +888,25 @@ export async function deleteLeaveRecipient(id: string): Promise<{ success: boole
         return { success: false, error: (error as Error).message };
     }
 }
+
+export async function getLeaveWithPdf(leaveId: string): Promise<{ success: boolean; pdfDataUri?: string; employeeSignature?: string; managerSignature?: string; error?: string }> {
+    try {
+        const db = getDb();
+        const row = db.prepare('SELECT pdfDataUri, employeeSignature, managerSignature FROM leave WHERE id = ?').get(leaveId) as any;
+        if (!row) return { success: false, error: 'Leave record not found.' };
+        return { success: true, pdfDataUri: row.pdfDataUri, employeeSignature: row.employeeSignature, managerSignature: row.managerSignature };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function getEmployeeBinary(employeeId: string): Promise<{ success: boolean; avatar?: string; signature?: string; error?: string }> {
+    try {
+        const db = getDb();
+        const row = db.prepare('SELECT avatar, signature FROM employees WHERE id = ?').get(employeeId) as any;
+        if (!row) return { success: false, error: 'Employee not found.' };
+        return { success: true, avatar: row.avatar, signature: row.signature };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

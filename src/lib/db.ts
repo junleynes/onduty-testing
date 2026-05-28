@@ -20,8 +20,20 @@ function initializeDatabase() {
 
     const db = new Database(DB_PATH);
     
-    // Enable WAL mode for better concurrency
+    // WAL mode: allows concurrent reads during writes
     db.pragma('journal_mode = WAL');
+    // Flush WAL to main DB every 1000 pages instead of default 1000
+    db.pragma('wal_autocheckpoint = 100');
+    // Relaxed durability: fsync only on DB close, not every write — safe for app data, much faster
+    db.pragma('synchronous = NORMAL');
+    // 64MB page cache in memory — reduces disk reads significantly
+    db.pragma('cache_size = -65536');
+    // Store temp tables in memory instead of disk
+    db.pragma('temp_store = MEMORY');
+    // Enable memory-mapped I/O for 256MB — dramatically speeds up reads
+    db.pragma('mmap_size = 268435456');
+    // Enforce foreign key constraints
+    db.pragma('foreign_keys = ON');
 
     // Run schema to create tables if they don't exist
     const schemaPath = path.join(process.cwd(), 'src', 'lib', 'schema.sql');

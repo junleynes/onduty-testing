@@ -33,13 +33,39 @@ function toLocalDateString(date: Date | string | undefined | null): string {
 export async function getData() {
   const db = getDb();
   try {
-    const employees = db.prepare('SELECT * FROM employees').all() as any[];
+    // Exclude large binary columns (avatar, signature, screenshot, pdfDataUri,
+    // employeeSignature, managerSignature) from the bulk load — these are fetched
+    // individually only when needed, keeping the page load payload small and fast.
+    const employees = db.prepare(`
+        SELECT id, employeeNumber, firstName, lastName, middleInitial, email, phone,
+               position, role, "group", birthDate, startDate, loadAllocation,
+               visibility, lastPromotionDate, reportsTo, gender, employeeClassification,
+               personnelNumber, avlAllotted, avlBeginningBalance
+        FROM employees
+    `).all() as any[];
+
     const shifts = db.prepare('SELECT * FROM shifts').all() as any[];
-    const leave = db.prepare('SELECT * FROM leave').all() as any[];
+
+    const leave = db.prepare(`
+        SELECT id, employeeId, type, color, startDate, endDate, isAllDay,
+               startTime, endTime, status, reason, requestedAt, managedBy, managedAt,
+               originalShiftDate, originalStartTime, originalEndTime, halfDaySegment,
+               dateFiled, department, idNumber, contactInfo,
+               workExtensionStatus, claimedWorkExtensionId, isAvlClaimed,
+               durationCategory, totalMinutes,
+               CASE WHEN pdfDataUri IS NOT NULL THEN 1 ELSE 0 END AS hasPdf
+        FROM leave
+    `).all() as any[];
+
     const notes = db.prepare('SELECT * FROM notes').all() as any[];
     const holidays = db.prepare('SELECT * FROM holidays').all() as any[];
     const tasks = db.prepare('SELECT * FROM tasks').all() as any[];
-    const allowances = db.prepare('SELECT * FROM communication_allowances').all() as any[];
+
+    const allowances = db.prepare(`
+        SELECT id, employeeId, year, month, balance, asOfDate
+        FROM communication_allowances
+    `).all() as any[];
+
     const groups = db.prepare('SELECT name FROM groups').all().map((g: any) => g.name) as string[];
     const smtpSettings: SmtpSettings = db.prepare('SELECT * FROM smtp_settings WHERE id = 1').get() as any || {};
     const tardyRecords = db.prepare('SELECT * FROM tardy_records').all() as any[];

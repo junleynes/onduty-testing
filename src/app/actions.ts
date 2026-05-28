@@ -839,3 +839,52 @@ export async function saveTemplate(key: string, value: string): Promise<{ succes
         return { success: false, error: (error as Error).message };
     }
 }
+
+// ── Leave Recipients (external Company/Division admins) ───────────────────────
+
+export type LeaveRecipient = {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    isDefault: boolean;
+};
+
+export async function getLeaveRecipients(): Promise<{ success: boolean; recipients?: LeaveRecipient[]; error?: string }> {
+    try {
+        const db = getDb();
+        const rows = db.prepare('SELECT * FROM leave_recipients ORDER BY isDefault DESC, name ASC').all() as any[];
+        return {
+            success: true,
+            recipients: rows.map(r => ({ ...r, isDefault: r.isDefault === 1 }))
+        };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function saveLeaveRecipient(recipient: LeaveRecipient): Promise<{ success: boolean; error?: string }> {
+    try {
+        const db = getDb();
+        db.prepare(`
+            INSERT INTO leave_recipients (id, name, email, role, isDefault)
+            VALUES (@id, @name, @email, @role, @isDefault)
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name, email=excluded.email,
+                role=excluded.role, isDefault=excluded.isDefault
+        `).run({ ...recipient, isDefault: recipient.isDefault ? 1 : 0 });
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function deleteLeaveRecipient(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const db = getDb();
+        db.prepare('DELETE FROM leave_recipients WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

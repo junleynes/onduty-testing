@@ -227,3 +227,12 @@ INSERT INTO permissions (role, allowed_views) VALUES
 ('manager', '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime"]'),
 ('member',  '["dashboard","my-schedule","my-tasks","onduty","time-off","allowance","team","org-chart","celebrations","holidays","faq","reports","report-wfh"]')
 ON CONFLICT(role) DO NOTHING;
+
+-- External leave recipients (Company/Division admins outside the team)
+CREATE TABLE IF NOT EXISTS leave_recipients (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    role TEXT DEFAULT 'Division Admin',
+    isDefault INTEGER DEFAULT 0
+);

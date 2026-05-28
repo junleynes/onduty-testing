@@ -9,13 +9,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format, isSameDay, isWithinInterval, startOfDay, eachDayOfInterval, differenceInCalendarDays } from 'date-fns';
 import { getFullName, getInitialState, cn } from '@/lib/utils';
-import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter, Palmtree, ListChecks } from 'lucide-react';
+import { PlusCircle, Check, X, FileDown, Mail, Eye, Upload, Loader2, User, Calendar, Type, MessageSquare, Info, Trash2, ChevronsUpDown, Settings, Clock4, ArrowUpDown, Search, Filter, Palmtree, ListChecks, Plus, Star, StarOff } from 'lucide-react';
 import { LeaveRequestDialog } from './leave-request-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaveTypeOption } from './leave-type-editor';
-import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures } from '@/app/actions';
+import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures, getLeaveRecipients } from '@/app/actions';
+import type { LeaveRecipient } from '@/app/actions';
+import { LeaveRecipientsManager } from './leave-recipients-manager';
 import type { SmtpSettings } from '@/types';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
@@ -772,28 +774,42 @@ type EmailDialogProps = {
 
 function EmailDialog({ isOpen, setIsOpen, leaveRequest, smtpSettings, employees, currentUser }: EmailDialogProps) {
     const requester = employees.find(e => e.id === leaveRequest.employeeId);
-    const initialManager = employees.find(e => e.id === leaveRequest.managedBy);
 
-    const [senderName, setSenderName] = useState('');
-    const [senderEmail, setSenderEmail] = useState('');
+    const [recipients, setRecipients] = useState<LeaveRecipient[]>([]);
+    const [selectedRecipientId, setSelectedRecipientId] = useState('');
     const [recipientName, setRecipientName] = useState('');
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
+    const [isManageOpen, setIsManageOpen] = useState(false);
     const [isSending, startTransition] = useTransition();
     const { toast } = useToast();
 
+    // Load recipients and init form when dialog opens
     React.useEffect(() => {
-        if (isOpen && requester) {
-            const initialRecipientName = initialManager ? getFullName(initialManager) : '';
-            const initialTo = initialManager ? initialManager.email : '';
-            
-            const startDate = format(new Date(leaveRequest.startDate), 'MMM d, yyyy');
-            const endDate = format(new Date(leaveRequest.endDate), 'MMM d, yyyy');
-            const duration = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate)) ? startDate : `From ${startDate} to ${endDate}`;
+        if (!isOpen) return;
 
-            const newSubject = `Leave Request - ${getFullName(requester)}`;
-            const newBody = `Dear ${initialRecipientName || 'Recipient'},
+        getLeaveRecipients().then(r => {
+            if (r.success && r.recipients) {
+                setRecipients(r.recipients);
+                // Auto-select default recipient
+                const def = r.recipients.find(x => x.isDefault) || r.recipients[0];
+                if (def) {
+                    setSelectedRecipientId(def.id);
+                    setRecipientName(def.name);
+                    setTo(def.email);
+                }
+            }
+        });
+
+        if (!requester) return;
+        const startDate = format(new Date(leaveRequest.startDate), 'MMM d, yyyy');
+        const endDate   = format(new Date(leaveRequest.endDate),   'MMM d, yyyy');
+        const duration  = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate))
+            ? startDate : `From ${startDate} to ${endDate}`;
+
+        setSubject(`Leave Request - ${getFullName(requester)}`);
+        setBody(`Dear Recipient,
 
 Please find attached the leave application form of ${getFullName(requester)}.
 
@@ -803,46 +819,48 @@ Details:
 - Duration: ${duration}
 - Status: ${leaveRequest.status.charAt(0).toUpperCase() + leaveRequest.status.slice(1)}
 
-Thank you,  
-Onduty Admin`;
-            
-            setSenderName(getFullName(currentUser));
-            setSenderEmail(currentUser.email);
-            setRecipientName(initialRecipientName);
-            setTo(initialTo);
-            setSubject(newSubject);
-            setBody(newBody);
-        }
-    }, [isOpen, leaveRequest, requester, initialManager, currentUser]);
-    
+Thank you,
+${getFullName(currentUser)}`);
+    }, [isOpen]);
+
+    // Update salutation when recipient changes
+    const handleSelectRecipient = (id: string) => {
+        const r = recipients.find(x => x.id === id);
+        if (!r) return;
+        setSelectedRecipientId(id);
+        setRecipientName(r.name);
+        setTo(r.email);
+        setBody(prev => {
+            const lines = prev.split('\n');
+            if (lines[0].startsWith('Dear ')) lines[0] = `Dear ${r.name},`;
+            return lines.join('\n');
+        });
+    };
+
     const handleSend = async () => {
         if (!to) {
-            toast({ variant: 'destructive', title: 'Recipient required', description: 'Please enter an email address.' });
+            toast({ variant: 'destructive', title: 'Recipient required', description: 'Please enter or select a recipient email.' });
             return;
         }
         if (!leaveRequest.pdfDataUri) {
-            toast({ variant: 'destructive', title: 'PDF not found', description: 'The leave form PDF is not available to attach.' });
+            toast({ variant: 'destructive', title: 'PDF not found', description: 'Generate the leave form PDF first.' });
             return;
         }
-
         startTransition(async () => {
-            const attachment = {
-                filename: `Leave Application - ${requester ? getFullName(requester) : 'Unknown'}.pdf`,
-                content: leaveRequest.pdfDataUri!.split('base64,')[1],
-            };
-
-            toast({ title: 'Sending email...', description: `Sending leave form to ${to}` });
-            const result = await sendEmail({ 
-                to, 
-                subject, 
-                htmlBody: body.replace(/\n/g, '<br>'), 
-                attachments: [attachment],
-                fromName: senderName,
-                fromEmail: senderEmail
+            const result = await sendEmail({
+                to,
+                subject,
+                htmlBody: body.replace(/\n/g, '<br>'),
+                attachments: [{
+                    filename: `Leave Application - ${requester ? getFullName(requester) : 'Unknown'}.pdf`,
+                    content: leaveRequest.pdfDataUri!.split('base64,')[1],
+                }],
+                fromName: getFullName(currentUser),
+                fromEmail: currentUser.email,
             }, smtpSettings);
 
             if (result.success) {
-                toast({ title: 'Email Sent!', description: 'The leave form has been sent successfully.' });
+                toast({ title: 'Email Sent!', description: `Leave form sent to ${to}` });
                 setIsOpen(false);
             } else {
                 toast({ variant: 'destructive', title: 'Email Failed', description: result.error });
@@ -850,33 +868,8 @@ Onduty Admin`;
         });
     };
 
-    const handleSelectSender = (id: string) => {
-        const emp = employees.find(e => e.id === id);
-        if (emp) {
-            setSenderName(getFullName(emp));
-            setSenderEmail(emp.email);
-        }
-    };
-
-    const handleSelectRecipient = (id: string) => {
-        const emp = employees.find(e => e.id === id);
-        if (emp) {
-            const newName = getFullName(emp);
-            setRecipientName(newName);
-            setTo(emp.email);
-            // Update body salutation
-            setBody(prev => {
-                const lines = prev.split('\n');
-                if (lines.length > 0 && lines[0].startsWith('Dear ')) {
-                    lines[0] = `Dear ${newName || 'Recipient'},`;
-                    return lines.join('\n');
-                }
-                return prev;
-            });
-        }
-    };
-
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
@@ -884,75 +877,95 @@ Onduty Admin`;
                     <DialogDescription>The approved ALAF will be sent as a PDF attachment.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                    <div className="rounded-md border p-4 space-y-4">
+                    {/* Sender — locked to current user */}
+                    <div className="rounded-md border p-4 space-y-3">
                         <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sender Information</Label>
-                        <div className="space-y-2">
-                             <Select onValueChange={handleSelectSender}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select sender from team..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {employees.map(e => (
-                                        <SelectItem key={e.id} value={e.id}>{getFullName(e)}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="senderName">Sender Name</Label>
-                                <Input id="senderName" value={senderName} onChange={(e) => setSenderName(e.target.value)} />
+                            <div className="space-y-1">
+                                <Label htmlFor="senderName" className="text-xs">Name</Label>
+                                <Input id="senderName" value={getFullName(currentUser)} readOnly className="bg-muted cursor-not-allowed" />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="senderEmail">Sender Email</Label>
-                                <Input id="senderEmail" type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} />
+                            <div className="space-y-1">
+                                <Label htmlFor="senderEmail" className="text-xs">Email</Label>
+                                <Input id="senderEmail" value={currentUser.email} readOnly className="bg-muted cursor-not-allowed" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="rounded-md border p-4 space-y-4">
-                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recipient Information</Label>
-                        <div className="space-y-2">
-                             <Select onValueChange={handleSelectRecipient}>
+                    {/* Recipient — from managed leave_recipients list */}
+                    <div className="rounded-md border p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recipient Information</Label>
+                            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setIsManageOpen(true)}>
+                                Manage Recipients
+                            </Button>
+                        </div>
+                        {recipients.length > 0 ? (
+                            <Select value={selectedRecipientId} onValueChange={handleSelectRecipient}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select recipient from team..." />
+                                    <SelectValue placeholder="Select recipient..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {employees.map(e => (
-                                        <SelectItem key={e.id} value={e.id}>{getFullName(e)}</SelectItem>
+                                    {recipients.map(r => (
+                                        <SelectItem key={r.id} value={r.id}>
+                                            {r.name} — {r.role}
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
-                        </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">
+                                No recipients configured.{' '}
+                                <button className="underline text-primary" onClick={() => setIsManageOpen(true)}>
+                                    Add one now.
+                                </button>
+                            </p>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="recipientName">Recipient Name</Label>
-                                <Input id="recipientName" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+                            <div className="space-y-1">
+                                <Label htmlFor="recipientName" className="text-xs">Name</Label>
+                                <Input id="recipientName" value={recipientName} onChange={e => setRecipientName(e.target.value)} />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="recipientEmail">Recipient Email</Label>
-                                <Input id="recipientEmail" type="email" value={to} onChange={(e) => setTo(e.target.value)} />
+                            <div className="space-y-1">
+                                <Label htmlFor="recipientEmail" className="text-xs">Email</Label>
+                                <Input id="recipientEmail" type="email" value={to} onChange={e => setTo(e.target.value)} />
                             </div>
                         </div>
                     </div>
 
-                     <div className="space-y-2">
+                    <div className="space-y-2">
                         <Label>Subject</Label>
-                        <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                        <Input value={subject} onChange={e => setSubject(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                         <Label>Body</Label>
-                        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6} />
+                        <Textarea value={body} onChange={e => setBody(e.target.value)} rows={7} />
                     </div>
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSend} disabled={isSending}>
+                    <Button onClick={handleSend} disabled={isSending || !to}>
                         {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Send Email
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <LeaveRecipientsManager isOpen={isManageOpen} setIsOpen={(open) => {
+            setIsManageOpen(open);
+            // Reload recipients after managing
+            if (!open) getLeaveRecipients().then(r => {
+                if (r.success && r.recipients) {
+                    setRecipients(r.recipients);
+                    const def = r.recipients.find(x => x.isDefault) || r.recipients[0];
+                    if (def && !selectedRecipientId) {
+                        setSelectedRecipientId(def.id);
+                        setRecipientName(def.name);
+                        setTo(def.email);
+                    }
+                }
+            });
+        }} />
+        </>
     );
 }

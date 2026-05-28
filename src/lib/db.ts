@@ -165,6 +165,16 @@ function initializeDatabase() {
     runMigration(`CREATE INDEX IF NOT EXISTS idx_tardy_date      ON tardy_records(date);`,                  "idx_tardy_date");
     runMigration(`CREATE INDEX IF NOT EXISTS idx_allowance_emp   ON communication_allowances(employeeId);`, "idx_allowance_emp");
 
+    runMigration(`
+        CREATE TABLE IF NOT EXISTS leave_recipients (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            role TEXT DEFAULT 'Division Admin',
+            isDefault INTEGER DEFAULT 0
+        );
+    `, "Created 'leave_recipients' table");
+
     // Ensure the super-admin account always exists in DB.
     // Previously it only existed in client state — after that was removed, updateEmployee
     // failed with 'Employee not found' because the admin had never been persisted to DB.

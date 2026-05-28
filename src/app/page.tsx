@@ -449,7 +449,7 @@ function AppContent() {
   };
 
 
- const handleSaveMember = async (employeeData: Partial<Employee>) => {
+ const handleSaveMember = async (employeeData: Partial<Employee>): Promise<void> => {
     if (employeeData.id) {
       // Update existing employee
       const result = await updateEmployee(employeeData);
@@ -912,7 +912,7 @@ function AppContent() {
     />
     <MemberImporter
         isOpen={isImporterOpen}
-        setIsOpen={setIsEditorOpen}
+        setIsOpen={setIsImporterOpen}
         onImport={handleImportMembers}
         employees={employees}
     />

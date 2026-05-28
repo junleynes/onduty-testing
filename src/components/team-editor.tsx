@@ -75,7 +75,7 @@ type TeamEditorProps = {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   employee: Partial<Employee> | null;
-  onSave: (employee: Partial<Employee>) => void;
+  onSave: (employee: Partial<Employee>) => Promise<void>;
   isPasswordResetMode?: boolean;
   context?: 'admin' | 'manager';
   groups: string[];
@@ -174,14 +174,19 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
       }
   };
 
-  const onSubmit = (values: z.infer<typeof employeeSchema>) => {
-    onSave(values);
-    
-    if (values.group && !groups.includes(values.group)) {
-      setGroups(prev => [...prev, values.group!]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const onSubmit = async (values: z.infer<typeof employeeSchema>) => {
+    setIsSaving(true);
+    try {
+        await onSave(values);
+        if (values.group && !groups.includes(values.group)) {
+            setGroups(prev => [...prev, values.group!]);
+        }
+        setIsOpen(false);
+    } finally {
+        setIsSaving(false);
     }
-    
-    setIsOpen(false);
   };
 
 
@@ -648,8 +653,10 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
             )}
 
             <DialogFooter className="pt-4">
-                <Button type="button" variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-                <Button type="submit">Save</Button>
+                <Button type="button" variant="ghost" onClick={() => setIsOpen(false)} disabled={isSaving}>Cancel</Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save'}
+                </Button>
             </DialogFooter>
           </form>
         </Form>

@@ -159,7 +159,18 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
     const db = getDb();
     
     try {
-        const existingEmployee = db.prepare('SELECT * FROM employees WHERE id = ?').get(data.id) as Employee | undefined;
+        let existingEmployee = db.prepare('SELECT * FROM employees WHERE id = ?').get(data.id) as Employee | undefined;
+        
+        // If admin account doesn't exist in DB yet (was previously only in client state),
+        // insert it first so the update can proceed
+        if (!existingEmployee && data.id === 'emp-admin-01') {
+            db.prepare(`
+                INSERT OR IGNORE INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group")
+                VALUES ('emp-admin-01', '001', 'Super', 'Admin', 'admin@onduty.local', '123-456-7890', 'System Administrator', 'admin', 'Administration')
+            `).run();
+            existingEmployee = db.prepare('SELECT * FROM employees WHERE id = ?').get(data.id) as Employee | undefined;
+        }
+        
         if (!existingEmployee) {
             return { success: false, error: 'Employee not found.' };
         }

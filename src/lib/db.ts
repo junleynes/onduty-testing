@@ -165,6 +165,22 @@ function initializeDatabase() {
     runMigration(`CREATE INDEX IF NOT EXISTS idx_tardy_date      ON tardy_records(date);`,                  "idx_tardy_date");
     runMigration(`CREATE INDEX IF NOT EXISTS idx_allowance_emp   ON communication_allowances(employeeId);`, "idx_allowance_emp");
 
+    // Ensure the super-admin account always exists in DB.
+    // Previously it only existed in client state — after that was removed, updateEmployee
+    // failed with 'Employee not found' because the admin had never been persisted to DB.
+    try {
+        const admin = db.prepare("SELECT id FROM employees WHERE id = 'emp-admin-01'").get();
+        if (!admin) {
+            db.prepare(`
+                INSERT INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group")
+                VALUES ('emp-admin-01', '001', 'Super', 'Admin', 'admin@onduty.local', '123-456-7890', 'System Administrator', 'admin', 'Administration')
+            `).run();
+            console.log('Migration: inserted missing super-admin account into employees table');
+        }
+    } catch (e: any) {
+        console.error('Migration warning (admin insert):', e.message);
+    }
+
     return db;
 }
 

@@ -438,15 +438,18 @@ function AppContent() {
       // Update existing employee
       const result = await updateEmployee(employeeData);
       if (result.success && result.employee) {
-        setEmployees(prev => prev.map(emp => emp.id === result.employee!.id ? {...emp, ...result.employee} as Employee : emp));
-        if (currentUser?.id === result.employee.id) {
-          const updatedUser = { ...currentUser, ...result.employee };
+        // Strip password from state/localStorage — never store hashed password client-side
+        const { password: _pw, ...safeEmployee } = result.employee as any;
+        setEmployees(prev => prev.map(emp => emp.id === safeEmployee.id ? {...emp, ...safeEmployee} as Employee : emp));
+        if (currentUser?.id === safeEmployee.id) {
+          const updatedUser = { ...currentUser, ...safeEmployee };
           setCurrentUser(updatedUser);
           localStorage.setItem('currentUser', JSON.stringify(updatedUser));
         }
         toast({ title: 'Member Updated', description: 'The team member details have been saved.'});
       } else {
-        toast({ variant: 'destructive', title: 'Update Failed', description: result.error });
+        toast({ variant: 'destructive', title: 'Update Failed', description: result.error || 'Unknown error' });
+        throw new Error(result.error || 'Update failed'); // re-throw so TeamEditor keeps dialog open
       }
     } else {
       // Add new employee

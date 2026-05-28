@@ -59,19 +59,54 @@ function initializeDatabase() {
     runMigration("ALTER TABLE employees ADD COLUMN avlAllotted REAL DEFAULT 0;", "Added 'avlAllotted' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN avlBeginningBalance REAL DEFAULT 0;", "Added 'avlBeginningBalance' to 'employees'");
 
-    // Make password nullable — SQLite cannot ALTER COLUMN, so we recreate the table.
-    // This is safe: we only run if the password column is NOT NULL.
+    // Make password nullable — SQLite cannot ALTER COLUMN, so we recreate the table
+    // using the proper pattern: create new with correct definition, copy, drop, rename.
     try {
         const col = db.prepare("PRAGMA table_info(employees)").all().find((c: any) => c.name === 'password') as any;
         if (col && col.notnull === 1) {
             db.exec(`
-                CREATE TABLE IF NOT EXISTS employees_new AS SELECT * FROM employees;
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE IF NOT EXISTS employees_new (
+                    id TEXT PRIMARY KEY,
+                    employeeNumber TEXT,
+                    firstName TEXT NOT NULL,
+                    lastName TEXT NOT NULL,
+                    middleInitial TEXT,
+                    email TEXT UNIQUE NOT NULL,
+                    phone TEXT,
+                    password TEXT,
+                    position TEXT,
+                    role TEXT NOT NULL DEFAULT 'member',
+                    "group" TEXT,
+                    avatar TEXT,
+                    birthDate TEXT,
+                    startDate TEXT,
+                    loadAllocation REAL DEFAULT 0,
+                    signature TEXT,
+                    visibility TEXT,
+                    lastPromotionDate TEXT,
+                    reportsTo TEXT,
+                    gender TEXT,
+                    employeeClassification TEXT,
+                    personnelNumber TEXT,
+                    avlAllotted REAL DEFAULT 0,
+                    avlBeginningBalance REAL DEFAULT 0
+                );
+                INSERT INTO employees_new SELECT
+                    id, employeeNumber, firstName, lastName, middleInitial, email, phone,
+                    password, position, role, "group", avatar, birthDate, startDate,
+                    loadAllocation, signature, visibility, lastPromotionDate, reportsTo,
+                    gender, employeeClassification, personnelNumber, avlAllotted, avlBeginningBalance
+                FROM employees;
                 DROP TABLE employees;
                 ALTER TABLE employees_new RENAME TO employees;
+                PRAGMA foreign_keys = ON;
             `);
             console.log('Migration: made employees.password nullable');
         }
-    } catch (_) {}
+    } catch (e: any) {
+        console.error('Migration warning (password nullable):', e.message);
+    }
     
     const leaveColumns = [
         { name: 'dateFiled', type: 'TEXT' },

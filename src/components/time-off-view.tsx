@@ -325,13 +325,39 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     }
   };
 
-  const handleDownloadPdf = (pdfDataUri: string, employeeName: string) => {
+  const handleDownloadPdf = async (req: Leave, employeeName: string) => {
+    let pdfDataUri = req.pdfDataUri;
+    if (!pdfDataUri || pdfDataUri.startsWith('file:')) {
+      const result = await getLeaveWithPdf(req.id);
+      if (result.success && result.pdfDataUri) {
+        pdfDataUri = result.pdfDataUri;
+        setLeaveRequests(prev => prev.map(r => r.id === req.id ? { ...r, pdfDataUri } : r));
+      } else {
+        toast({ variant: 'destructive', title: 'PDF not found', description: 'Could not load the PDF file.' });
+        return;
+      }
+    }
     const link = document.createElement('a');
     link.href = pdfDataUri;
     link.download = `Leave Application - ${employeeName}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleViewPdf = async (req: Leave) => {
+    let pdfDataUri = req.pdfDataUri;
+    if (!pdfDataUri || pdfDataUri.startsWith('file:')) {
+      const result = await getLeaveWithPdf(req.id);
+      if (result.success && result.pdfDataUri) {
+        pdfDataUri = result.pdfDataUri;
+        setLeaveRequests(prev => prev.map(r => r.id === req.id ? { ...r, pdfDataUri } : r));
+      } else {
+        toast({ variant: 'destructive', title: 'PDF not found', description: 'Could not load the PDF file.' });
+        return;
+      }
+    }
+    window.open(pdfDataUri, '_blank');
   };
 
   const handleOpenEmailDialog = (leaveRequest: Leave) => {
@@ -386,8 +412,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     )}
                     {req.pdfDataUri && (
                         <>
-                            <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
-                            <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
+                            <a onClick={() => handleViewPdf(req)} ><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
+                            <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
                             <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)}><Mail className="h-4 w-4 mr-1" />Email</Button>
                         </>
                     )}
@@ -404,8 +430,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
+                        <a onClick={() => handleViewPdf(req)} ><Button size="sm" variant="outline"><Eye className="h-4 w-4 mr-1" />View</Button></a>
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req, getFullName(employee!))}><FileDown className="h-4 w-4 mr-1" />Download</Button>
                     </div>
                 );
             }
@@ -483,8 +509,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                     )}
                     {req.pdfDataUri && (
                         <>
-                            <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline" title="View PDF"><Eye className="h-4 w-4" /></Button></a>
-                            <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))} title="Download PDF"><FileDown className="h-4 w-4" /></Button>
+                            <a onClick={() => handleViewPdf(req)} ><Button size="sm" variant="outline" title="View PDF"><Eye className="h-4 w-4" /></Button></a>
+                            <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req, getFullName(employee!))} title="Download PDF"><FileDown className="h-4 w-4" /></Button>
                             <Button size="sm" variant="outline" onClick={() => handleOpenEmailDialog(req)} title="Send via Email"><Mail className="h-4 w-4" /></Button>
                         </>
                     )}
@@ -501,8 +527,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             if (req.pdfDataUri) {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <a href={req.pdfDataUri} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req.pdfDataUri!, getFullName(employee!))}><FileDown className="h-4 w-4" /></Button>
+                        <a onClick={() => handleViewPdf(req)} ><Button size="sm" variant="outline"><Eye className="h-4 w-4" /></Button></a>
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(req, getFullName(employee!))}><FileDown className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -842,10 +868,19 @@ ${getFullName(currentUser)}`);
             toast({ variant: 'destructive', title: 'Recipient required', description: 'Please enter or select a recipient email.' });
             return;
         }
-        if (!leaveRequest.pdfDataUri) {
-            toast({ variant: 'destructive', title: 'PDF not found', description: 'Generate the leave form PDF first.' });
-            return;
+
+        // Lazy-load PDF from disk if not in state
+        let pdfDataUri = leaveRequest.pdfDataUri;
+        if (!pdfDataUri || pdfDataUri.startsWith('file:')) {
+            const loaded = await getLeaveWithPdf(leaveRequest.id);
+            if (loaded.success && loaded.pdfDataUri) {
+                pdfDataUri = loaded.pdfDataUri;
+            } else {
+                toast({ variant: 'destructive', title: 'PDF not found', description: 'Generate the leave form PDF first.' });
+                return;
+            }
         }
+
         startTransition(async () => {
             const result = await sendEmail({
                 to,
@@ -853,7 +888,7 @@ ${getFullName(currentUser)}`);
                 htmlBody: body.replace(/\n/g, '<br>'),
                 attachments: [{
                     filename: `Leave Application - ${requester ? getFullName(requester) : 'Unknown'}.pdf`,
-                    content: leaveRequest.pdfDataUri!.split('base64,')[1],
+                    content: pdfDataUri!.split('base64,')[1],
                 }],
                 fromName: getFullName(currentUser),
                 fromEmail: currentUser.email,

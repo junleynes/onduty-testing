@@ -5,6 +5,7 @@ import type { Employee } from '@/types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
+import { saveAvatar, saveSignature, readAvatar, readSignature } from '@/lib/file-storage';
 
 const employeeSchema = z.object({
   id: z.string().optional(),
@@ -84,8 +85,20 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             hashedPassword = await bcrypt.hash(randomPassword, 10);
         }
 
+        const employeeId = uuidv4();
+
+        // Save avatar and signature to disk — store only the file path in DB
+        let avatarPath: string | null = null;
+        let signaturePath: string | null = null;
+        if (data.avatar && data.avatar.startsWith('data:')) {
+            avatarPath = saveAvatar(employeeId, data.avatar);
+        }
+        if (data.signature && data.signature.startsWith('data:')) {
+            signaturePath = saveSignature(employeeId, data.signature);
+        }
+
         const newEmployee: Employee = {
-            id: uuidv4(),
+            id: employeeId,
             firstName: data.firstName,
             lastName: data.lastName,
             email: data.email.toLowerCase(),
@@ -94,8 +107,8 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             position: data.position || '',
             ...data,
             password: hashedPassword,
-            avatar: data.avatar || null,
-            signature: data.signature || null,
+            avatar: avatarPath,
+            signature: signaturePath,
         };
 
         const stmt = db.prepare(`
@@ -130,7 +143,8 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             employeeClassification: newEmployee.employeeClassification || null,
         });
 
-        return { success: true, employee: newEmployee };
+        // Return employee with actual binary data for immediate UI use
+        return { success: true, employee: { ...newEmployee, avatar: data.avatar || avatarPath, signature: data.signature || signaturePath } };
 
     } catch (error) {
         console.error('Failed to add employee:', error);
@@ -183,8 +197,18 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             updatedEmployee.password = existingEmployee.password;
         }
 
-        if (!data.avatar) updatedEmployee.avatar = existingEmployee.avatar;
-        if (!data.signature) updatedEmployee.signature = existingEmployee.signature;
+        // Save new avatar/signature to disk if provided as data URI, keep existing path otherwise
+        if (data.avatar && data.avatar.startsWith('data:')) {
+            updatedEmployee.avatar = saveAvatar(data.id!, data.avatar);
+        } else if (!data.avatar) {
+            updatedEmployee.avatar = existingEmployee.avatar;
+        }
+
+        if (data.signature && data.signature.startsWith('data:')) {
+            updatedEmployee.signature = saveSignature(data.id!, data.signature);
+        } else if (!data.signature) {
+            updatedEmployee.signature = existingEmployee.signature;
+        }
 
         const stmt = db.prepare(`
             UPDATE employees SET

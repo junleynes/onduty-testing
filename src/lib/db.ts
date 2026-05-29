@@ -188,8 +188,6 @@ function initializeDatabase() {
     `, "Created 'leave_recipients' table");
 
     // Ensure the super-admin account always exists in DB.
-    // Previously it only existed in client state — after that was removed, updateEmployee
-    // failed with 'Employee not found' because the admin had never been persisted to DB.
     try {
         const admin = db.prepare("SELECT id FROM employees WHERE id = 'emp-admin-01'").get();
         if (!admin) {
@@ -202,6 +200,9 @@ function initializeDatabase() {
     } catch (e: any) {
         console.error('Migration warning (admin insert):', e.message);
     }
+
+    // Migrate existing base64 blobs from DB columns to disk files (runs once)
+    try { migrateBase64ToFiles(db); } catch (e: any) { console.error('Migration warning (base64->files):', e.message); }
 
     return db;
 }
@@ -253,3 +254,59 @@ export function getDb() {
 }
 
 export const db = getDb();
+
+// ── Migrate existing base64 data from DB to disk ──────────────────────────────
+// Run once: moves existing avatar/signature/template blobs from SQLite to disk.
+// Safe to run on every start — skips records that are already file references.
+function migrateBase64ToFiles(db: any) {
+    const { saveAvatar, saveSignature, saveTemplate: saveTemplateFile, savePdf, saveScreenshot, ensureUploadDirs } = require('./file-storage');
+    ensureUploadDirs();
+
+    // Employees — avatar and signature
+    const emps = db.prepare("SELECT id, avatar, signature FROM employees").all() as any[];
+    for (const e of emps) {
+        if (e.avatar && e.avatar.startsWith('data:')) {
+            const path = saveAvatar(e.id, e.avatar);
+            db.prepare("UPDATE employees SET avatar = ? WHERE id = ?").run(path, e.id);
+        }
+        if (e.signature && e.signature.startsWith('data:')) {
+            const path = saveSignature(e.id, e.signature);
+            db.prepare("UPDATE employees SET signature = ? WHERE id = ?").run(path, e.id);
+        }
+    }
+
+    // Leave — pdfDataUri, employeeSignature, managerSignature
+    const leaves = db.prepare("SELECT id, pdfDataUri, employeeSignature, managerSignature FROM leave").all() as any[];
+    for (const l of leaves) {
+        if (l.pdfDataUri && l.pdfDataUri.startsWith('data:')) {
+            savePdf(l.id, l.pdfDataUri);
+            db.prepare("UPDATE leave SET pdfDataUri = ? WHERE id = ?").run(`file:${l.id}.pdf`, l.id);
+        }
+        if (l.employeeSignature && l.employeeSignature.startsWith('data:')) {
+            saveSignature(`leave_emp_${l.id}`, l.employeeSignature);
+            db.prepare("UPDATE leave SET employeeSignature = ? WHERE id = ?").run(`file:leave_emp_${l.id}`, l.id);
+        }
+        if (l.managerSignature && l.managerSignature.startsWith('data:')) {
+            saveSignature(`leave_mgr_${l.id}`, l.managerSignature);
+            db.prepare("UPDATE leave SET managerSignature = ? WHERE id = ?").run(`file:leave_mgr_${l.id}`, l.id);
+        }
+    }
+
+    // Templates in key_value_store
+    const templates = db.prepare("SELECT key, value FROM key_value_store WHERE key LIKE '%Template%'").all() as any[];
+    for (const t of templates) {
+        if (t.value && !t.value.startsWith('file:') && t.value.length > 1000) {
+            saveTemplateFile(t.key, t.value);
+            db.prepare("UPDATE key_value_store SET value = ? WHERE key = ?").run(`file:${t.key}.pdf`, t.key);
+        }
+    }
+
+    // Allowance screenshots
+    const allowances = db.prepare("SELECT id, screenshot FROM communication_allowances WHERE screenshot IS NOT NULL").all() as any[];
+    for (const a of allowances) {
+        if (a.screenshot && a.screenshot.startsWith('data:')) {
+            saveScreenshot(a.id, a.screenshot);
+            db.prepare("UPDATE communication_allowances SET screenshot = ? WHERE id = ?").run(`file:${a.id}`, a.id);
+        }
+    }
+}

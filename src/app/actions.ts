@@ -10,6 +10,14 @@ import path from 'path';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { isSameDay } from 'date-fns';
 import { getFullName } from '@/lib/utils';
+import {
+    saveTemplate as saveTemplateFile, readTemplate, templateExists,
+    savePdf, readPdf, pdfExists, deletePdf,
+    saveAvatar as saveAvatarFile, readAvatar,
+    saveSignature as saveSignatureFile, readSignature,
+    saveScreenshot as saveScreenshotFile, readScreenshot,
+    ensureUploadDirs,
+} from '@/lib/file-storage';
 
 // Login attempt tracking for rate limiting (in-memory, resets on server restart)
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -451,14 +459,23 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
     const db = getDb();
     try {
-        const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'alafTemplate'").get() as { value: string } | undefined;
-        if (!templateData || !templateData.value) return { success: false, error: "ALAF template not found." };
+        // Read template from disk first, fall back to DB for backwards compatibility
+        let templateBase64 = readTemplate('alafTemplate');
+        if (!templateBase64) {
+            const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'alafTemplate'").get() as { value: string } | undefined;
+            if (!templateData?.value || templateData.value.startsWith('file:')) return { success: false, error: "ALAF template not found. Please upload it in Settings." };
+            templateBase64 = templateData.value;
+        }
 
         const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.employeeId) as Employee | undefined;
         if (!employee) return { success: false, error: "Employee not found." };
         const manager = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
 
-        const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
+        // Read signatures from disk
+        const employeeSig = readSignature(leaveRequest.employeeId) || readSignature(`leave_emp_${leaveRequest.id}`);
+        const managerSig  = manager ? (readSignature(manager.id) || readSignature(`leave_mgr_${leaveRequest.id}`)) : undefined;
+
+        const pdfDoc = await PDFDocument.load(Buffer.from(templateBase64, 'base64'));
         const form = pdfDoc.getForm();
         const allFields = form.getFields();
 
@@ -544,11 +561,17 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         fixFieldAppearance(pdfDoc, form, 'contact_info',  leaveRequest.contactInfo || employee.phone || '');
         fixFieldAppearance(pdfDoc, form, 'employee_id',   leaveRequest.idNumber || employee.employeeNumber || '');
         fixFieldAppearance(pdfDoc, form, 'approval_date', formatComponentDate(leaveRequest.managedAt));
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee.signature, ['employee_signature_af_image'], 'employee');
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature || manager?.signature, ['manager_signature_af_image'], 'manager');
+        await embedSignatureToPdf(pdfDoc, employeeSig || leaveRequest.employeeSignature, ['employee_signature_af_image'], 'employee');
+        await embedSignatureToPdf(pdfDoc, managerSig  || leaveRequest.managerSignature,  ['manager_signature_af_image'],  'manager');
 
         const pdfBytes = await pdfDoc.save();
-        return { success: true, pdfDataUri: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}` };
+        const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
+
+        // Save generated PDF to disk
+        savePdf(leaveRequest.id, pdfDataUri);
+        db.prepare('UPDATE leave SET pdfDataUri = ? WHERE id = ?').run(`file:${leaveRequest.id}.pdf`, leaveRequest.id);
+
+        return { success: true, pdfDataUri };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -557,8 +580,13 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
     const db = getDb();
     try {
-        const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'offsetTemplate'").get() as { value: string } | undefined;
-        if (!templateData || !templateData.value) return { success: false, error: "Offset template not found." };
+        // Read template from disk first, fall back to DB for backwards compatibility
+        let templateBase64 = readTemplate('offsetTemplate');
+        if (!templateBase64) {
+            const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'offsetTemplate'").get() as { value: string } | undefined;
+            if (!templateData?.value || templateData.value.startsWith('file:')) return { success: false, error: "Offset template not found. Please upload it in Settings." };
+            templateBase64 = templateData.value;
+        }
 
         const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.employeeId) as Employee | undefined;
         const manager  = leaveRequest.managedBy ? db.prepare("SELECT * FROM employees WHERE id = ?").get(leaveRequest.managedBy) as Employee | undefined : undefined;
@@ -574,7 +602,13 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
             weManager = db.prepare("SELECT * FROM employees WHERE id = ?").get(weRequest.managedBy) as Employee | undefined;
         }
 
-        const pdfDoc = await PDFDocument.load(Buffer.from(templateData.value, 'base64'));
+        // Read signatures from disk
+        const employeeSig = readSignature(leaveRequest.employeeId) || readSignature(`leave_emp_${leaveRequest.id}`);
+        const managerSig  = manager ? (readSignature(manager.id) || readSignature(`leave_mgr_${leaveRequest.id}`)) : undefined;
+        const weEmployeeSig = weRequest ? (readSignature(`leave_emp_${weRequest.id}`) || employeeSig) : undefined;
+        const weManagerSig  = weManager ? (readSignature(weManager.id) || readSignature(`leave_mgr_${weRequest?.id}`)) : undefined;
+
+        const pdfDoc = await PDFDocument.load(Buffer.from(templateBase64, 'base64'));
         const form = pdfDoc.getForm();
         const allFields = form.getFields();
 
@@ -637,12 +671,6 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
         }
 
         form.updateFieldAppearances();
-
-        // fixFieldAppearance manually rebuilds /AP for every field — fixing both:
-        // 1. Multiline fields (Ff bit 13) that updateFieldAppearances silently skips
-        // 2. Fields whose Rect is on a child widget where updateFieldAppearances
-        //    produces an empty stream
-        // This ensures the unfocused (rendered) state matches the focused (/V) state.
         fixFieldAppearance(pdfDoc, form, 'employee_name',  getFullName(employee));
         fixFieldAppearance(pdfDoc, form, 'employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
         fixFieldAppearance(pdfDoc, form, 'department',     leaveRequest.department || employee?.group || '');
@@ -668,15 +696,21 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
             fixFieldAppearance(pdfDoc, form, 'we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
-        await embedSignatureToPdf(pdfDoc, leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
-        await embedSignatureToPdf(pdfDoc, leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
+        await embedSignatureToPdf(pdfDoc, employeeSig || leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
+        await embedSignatureToPdf(pdfDoc, managerSig  || leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
         if (weRequest) {
-            await embedSignatureToPdf(pdfDoc, weRequest.employeeSignature, ['we_employee_signature_af_image'], 'employee');
-            await embedSignatureToPdf(pdfDoc, weRequest.managerSignature,  ['we_manager_signature_af_image'],  'manager');
+            await embedSignatureToPdf(pdfDoc, weEmployeeSig, ['we_employee_signature_af_image'], 'employee');
+            await embedSignatureToPdf(pdfDoc, weManagerSig,  ['we_manager_signature_af_image'],  'manager');
         }
 
         const pdfBytes = await pdfDoc.save();
-        return { success: true, pdfDataUri: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}` };
+        const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
+
+        // Save generated PDF to disk
+        savePdf(leaveRequest.id, pdfDataUri);
+        db.prepare('UPDATE leave SET pdfDataUri = ? WHERE id = ?').run(`file:${leaveRequest.id}.pdf`, leaveRequest.id);
+
+        return { success: true, pdfDataUri };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -798,8 +832,10 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 
 export async function savePdfDataUri(leaveId: string, pdfDataUri: string): Promise<{ success: boolean; error?: string }> {
     try {
+        savePdf(leaveId, pdfDataUri);
+        // Mark hasPdf in DB — no longer store the actual data URI
         const db = getDb();
-        db.prepare('UPDATE leave SET pdfDataUri = ? WHERE id = ?').run(pdfDataUri, leaveId);
+        db.prepare('UPDATE leave SET pdfDataUri = ? WHERE id = ?').run(`file:${leaveId}.pdf`, leaveId);
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -809,8 +845,14 @@ export async function savePdfDataUri(leaveId: string, pdfDataUri: string): Promi
 export async function saveLeaveSignatures(leaveId: string, employeeSignature?: string, managerSignature?: string): Promise<{ success: boolean; error?: string }> {
     try {
         const db = getDb();
-        if (employeeSignature) db.prepare('UPDATE leave SET employeeSignature = ? WHERE id = ?').run(employeeSignature, leaveId);
-        if (managerSignature)  db.prepare('UPDATE leave SET managerSignature  = ? WHERE id = ?').run(managerSignature,  leaveId);
+        if (employeeSignature) {
+            const path = saveSignatureFile(`leave_emp_${leaveId}`, employeeSignature);
+            db.prepare('UPDATE leave SET employeeSignature = ? WHERE id = ?').run(`file:leave_emp_${leaveId}`, leaveId);
+        }
+        if (managerSignature) {
+            const path = saveSignatureFile(`leave_mgr_${leaveId}`, managerSignature);
+            db.prepare('UPDATE leave SET managerSignature = ? WHERE id = ?').run(`file:leave_mgr_${leaveId}`, leaveId);
+        }
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -819,8 +861,9 @@ export async function saveLeaveSignatures(leaveId: string, employeeSignature?: s
 
 export async function saveAllowanceScreenshot(allowanceId: string, screenshot: string): Promise<{ success: boolean; error?: string }> {
     try {
+        const filePath = saveScreenshotFile(allowanceId, screenshot);
         const db = getDb();
-        db.prepare('UPDATE communication_allowances SET screenshot = ? WHERE id = ?').run(screenshot, allowanceId);
+        db.prepare('UPDATE communication_allowances SET screenshot = ? WHERE id = ?').run(`file:${allowanceId}`, allowanceId);
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -829,11 +872,14 @@ export async function saveAllowanceScreenshot(allowanceId: string, screenshot: s
 
 export async function saveTemplate(key: string, value: string): Promise<{ success: boolean; error?: string }> {
     try {
+        // Save to disk
+        saveTemplateFile(key, value);
+        // Keep a marker in key_value_store so we know the template exists
         const db = getDb();
         db.prepare(`
             INSERT INTO key_value_store (key, value) VALUES (?, ?)
             ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        `).run(key, value);
+        `).run(key, `file:${key}.pdf`);
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -891,10 +937,11 @@ export async function deleteLeaveRecipient(id: string): Promise<{ success: boole
 
 export async function getLeaveWithPdf(leaveId: string): Promise<{ success: boolean; pdfDataUri?: string; employeeSignature?: string; managerSignature?: string; error?: string }> {
     try {
-        const db = getDb();
-        const row = db.prepare('SELECT pdfDataUri, employeeSignature, managerSignature FROM leave WHERE id = ?').get(leaveId) as any;
-        if (!row) return { success: false, error: 'Leave record not found.' };
-        return { success: true, pdfDataUri: row.pdfDataUri, employeeSignature: row.employeeSignature, managerSignature: row.managerSignature };
+        // Read from disk (file-based storage)
+        const pdfDataUri = readPdf(leaveId) || undefined;
+        const employeeSignature = readSignature(`leave_emp_${leaveId}`) || undefined;
+        const managerSignature  = readSignature(`leave_mgr_${leaveId}`) || undefined;
+        return { success: true, pdfDataUri, employeeSignature, managerSignature };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
@@ -902,10 +949,9 @@ export async function getLeaveWithPdf(leaveId: string): Promise<{ success: boole
 
 export async function getEmployeeBinary(employeeId: string): Promise<{ success: boolean; avatar?: string; signature?: string; error?: string }> {
     try {
-        const db = getDb();
-        const row = db.prepare('SELECT avatar, signature FROM employees WHERE id = ?').get(employeeId) as any;
-        if (!row) return { success: false, error: 'Employee not found.' };
-        return { success: true, avatar: row.avatar, signature: row.signature };
+        const avatar    = readAvatar(employeeId)    || undefined;
+        const signature = readSignature(employeeId) || undefined;
+        return { success: true, avatar, signature };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }

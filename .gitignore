@@ -45,3 +45,6 @@ next-env.d.ts
 local.db
 local.db-shm
 local.db-wal
+-e 
+# Binary uploads — stored on local disk, not in git
+uploads/

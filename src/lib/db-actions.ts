@@ -3,6 +3,7 @@
 
 import { getDb } from './db';
 import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey, FaqItem, PreferredAvl } from '@/types';
+import { readAvatar, readSignature, readScreenshot, ensureUploadDirs } from '@/lib/file-storage';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
 
@@ -124,6 +125,8 @@ export async function getData() {
         return acc;
     }, { admin: [], manager: [], member: [] } as RolePermissions);
 
+    ensureUploadDirs();
+
     const processedEmployees: Employee[] = employees.map(e => ({
       ...e,
       birthDate: e.birthDate ? new Date(e.birthDate) : undefined,
@@ -134,7 +137,10 @@ export async function getData() {
         onDuty: true,
         orgChart: true,
         mobileLoad: true,
-      }) as AppVisibility
+      }) as AppVisibility,
+      // Read binary files from disk — not stored in DB columns anymore
+      avatar:    readAvatar(e.id)    || e.avatar    || null,
+      signature: readSignature(e.id) || e.signature || null,
     }));
 
     const processedShifts: Shift[] = shifts.map(s => ({
@@ -155,6 +161,9 @@ export async function getData() {
       originalShiftDate: l.originalShiftDate ? new Date(l.originalShiftDate) : undefined,
       dateFiled: l.dateFiled ? new Date(l.dateFiled) : new Date(),
       isAvlClaimed: l.isAvlClaimed === 1,
+      // pdfDataUri not loaded here — fetched lazily via getLeaveWithPdf() when needed
+      // hasPdf flag lets UI show View/Download/Send buttons without loading the actual PDF
+      pdfDataUri: l.hasPdf ? `file:${l.id}.pdf` : undefined,
     }));
     
     const processedNotes: Note[] = notes.map(n => ({

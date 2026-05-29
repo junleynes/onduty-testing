@@ -152,7 +152,30 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
     }
 }
 
-export async function updateEmployee(employeeData: Partial<Employee>): Promise<{ success: boolean; error?: string; employee?: Partial<Employee> }> {
+export async function updatePassword(employeeId: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+    if (!employeeId) return { success: false, error: 'Employee ID is required.' };
+    if (!newPassword || newPassword.trim().length < 6) return { success: false, error: 'Password must be at least 6 characters.' };
+
+    const db = getDb();
+    try {
+        // Ensure admin exists in DB
+        if (employeeId === 'emp-admin-01') {
+            const exists = db.prepare('SELECT id FROM employees WHERE id = ?').get(employeeId);
+            if (!exists) {
+                db.prepare(`INSERT OR IGNORE INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group")
+                    VALUES ('emp-admin-01','001','Super','Admin','admin@onduty.local','123-456-7890','System Administrator','admin','Administration')`).run();
+            }
+        }
+
+        const hashed = await bcrypt.hash(newPassword.trim(), 10);
+        const result = db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashed, employeeId);
+
+        if (result.changes === 0) return { success: false, error: 'Employee not found.' };
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
     if (!employeeData.id) {
         return { success: false, error: 'Employee ID is required for an update.' };
     }

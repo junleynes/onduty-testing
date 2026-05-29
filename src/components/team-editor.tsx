@@ -175,6 +175,36 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   };
 
   const [isSaving, setIsSaving] = useState(false);
+  const [pwValue, setPwValue] = useState('');
+  const [pwError, setPwError] = useState('');
+
+  // Handle password reset separately — bypasses full schema validation which
+  // requires firstName/lastName/email that may be missing from currentUser state
+  const handlePasswordReset = async () => {
+    setPwError('');
+    if (!pwValue || pwValue.length < 6) {
+        setPwError('Password must be at least 6 characters.');
+        return;
+    }
+    if (!employee?.id) {
+        setPwError('Employee ID is missing.');
+        return;
+    }
+    setIsSaving(true);
+    try {
+        const { updatePassword } = await import('@/app/employee-actions');
+        const result = await updatePassword(employee.id, pwValue);
+        if (result.success) {
+            setPwValue('');
+            setIsOpen(false);
+            toast({ title: 'Password Updated', description: 'The password has been changed successfully.' });
+        } else {
+            setPwError(result.error || 'Failed to update password.');
+        }
+    } finally {
+        setIsSaving(false);
+    }
+  };
 
   const onSubmit = async (values: z.infer<typeof employeeSchema>) => {
     setIsSaving(true);
@@ -215,19 +245,25 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
             {isPasswordResetMode ? (
-                 <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>New Password</FormLabel>
-                        <FormControl>
-                        <Input type="password" {...field} placeholder='Enter new password' />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                    )}
-                />
+                <div className="space-y-3 py-2">
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium">New Password</label>
+                        <Input
+                            type="password"
+                            value={pwValue}
+                            onChange={e => { setPwValue(e.target.value); setPwError(''); }}
+                            placeholder="Enter new password (min 6 characters)"
+                            disabled={isSaving}
+                        />
+                        {pwError && <p className="text-sm text-destructive">{pwError}</p>}
+                    </div>
+                    <DialogFooter className="pt-2">
+                        <Button type="button" variant="ghost" onClick={() => setIsOpen(false)} disabled={isSaving}>Cancel</Button>
+                        <Button type="button" onClick={handlePasswordReset} disabled={isSaving || !pwValue}>
+                            {isSaving ? 'Saving...' : 'Update Password'}
+                        </Button>
+                    </DialogFooter>
+                </div>
             ) : (
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_80px] gap-4">

@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { isSameDay } from 'date-fns';
-import { getFullName } from '@/lib/utils';
+import { requireAuth, requireAdmin, requireManager } from '@/lib/auth-guard';
 import {
     saveTemplate as saveTemplateFile, readTemplate, templateExists,
     savePdf, readPdf, pdfExists, deletePdf,
@@ -118,7 +118,7 @@ export async function sendEmail(
             pass: smtpSettings.pass,
         },
         tls: {
-            rejectUnauthorized: false,
+            rejectUnauthorized: true,
             minVersion: 'TLSv1.2'
         },
         connectionTimeout: 20000,
@@ -275,6 +275,7 @@ export async function resetToFactorySettings(): Promise<{ success: boolean; erro
 
 
 export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'leave'): Promise<{ success: boolean; error?: string }> {
+    try { await requireAdmin(); } catch (e) { return { success: false, error: (e as Error).message }; }
     const db = getDb();
     try {
         switch (dataType) {
@@ -457,6 +458,7 @@ async function embedSignatureToPdf(pdfDoc: PDFDocument, sigData: string | undefi
 }
 
 export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     const db = getDb();
     try {
         // Read template from disk first, fall back to DB for backwards compatibility
@@ -578,6 +580,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
 }
 
 export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: Leave): Promise<{ success: boolean; pdfDataUri?: string; error?: string; }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     const db = getDb();
     try {
         // Read template from disk first, fall back to DB for backwards compatibility
@@ -831,6 +834,7 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 // general saveAllData payload, preventing NetworkError from oversized payloads.
 
 export async function savePdfDataUri(leaveId: string, pdfDataUri: string): Promise<{ success: boolean; error?: string }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     try {
         savePdf(leaveId, pdfDataUri);
         // Mark hasPdf in DB — no longer store the actual data URI
@@ -843,6 +847,7 @@ export async function savePdfDataUri(leaveId: string, pdfDataUri: string): Promi
 }
 
 export async function saveLeaveSignatures(leaveId: string, employeeSignature?: string, managerSignature?: string): Promise<{ success: boolean; error?: string }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     try {
         const db = getDb();
         if (employeeSignature) {
@@ -860,6 +865,7 @@ export async function saveLeaveSignatures(leaveId: string, employeeSignature?: s
 }
 
 export async function saveAllowanceScreenshot(allowanceId: string, screenshot: string): Promise<{ success: boolean; error?: string }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     try {
         const filePath = saveScreenshotFile(allowanceId, screenshot);
         const db = getDb();
@@ -871,6 +877,7 @@ export async function saveAllowanceScreenshot(allowanceId: string, screenshot: s
 }
 
 export async function saveTemplate(key: string, value: string): Promise<{ success: boolean; error?: string }> {
+    await requireAdmin();
     try {
         // Save to disk
         saveTemplateFile(key, value);
@@ -910,6 +917,7 @@ export async function getLeaveRecipients(): Promise<{ success: boolean; recipien
 }
 
 export async function saveLeaveRecipient(recipient: LeaveRecipient): Promise<{ success: boolean; error?: string }> {
+    try { await requireManager(); } catch (e) { return { success: false, error: (e as Error).message }; }
     try {
         const db = getDb();
         db.prepare(`
@@ -926,6 +934,7 @@ export async function saveLeaveRecipient(recipient: LeaveRecipient): Promise<{ s
 }
 
 export async function deleteLeaveRecipient(id: string): Promise<{ success: boolean; error?: string }> {
+    try { await requireManager(); } catch (e) { return { success: false, error: (e as Error).message }; }
     try {
         const db = getDb();
         db.prepare('DELETE FROM leave_recipients WHERE id = ?').run(id);

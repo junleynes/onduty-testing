@@ -48,3 +48,7 @@ local.db-wal
 -e 
 # Binary uploads — stored on local disk, not in git
 uploads/
+-e 
+# Environment secrets
+.env
+.env.production

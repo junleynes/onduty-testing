@@ -4,6 +4,9 @@
 import { getDb } from './db';
 import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey, FaqItem, PreferredAvl } from '@/types';
 import { readAvatar, readSignature, readScreenshot, ensureUploadDirs } from '@/lib/file-storage';
+import { requireAuth } from '@/lib/auth-guard';
+import { requireAuth, requireAdmin } from '@/lib/session';
+import { requireAuth } from '@/lib/auth';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
 
@@ -32,6 +35,7 @@ function toLocalDateString(date: Date | string | undefined | null): string {
 }
 
 export async function getData() {
+  await requireAuth();
   const db = getDb();
   try {
     // Exclude large binary columns (avatar, signature, screenshot, pdfDataUri,
@@ -249,17 +253,7 @@ export async function getData() {
 }
 
 
-export async function saveAllData({
-  employees,
-  shifts,
-  leave,
-  notes,
-  holidays,
-  tasks,
-  allowances,
-  groups,
-  smtpSettings,
-  tardyRecords,
+export async function saveAllData({  employees,
   templates,
   shiftTemplates,
   leaveTypes,
@@ -288,6 +282,7 @@ export async function saveAllData({
   preferredAvl: PreferredAvl[];
   avlLocks: Record<string, boolean>;
 }): Promise<{ success: boolean; error?: string }> {
+  try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
   const db = getDb();
   
   const saveTransaction = db.transaction(() => {

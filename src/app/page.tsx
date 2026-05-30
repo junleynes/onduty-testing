@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/hooks/use-notifications';
 import { isSameDay, getMonth, getDate, getYear, format, differenceInYears, addDays, isBefore, startOfDay, isWithinInterval } from 'date-fns';
 import { getData, saveAllData } from '@/lib/db-actions';
+import { useSession, signOut } from 'next-auth/react';
 import { addEmployee, updateEmployee } from '@/app/employee-actions';
 import { saveTemplate } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -182,21 +183,18 @@ function AppContent() {
 
   }, [initialDataLoaded, isLoading, toast, employees, shifts, leave, notes, holidays, tasks, allowances, groups, smtpSettings, tardyRecords, templates, shiftTemplates, leaveTypes, permissions, monthlyEmployeeOrder, faqs, preferredAvl, avlLocks]);
 
-  // Load initial data from DB and check for user
+  // Use NextAuth session — replaces localStorage-based auth
+  const { data: session, status } = useSession();
+
+  // Load initial data from DB once session is authenticated
   useEffect(() => {
-    async function loadDataAndAuth() {
+    if (status === 'loading') return;
+    if (status === 'unauthenticated') {
+        router.push('/login');
+        return;
+    }
+    async function loadData() {
       setIsLoading(true);
-      
-      const storedUserJson = localStorage.getItem('currentUser');
-      if (!storedUserJson) {
-          router.push('/login');
-          setIsLoading(false);
-          return;
-      }
-      
-      const storedUser: Employee = JSON.parse(storedUserJson);
-      let userToSet: Employee | null = null;
-      
       const result = await getData();
 
       if (result.success && result.data) {
@@ -219,47 +217,28 @@ function AppContent() {
         setPreferredAvl(result.data.preferredAvl);
         setAvlLocks(result.data.avlLocks || {});
 
-        if (result.data.templates.import_api_key) {
-            localStorage.setItem('import_api_key', result.data.templates.import_api_key);
-        }
-        
-        // Find current user from DB employees (works for all users including admin)
-        if (!userToSet) {
-          const userFromDb = result.data.employees.find(emp => emp.id === storedUser.id);
-          if (userFromDb) {
-            userToSet = userFromDb;
-          }
-        }
-        
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Failed to load data',
-          description: result.error || 'Could not connect to the database.',
-        });
-        handleLogout();
-        return; // Stop execution if data load fails
-      }
-
-      // Final check to set user or log out
-      if (userToSet) {
-        setCurrentUser(userToSet);
-        if (userToSet.role === 'admin') {
-            setActiveView('admin');
+        // Set currentUser from DB employees using session user id
+        const sessionId = session?.user?.id;
+        const userFromDb = result.data.employees.find(emp => emp.id === sessionId);
+        if (userFromDb) {
+            setCurrentUser(userFromDb);
+            setActiveView(userFromDb.role === 'admin' ? 'admin' : 'dashboard');
         } else {
-            setActiveView('dashboard');
+            // Session valid but employee not in DB — force logout
+            await signOut({ callbackUrl: '/login' });
+            return;
         }
       } else {
-        handleLogout(); 
+        toast({ variant: 'destructive', title: 'Failed to load data', description: result.error });
       }
-      
       setIsLoading(false);
-      setInitialDataLoaded(true); // Signal that initial load is complete
+      setInitialDataLoaded(true);
     }
-    loadDataAndAuth();
-  }, [router, toast]);
-  
-    // Effect to register Service Worker
+    loadData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session?.user?.id]);
+
+  // Effect to register Service Worker
     useEffect(() => {
         if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
             window.addEventListener('load', () => {
@@ -371,10 +350,9 @@ function AppContent() {
     setActiveView(view);
   };
   
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
+  const handleLogout = async () => {
     setCurrentUser(null);
-    router.push('/login');
+    await signOut({ callbackUrl: '/login' });
   }
 
   const handleOpenProfileEditor = () => {
@@ -439,18 +417,16 @@ function AppContent() {
       // Update existing employee
       const result = await updateEmployee(employeeData);
       if (result.success && result.employee) {
-        // Strip password from state/localStorage — never store hashed password client-side
         const { password: _pw, ...safeEmployee } = result.employee as any;
         setEmployees(prev => prev.map(emp => emp.id === safeEmployee.id ? {...emp, ...safeEmployee} as Employee : emp));
         if (currentUser?.id === safeEmployee.id) {
-          const updatedUser = { ...currentUser, ...safeEmployee };
-          setCurrentUser(updatedUser);
-          localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+          setCurrentUser(prev => ({ ...prev!, ...safeEmployee }));
+          // No localStorage — session managed by NextAuth httpOnly cookie
         }
         toast({ title: 'Member Updated', description: 'The team member details have been saved.'});
       } else {
         toast({ variant: 'destructive', title: 'Update Failed', description: result.error || 'Unknown error' });
-        throw new Error(result.error || 'Update failed'); // re-throw so TeamEditor keeps dialog open
+        throw new Error(result.error || 'Update failed');
       }
     } else {
       // Add new employee

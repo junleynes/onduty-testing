@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { saveAvatar, saveSignature, readAvatar, readSignature } from '@/lib/file-storage';
+import { requireAuth, requireAdmin, requireManager } from '@/lib/auth-guard';
 
 const employeeSchema = z.object({
   id: z.string().optional(),
@@ -61,6 +62,7 @@ async function isEmailUnique(email: string, currentId?: string): Promise<boolean
 }
 
 export async function addEmployee(employeeData: Partial<Employee>): Promise<{ success: boolean; error?: string; employee?: Employee }> {
+    try { await requireManager(); } catch (e) { return { success: false, error: (e as Error).message }; }
     const validation = employeeSchema.safeParse(employeeData);
     if (!validation.success) {
         return { success: false, error: validation.error.errors.map(e => e.message).join(', ') };
@@ -153,6 +155,7 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
 }
 
 export async function updatePassword(employeeId: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     if (!employeeId) return { success: false, error: 'Employee ID is required.' };
     if (!newPassword || newPassword.trim().length < 6) return { success: false, error: 'Password must be at least 6 characters.' };
 
@@ -176,6 +179,9 @@ export async function updatePassword(employeeId: string, newPassword: string): P
         return { success: false, error: (error as Error).message };
     }
 }
+
+export async function updateEmployee(employeeData: Partial<Employee>): Promise<{ success: boolean; error?: string; employee?: Partial<Employee> }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     if (!employeeData.id) {
         return { success: false, error: 'Employee ID is required for an update.' };
     }

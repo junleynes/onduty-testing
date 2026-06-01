@@ -3,10 +3,8 @@
 
 import { getDb } from './db';
 import type { Employee, Shift, Leave, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, AppVisibility, TardyRecord, RolePermissions, NavItemKey, FaqItem, PreferredAvl } from '@/types';
-import { readAvatar, readSignature, readScreenshot, ensureUploadDirs } from '@/lib/file-storage';
+import { readAvatar, readSignature, ensureUploadDirs } from '@/lib/file-storage';
 import { requireAuth } from '@/lib/auth-guard';
-import { requireAuth, requireAdmin } from '@/lib/session';
-import { requireAuth } from '@/lib/auth';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
 

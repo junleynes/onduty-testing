@@ -23,7 +23,7 @@ export async function requireAuth(): Promise<AuthSession> {
     return session.user as AuthSession;
 }
 
-/** Throws if not admin. Returns the session user. */
+/** Throws if not admin. */
 export async function requireAdmin(): Promise<AuthSession> {
     const user = await requireAuth();
     if (user.role !== 'admin') {
@@ -32,7 +32,7 @@ export async function requireAdmin(): Promise<AuthSession> {
     return user;
 }
 
-/** Throws if not admin or manager. Returns the session user. */
+/** Throws if not admin or manager. */
 export async function requireManager(): Promise<AuthSession> {
     const user = await requireAuth();
     if (user.role !== 'admin' && user.role !== 'manager') {
@@ -41,9 +41,13 @@ export async function requireManager(): Promise<AuthSession> {
     return user;
 }
 
-/** Returns null if not authenticated (non-throwing version). */
+/** Returns null if not authenticated (non-throwing). */
 export async function getSession(): Promise<AuthSession | null> {
-    const session = await auth();
-    if (!session?.user?.id) return null;
-    return session.user as AuthSession;
+    try {
+        const session = await auth();
+        if (!session?.user?.id) return null;
+        return session.user as AuthSession;
+    } catch {
+        return null;
+    }
 }

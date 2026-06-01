@@ -1,6 +1,12 @@
 
 'use client';
 
+// Force dynamic rendering — this page requires authentication and live DB data.
+// Static prerendering would fail because:
+// 1. requireAuth() throws when there's no session during build
+// 2. getData() reads from SQLite which isn't available at build time
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { UserRole, Employee, Shift, Leave, Notification, Note, Holiday, Task, CommunicationAllowance, SmtpSettings, TardyRecord, RolePermissions, FaqItem, PreferredAvl } from '@/types';
 import type { ShiftTemplate, ShiftWithRepeat } from '@/components/shift-editor';

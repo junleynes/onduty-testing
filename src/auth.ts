@@ -1,10 +1,14 @@
+/**
+ * auth.ts — NextAuth configuration
+ * 
+ * IMPORTANT: This file is imported by middleware which runs in Edge Runtime.
+ * It must NOT import anything that uses Node.js APIs (fs, path, better-sqlite3).
+ * DB access happens only in the authorize() callback which runs server-side only.
+ */
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { getDb } from '@/lib/db';
-import bcrypt from 'bcryptjs';
-import type { Employee } from '@/types';
 
-// Login attempt tracking (mirrors actions.ts rate limiter)
+// Login attempt tracking — in-memory, server-side only
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
@@ -20,7 +24,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             async authorize(credentials) {
                 const email    = (credentials?.email    as string || '').toLowerCase().trim();
                 const password =  credentials?.password as string || '';
-
                 if (!email || !password) return null;
 
                 // Rate limiting
@@ -29,19 +32,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (record && record.lockedUntil > now) return null;
 
                 try {
-                    const db = getDb();
-                    const user = db.prepare('SELECT * FROM employees WHERE email = ?').get(email) as Employee & { password?: string } | undefined;
+                    // Dynamic imports keep Node.js modules out of Edge Runtime bundle
+                    const { getDb }  = await import('@/lib/db');
+                    const bcrypt     = await import('bcryptjs');
 
-                    if (!user) {
-                        trackFailedAttempt(email, now);
-                        return null;
-                    }
+                    const db   = getDb();
+                    const user = db.prepare('SELECT * FROM employees WHERE email = ?').get(email) as any;
+
+                    if (!user) { trackFailed(email, now); return null; }
 
                     let isMatch = false;
                     if (user.password?.startsWith('$2')) {
                         isMatch = await bcrypt.compare(password, user.password);
                     } else if (user.password) {
-                        // Plaintext legacy — compare then upgrade to bcrypt
                         isMatch = user.password === password;
                         if (isMatch) {
                             const hashed = await bcrypt.hash(password, 12);
@@ -49,14 +52,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         }
                     }
 
-                    if (!isMatch) {
-                        trackFailedAttempt(email, now);
-                        return null;
-                    }
-
+                    if (!isMatch) { trackFailed(email, now); return null; }
                     loginAttempts.delete(email);
 
-                    // Return user object for session (no password)
                     return {
                         id:             user.id,
                         email:          user.email,
@@ -69,9 +67,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         position:       user.position,
                         phone:          user.phone,
                     } as any;
-                } catch (e) {
-                    return null;
-                }
+                } catch { return null; }
             },
         }),
     ],
@@ -104,8 +100,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     pages: {
-        signIn:  '/login',
-        error:   '/login',
+        signIn: '/login',
+        error:  '/login',
     },
 
     session: {
@@ -116,7 +112,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     secret: process.env.NEXTAUTH_SECRET || 'onduty-fallback-secret-change-in-production',
 });
 
-function trackFailedAttempt(email: string, now: number) {
+function trackFailed(email: string, now: number) {
     const attempts = loginAttempts.get(email) || { count: 0, lockedUntil: 0 };
     attempts.count += 1;
     if (attempts.count >= MAX_ATTEMPTS) {

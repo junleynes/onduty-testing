@@ -195,41 +195,56 @@ function AppContent() {
     }
     async function loadData() {
       setIsLoading(true);
-      const result = await getData();
+      try {
+        const result = await getData();
 
-      if (result.success && result.data) {
-        setEmployees(result.data.employees);
-        setShifts(result.data.shifts);
-        setLeave(result.data.leave);
-        setNotes(result.data.notes);
-        setHolidays(result.data.holidays);
-        setTasks(result.data.tasks);
-        setAllowances(result.data.allowances);
-        setGroups(result.data.groups);
-        setSmtpSettings(result.data.smtpSettings);
-        setTardyRecords(result.data.tardyRecords);
-        setShiftTemplates(result.data.shiftTemplates);
-        setLeaveTypes(result.data.leaveTypes);
-        setTemplates(result.data.templates);
-        setPermissions(result.data.permissions);
-        setMonthlyEmployeeOrder(result.data.monthlyEmployeeOrder);
-        setFaqs(result.data.faqs);
-        setPreferredAvl(result.data.preferredAvl);
-        setAvlLocks(result.data.avlLocks || {});
-
-        // Set currentUser from DB employees using session user id
-        const sessionId = session?.user?.id;
-        const userFromDb = result.data.employees.find(emp => emp.id === sessionId);
-        if (userFromDb) {
-            setCurrentUser(userFromDb);
-            setActiveView(userFromDb.role === 'admin' ? 'admin' : 'dashboard');
-        } else {
-            // Session valid but employee not in DB — force logout
-            await signOut({ callbackUrl: '/login' });
-            return;
+        if (!result) {
+          // Should never happen after the fix above, but guard anyway
+          toast({ variant: 'destructive', title: 'Session error', description: 'Please refresh the page.' });
+          setIsLoading(false);
+          return;
         }
-      } else {
-        toast({ variant: 'destructive', title: 'Failed to load data', description: result.error });
+
+        if (result.success && result.data) {
+          setEmployees(result.data.employees);
+          setShifts(result.data.shifts);
+          setLeave(result.data.leave);
+          setNotes(result.data.notes);
+          setHolidays(result.data.holidays);
+          setTasks(result.data.tasks);
+          setAllowances(result.data.allowances);
+          setGroups(result.data.groups);
+          setSmtpSettings(result.data.smtpSettings);
+          setTardyRecords(result.data.tardyRecords);
+          setShiftTemplates(result.data.shiftTemplates);
+          setLeaveTypes(result.data.leaveTypes);
+          setTemplates(result.data.templates);
+          setPermissions(result.data.permissions);
+          setMonthlyEmployeeOrder(result.data.monthlyEmployeeOrder);
+          setFaqs(result.data.faqs);
+          setPreferredAvl(result.data.preferredAvl);
+          setAvlLocks(result.data.avlLocks || {});
+
+          // Set currentUser from DB employees using session user id
+          const sessionId = session?.user?.id;
+          const userFromDb = result.data.employees.find(emp => emp.id === sessionId);
+          if (userFromDb) {
+              setCurrentUser(userFromDb);
+              setActiveView(userFromDb.role === 'admin' ? 'admin' : 'dashboard');
+          } else {
+              // Session valid but employee not in DB — force logout
+              await signOut({ callbackUrl: '/login' });
+              return;
+          }
+        } else {
+          if (result.error === 'Unauthorized') {
+            router.push('/login');
+            return;
+          }
+          toast({ variant: 'destructive', title: 'Failed to load data', description: result.error });
+        }
+      } catch (e) {
+        toast({ variant: 'destructive', title: 'Failed to load data', description: 'Please refresh the page.' });
       }
       setIsLoading(false);
       setInitialDataLoaded(true);

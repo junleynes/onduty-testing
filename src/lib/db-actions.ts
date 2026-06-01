@@ -33,7 +33,11 @@ function toLocalDateString(date: Date | string | undefined | null): string {
 }
 
 export async function getData() {
-  await requireAuth();
+  // Middleware already protects this route — but guard here too so errors
+  // return { success: false } instead of throwing and making result undefined
+  try { await requireAuth(); } catch (e) {
+    return { success: false, error: 'Unauthorized', data: undefined };
+  }
   const db = getDb();
   try {
     // Exclude large binary columns (avatar, signature, screenshot, pdfDataUri,

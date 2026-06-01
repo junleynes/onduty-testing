@@ -1,6 +1,8 @@
 
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';

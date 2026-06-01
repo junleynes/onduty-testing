@@ -1,4 +1,3 @@
-
 import type {NextConfig} from 'next';
 
 const securityHeaders = [
@@ -7,15 +6,12 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-  {
-    key: 'Strict-Transport-Security',
-    value: 'max-age=63072000; includeSubDomains; preload',
-  },
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
   {
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-eval needed by Next.js dev, unsafe-inline for RSC
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://placehold.co",
       "font-src 'self'",
@@ -26,43 +22,38 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  typescript: {
-    ignoreBuildErrors: true, // TODO: fix remaining TS errors incrementally then set to false
-  },
-  eslint: {
-    ignoreDuringBuilds: true, // TODO: fix remaining lint issues incrementally then set to false
-  },
+  typescript:         { ignoreBuildErrors: true },
+  eslint:             { ignoreDuringBuilds: true },
+
+  // Keep Node.js-only packages out of the Edge Runtime bundle.
+  // Next.js middleware runs in Edge Runtime which has no Node.js APIs.
+  // These packages use fs, path, process, setImmediate etc — Edge-incompatible.
+  serverExternalPackages: [
+    'better-sqlite3',
+    'bcryptjs',
+    'bcrypt',
+    'nodemailer',
+    'pdf-lib',
+    'exceljs',
+    'dotenv',
+  ],
+
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'placehold.co',
-        port: '',
-        pathname: '/**',
-      },
-    ],
+    remotePatterns: [{ protocol: 'https', hostname: 'placehold.co', port: '', pathname: '/**' }],
   },
+
   async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: securityHeaders,
-      },
-    ];
+    return [{ source: '/(.*)', headers: securityHeaders }];
   },
+
   experimental: {
-    serverActions: {
-      bodySizeLimit: '20mb',
-    },
+    serverActions: { bodySizeLimit: '20mb' },
   },
-  webpack: (config, { isServer, dev }) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-    };
-    
+
+  webpack: (config) => {
+    config.resolve.fallback = { ...config.resolve.fallback, fs: false };
     return config;
-  }
+  },
 };
 
 export default nextConfig;

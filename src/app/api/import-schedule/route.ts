@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
   // 1. Security Check
   const apiKey = req.headers.get('x-api-key');
   const storedKeyRow = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
-  const validKey = storedKeyRow?.value || 'onduty_secret_key';
+  const validKey = storedKeyRow?.value;
+  if (!validKey) return NextResponse.json({ success: false, error: 'API key not configured.' }, { status: 503 });
 
   if (!apiKey || apiKey !== validKey) {
     return NextResponse.json({ success: false, error: 'Unauthorized. Invalid or missing API Key.' }, { status: 401 });

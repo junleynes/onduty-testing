@@ -1,14 +1,34 @@
 /**
- * Server component wrapper for the main app page.
+ * Main app page — server component wrapper.
  * 
- * 'use client' components cannot use export const dynamic = 'force-dynamic'.
- * This server wrapper sets dynamic rendering so Next.js never tries to
- * statically prerender the page at build time (which would fail because
- * getData() requires a live DB and auth session).
+ * Uses next/dynamic with ssr: false to prevent AppClient from rendering
+ * on the server. This avoids all SSR-related errors:
+ * - useSession() behavior during server render
+ * - getData() server action needing a live auth session
+ * - Any browser-only APIs in the component tree
  */
-export const dynamic = 'force-dynamic';
+import dynamic from 'next/dynamic';
 
-import AppClient from '@/components/app-client';
+// ssr: false = AppClient only renders in the browser, never on the server
+const AppClient = dynamic(
+    () => import('@/components/app-client'),
+    {
+        ssr: false,
+        loading: () => (
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100vh',
+                fontFamily: 'system-ui, sans-serif',
+                color: '#6b7280',
+                fontSize: '16px',
+            }}>
+                Loading OnDuty...
+            </div>
+        ),
+    }
+);
 
 export default function Page() {
     return <AppClient />;

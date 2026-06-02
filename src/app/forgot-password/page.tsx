@@ -1,3 +1,5 @@
+'use client';
 import dynamic from 'next/dynamic';
-import OriginalPage from '@/components/forgot-password-client';
-export default OriginalPage;
+
+const ForgotPasswordPage = dynamic(() => import('@/components/forgot-password-page'), { ssr: false });
+export default function ForgotPassword() { return <ForgotPasswordPage />; }

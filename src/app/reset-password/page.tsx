@@ -1,3 +1,5 @@
+'use client';
 import dynamic from 'next/dynamic';
-import OriginalPage from '@/components/reset-password-client';
-export default OriginalPage;
+
+const ResetPasswordPage = dynamic(() => import('@/components/reset-password-page'), { ssr: false });
+export default function ResetPassword() { return <ResetPasswordPage />; }

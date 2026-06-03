@@ -10,6 +10,7 @@ import path from 'path';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { isSameDay } from 'date-fns';
 import { requireAuth, requireAdmin, requireManager } from '@/lib/auth-guard';
+import { getFullName } from '@/lib/utils';
 import {
     saveTemplate as saveTemplateFile, readTemplate, templateExists,
     savePdf, readPdf, pdfExists, deletePdf,

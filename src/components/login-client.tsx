@@ -28,7 +28,7 @@ export default function LoginPage() {
       redirect: false,
     });
 
-    if (result?.ok) {
+    if (result?.ok && !result?.error) {
       toast({ title: 'Login Successful', description: 'Welcome back!' });
       router.push('/');
       router.refresh();

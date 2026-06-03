@@ -255,7 +255,17 @@ export async function getData() {
 }
 
 
-export async function saveAllData({  employees,
+export async function saveAllData({
+  employees,
+  shifts,
+  leave,
+  notes,
+  holidays,
+  tasks,
+  allowances,
+  groups,
+  smtpSettings,
+  tardyRecords,
   templates,
   shiftTemplates,
   leaveTypes,

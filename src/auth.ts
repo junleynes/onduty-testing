@@ -109,6 +109,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         maxAge:   8 * 60 * 60, // 8 hours
     },
 
+    // trustHost: allows NextAuth to accept requests from any host/IP.
+    // Required when accessing via IP address (e.g. http://10.0.0.161:9988)
+    // or any domain not matching NEXTAUTH_URL exactly.
+    trustHost: true,
+
     secret: process.env.NEXTAUTH_SECRET || 'onduty-fallback-secret-change-in-production',
 });
 

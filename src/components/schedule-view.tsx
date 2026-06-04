@@ -71,6 +71,9 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isManageShiftsOpen, setIsManageShiftsOpen] = useState(false);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
+  const [exportFrom, setExportFrom] = useState<Date>(new Date());
+  const [exportTo, setExportTo] = useState<Date>(new Date());
   
   const [viewEmployeeOrder, setViewEmployeeOrder] = useState<string[] | null>(null);
 
@@ -587,7 +590,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuLabel>Data Management</DropdownMenuLabel>
                         <DropdownMenuGroup>
                             <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export Semi-Monthly Excel</span></DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => { setExportPreset('current-view'); setExportFrom(dateRange.from); setExportTo(dateRange.to); setIsExportDialogOpen(true); }}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export to Excel</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Template Actions</DropdownMenuLabel>
@@ -758,84 +761,202 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
             <DialogHeader>
                 <DialogTitle>Export Schedule to Excel</DialogTitle>
                 <DialogDescription>
-                    Select the range to export. The schedule will be exported in a continuous semi-monthly format.
+                    Choose a range preset or set a custom date range. The schedule is exported in a semi-monthly layout.
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="flex flex-col gap-2">
-                    <Label>Start Date</Label>
-                    <DatePicker date={dateRange.from} onDateChange={(d) => d && setCurrentDate(d)} />
+                    <Label>Range Preset</Label>
+                    <Select
+                        value={exportPreset}
+                        onValueChange={(v: 'current-view' | 'this-week' | 'this-month' | 'custom') => {
+                            setExportPreset(v);
+                            const today = new Date();
+                            if (v === 'current-view') {
+                                setExportFrom(dateRange.from);
+                                setExportTo(dateRange.to);
+                            } else if (v === 'this-week') {
+                                setExportFrom(startOfWeek(today, { weekStartsOn: 1 }));
+                                setExportTo(endOfWeek(today, { weekStartsOn: 1 }));
+                            } else if (v === 'this-month') {
+                                setExportFrom(startOfMonth(today));
+                                setExportTo(endOfMonth(today));
+                            }
+                            // 'custom' — leave dates as-is so user can adjust them
+                        }}
+                    >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="current-view">Current View ({viewMode})</SelectItem>
+                            <SelectItem value="this-week">This Week</SelectItem>
+                            <SelectItem value="this-month">This Month</SelectItem>
+                            <SelectItem value="custom">Custom Range</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
-                <div className="flex flex-col gap-2">
-                    <Label>End Date (Optional)</Label>
-                    <DatePicker date={dateRange.to} onDateChange={() => {}} />
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-2">
+                        <Label>Start Date</Label>
+                        <DatePicker
+                            date={exportFrom}
+                            onDateChange={(d) => { if (d) { setExportFrom(d); setExportPreset('custom'); } }}
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <Label>End Date</Label>
+                        <DatePicker
+                            date={exportTo}
+                            onDateChange={(d) => { if (d) { setExportTo(d); setExportPreset('custom'); } }}
+                            dateProps={{ disabled: (d) => d < exportFrom }}
+                        />
+                    </div>
                 </div>
+                {exportFrom > exportTo && (
+                    <p className="text-xs text-destructive">End date must be on or after start date.</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                    Exporting <strong>{Math.ceil((exportTo.getTime() - exportFrom.getTime()) / 86400000) + 1} day(s)</strong>: {format(exportFrom, 'MMM d, yyyy')} — {format(exportTo, 'MMM d, yyyy')}
+                </p>
             </div>
             <DialogFooter>
                 <Button variant="ghost" onClick={() => setIsExportDialogOpen(false)}>Cancel</Button>
-                <Button onClick={async () => {
+                <Button
+                    disabled={exportFrom > exportTo}
+                    onClick={async () => {
+                    const rangeStart = startOfDay(exportFrom);
+                    const rangeEnd = startOfDay(exportTo);
+
                     const workbook = new ExcelJS.Workbook();
                     const worksheet = workbook.addWorksheet('Schedule Export');
-                    
-                    // Simple continuous export logic
+
                     const headerStyle: Partial<ExcelJS.Style> = {
                         font: { bold: true, color: { argb: 'FFFFFFFF' } },
                         fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3498DB' } },
-                        alignment: { vertical: 'middle', horizontal: 'center' }
+                        alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
+                        border: {
+                            top: { style: 'thin', color: { argb: 'FF1A6BA0' } },
+                            bottom: { style: 'thin', color: { argb: 'FF1A6BA0' } },
+                            left: { style: 'thin', color: { argb: 'FF1A6BA0' } },
+                            right: { style: 'thin', color: { argb: 'FF1A6BA0' } },
+                        },
+                    };
+                    const nameStyle: Partial<ExcelJS.Style> = {
+                        font: { bold: true },
+                        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4F8' } },
+                        alignment: { vertical: 'middle', horizontal: 'left' },
+                        border: { right: { style: 'medium', color: { argb: 'FF3498DB' } } },
+                    };
+                    const separatorStyle: Partial<ExcelJS.Style> = {
+                        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } },
                     };
 
-                    let currentRow = 1;
-                    const months = eachMonthOfInterval({ start: dateRange.from, end: addMonths(dateRange.from, 2) });
-
+                    // Build semi-monthly periods that intersect the selected range
+                    const months = eachMonthOfInterval({ start: rangeStart, end: rangeEnd });
+                    const periods: { start: Date; end: Date }[] = [];
                     for (const monthDate of months) {
-                        const periods = [
-                            { start: startOfMonth(monthDate), end: addDays(startOfMonth(monthDate), 14) },
-                            { start: addDays(startOfMonth(monthDate), 15), end: endOfMonth(monthDate) }
-                        ];
+                        const p1start = startOfMonth(monthDate);
+                        const p1end = addDays(p1start, 14);   // 1–15
+                        const p2start = addDays(p1start, 15); // 16–end
+                        const p2end = endOfMonth(monthDate);
+                        // Only include periods that overlap the selected range
+                        if (p1end >= rangeStart && p1start <= rangeEnd)
+                            periods.push({ start: p1start < rangeStart ? rangeStart : p1start, end: p1end > rangeEnd ? rangeEnd : p1end });
+                        if (p2end >= rangeStart && p2start <= rangeEnd)
+                            periods.push({ start: p2start < rangeStart ? rangeStart : p2start, end: p2end > rangeEnd ? rangeEnd : p2end });
+                    }
 
-                        for (const period of periods) {
-                            const days = eachDayOfInterval(period);
-                            const headerRow = worksheet.getRow(currentRow);
-                            headerRow.getCell(1).value = 'Employee';
-                            headerRow.getCell(1).style = headerStyle;
-                            
+                    let currentRow = 1;
+
+                    for (const period of periods) {
+                        const days = eachDayOfInterval(period);
+
+                        // Period label row
+                        const labelRow = worksheet.getRow(currentRow);
+                        const periodLabel = `${format(period.start, 'MMM d')} – ${format(period.end, 'MMM d, yyyy')}`;
+                        labelRow.getCell(1).value = periodLabel;
+                        labelRow.getCell(1).style = {
+                            font: { bold: true, size: 11, color: { argb: 'FF1A3C5E' } },
+                            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCFE2F3' } },
+                        };
+                        worksheet.mergeCells(currentRow, 1, currentRow, days.length + 1);
+                        labelRow.height = 18;
+                        currentRow++;
+
+                        // Header row — dates
+                        const headerRow = worksheet.getRow(currentRow);
+                        headerRow.getCell(1).value = 'Employee';
+                        headerRow.getCell(1).style = headerStyle;
+                        days.forEach((day, idx) => {
+                            const cell = headerRow.getCell(idx + 2);
+                            cell.value = format(day, 'EEE\nMM/dd');
+                            cell.style = headerStyle;
+                        });
+                        headerRow.height = 30;
+                        currentRow++;
+
+                        // Employee rows
+                        orderedEmployees.forEach(emp => {
+                            const row = worksheet.getRow(currentRow);
+                            row.getCell(1).value = getFullName(emp) || 'Unassigned';
+                            row.getCell(1).style = nameStyle;
+                            row.height = 18;
+
                             days.forEach((day, idx) => {
-                                const cell = headerRow.getCell(idx + 2);
-                                cell.value = format(day, 'MM/dd/yyyy');
-                                cell.style = headerStyle;
-                            });
-                            
-                            currentRow++;
-                            
-                            orderedEmployees.forEach(emp => {
-                                const row = worksheet.getRow(currentRow);
-                                row.getCell(1).value = getFullName(emp) || 'Unassigned';
-                                
-                                days.forEach((day, idx) => {
-                                    const shiftOnDay = shifts.find(s => (s.employeeId === emp.id || (emp.id === 'unassigned' && !s.employeeId)) && isSameDay(new Date(s.date), day));
-                                    const leaveOnDay = leave.find(l => {
-                                        if (l.employeeId !== emp.id) return false;
-                                        if (l.type.toUpperCase() === 'TARDY' && l.status === 'approved') return false;
-                                        return isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
-                                    });
-                                    
-                                    let cellValue = '';
-                                    if (leaveOnDay) cellValue = leaveOnDay.type;
-                                    else if (shiftOnDay) cellValue = shiftOnDay.isDayOff ? 'OFF' : shiftOnDay.isHolidayOff ? 'HOL-OFF' : `${shiftOnDay.startTime}-${shiftOnDay.endTime}`;
-                                    
-                                    row.getCell(idx + 2).value = cellValue;
+                                const shiftOnDay = shifts.find(s =>
+                                    (s.employeeId === emp.id || (emp.id === 'unassigned' && !s.employeeId)) &&
+                                    isSameDay(new Date(s.date), day)
+                                );
+                                const leaveOnDay = leave.find(l => {
+                                    if (l.employeeId !== emp.id) return false;
+                                    if (l.type.toUpperCase() === 'TARDY' && l.status === 'approved') return false;
+                                    return isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: startOfDay(new Date(l.endDate)) });
                                 });
-                                currentRow++;
+
+                                let cellValue = '';
+                                let cellColor = '';
+                                if (leaveOnDay) {
+                                    cellValue = leaveOnDay.type;
+                                    cellColor = (leaveOnDay.color || '#f59e0b').replace('#', 'FF');
+                                } else if (shiftOnDay) {
+                                    if (shiftOnDay.isDayOff) { cellValue = 'OFF'; cellColor = 'FFE2E8F0'; }
+                                    else if (shiftOnDay.isHolidayOff) { cellValue = 'HOL'; cellColor = 'FFFDE68A'; }
+                                    else { cellValue = `${shiftOnDay.startTime}-${shiftOnDay.endTime}`; cellColor = (shiftOnDay.color || '').replace('#', 'FF') || 'FFDBEAFE'; }
+                                }
+
+                                const cell = row.getCell(idx + 2);
+                                cell.value = cellValue;
+                                cell.style = {
+                                    alignment: { vertical: 'middle', horizontal: 'center' },
+                                    fill: cellColor ? { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor.startsWith('FF') ? cellColor : 'FF' + cellColor } } : undefined,
+                                    border: {
+                                        top: { style: 'hair', color: { argb: 'FFCBD5E1' } },
+                                        bottom: { style: 'hair', color: { argb: 'FFCBD5E1' } },
+                                        left: { style: 'hair', color: { argb: 'FFCBD5E1' } },
+                                        right: { style: 'hair', color: { argb: 'FFCBD5E1' } },
+                                    },
+                                };
                             });
-                            
-                            currentRow++; // One row separator
-                        }
+                            currentRow++;
+                        });
+
+                        // Separator row
+                        const sepRow = worksheet.getRow(currentRow);
+                        for (let c = 1; c <= days.length + 1; c++) sepRow.getCell(c).style = separatorStyle;
+                        sepRow.height = 6;
+                        currentRow++;
+                    }
+
+                    // Column widths
+                    worksheet.getColumn(1).width = 24;
+                    for (let c = 2; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 1 : 20); c++) {
+                        worksheet.getColumn(c).width = 13;
                     }
 
                     const buffer = await workbook.xlsx.writeBuffer();
-                    saveAs(new Blob([buffer]), `Schedule_Export_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+                    const filename = `Schedule_${format(rangeStart, 'yyyy-MM-dd')}_to_${format(rangeEnd, 'yyyy-MM-dd')}.xlsx`;
+                    saveAs(new Blob([buffer]), filename);
                     setIsExportDialogOpen(false);
-                    toast({ title: "Export Complete" });
+                    toast({ title: 'Export Complete', description: filename });
                 }}>Generate Excel</Button>
             </DialogFooter>
         </DialogContent>

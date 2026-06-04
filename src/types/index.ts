@@ -33,6 +33,7 @@ export type Employee = {
   visibility?: AppVisibility;
   gender?: 'Male' | 'Female';
   employeeClassification?: 'Rank-and-File' | 'Confidential' | 'Managerial';
+  workScheduleType?: '8h-paid' | '8h-unpaid' | '10h-paid' | '10h-unpaid';
 };
 
 export type Shift = {

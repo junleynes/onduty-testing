@@ -600,6 +600,97 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
 
         const groupEmployees = employees.filter(e => e.group === currentUser.group);
         const leaveTypeStrings = leaveTypes.map(lt => lt.type);
+        const headers = ['Employee Name', 'Total Shifts', 'Total Hours', ...leaveTypeStrings, 'Tardy Count'];
+        const rows: (string | number)[][] = [];
+        
+        const daysInInterval = eachDayOfInterval({ start: summaryDateRange.from, end: summaryDateRange.to });
+
+        groupEmployees.forEach(employee => {
+            const shiftsInRange = shifts.filter(s => 
+                s.employeeId === employee.id &&
+                !s.isDayOff && 
+                !s.isHolidayOff &&
+                daysInInterval.some(day => isSameDay(day, new Date(s.date)))
+            );
+            
+            const leaveInRange = leave.filter(l => 
+                l.employeeId === employee.id &&
+                (l.status === 'approved' || l.status === 'processed') &&
+                l.startDate && l.endDate &&
+                isWithinInterval(startOfDay(new Date(l.startDate)), { start: summaryDateRange.from!, end: summaryDateRange.to! })
+            );
+
+            const totalHours = shiftsInRange.reduce((acc, shift) => {
+                if (!shift.startTime || !shift.endTime) return acc;
+                const shiftDate = new Date(shift.date);
+                const start = parse(shift.startTime, 'HH:mm', shiftDate);
+                let end = parse(shift.endTime, 'HH:mm', shiftDate);
+                if (end < start) end = addDays(end, 1);
+                let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+                let breakHours = 0;
+                if (shift.isUnpaidBreak && shift.breakStartTime && shift.breakEndTime) {
+                    const breakStart = parse(shift.breakStartTime, 'HH:mm', shiftDate);
+                    let breakEnd = parse(shift.breakEndTime, 'HH:mm', shiftDate);
+                    if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
+                      if (breakEnd < breakStart) breakEnd = addDays(breakEnd, 1);
+                      let breakDiff = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60);
+                      breakHours = breakDiff;
+                    }
+                }
+                
+                return acc + (diff - breakHours);
+            }, 0);
+            
+            const leaveCounts = leaveTypeStrings.map(type => 
+                leaveInRange.filter(l => l.type === type).length
+            );
+
+            // ── Tardy count: mirror exact logic from cumulative tardy report ──
+            // Source 1: imported tardyRecords in range for this employee
+            const importedTardyInRange = tardyRecords.filter(r =>
+                r.employeeId === employee.id &&
+                isWithinInterval(startOfDay(new Date(r.date)), { start: summaryDateRange.from!, end: summaryDateRange.to! })
+            );
+            // Source 2: approved/processed TARDY leave entries in range
+            const tardyLeaveInRange = leave.filter(l =>
+                l.employeeId === employee.id &&
+                l.type === 'TARDY' &&
+                (l.status === 'approved' || l.status === 'processed') &&
+                l.startDate &&
+                isWithinInterval(startOfDay(new Date(l.startDate)), { start: summaryDateRange.from!, end: summaryDateRange.to! })
+            );
+            // Deduplicate: imported records take precedence (same employee+date key)
+            const importedKeys = new Set(
+                importedTardyInRange.map(r => `${r.employeeId}-${format(new Date(r.date), 'yyyy-MM-dd')}`)
+            );
+            const uniqueTardyLeave = tardyLeaveInRange.filter(l =>
+                !importedKeys.has(`${l.employeeId}-${format(new Date(l.startDate!), 'yyyy-MM-dd')}`)
+            );
+            const tardyCount = importedTardyInRange.length + uniqueTardyLeave.length;
+            
+            rows.push([
+                `${employee.lastName}, ${employee.firstName} ${employee.middleInitial || ''}`.toUpperCase(),
+                shiftsInRange.length,
+                Number(totalHours.toFixed(2)),
+                ...leaveCounts,
+                tardyCount,
+            ]);
+        });
+
+        const totals = new Array(headers.length - 1).fill(0);
+        rows.forEach(row => {
+            for (let i = 1; i < row.length; i++) {
+                totals[i - 1] += Number(row[i]) || 0;
+            }
+        });
+
+        const totalRow: (string | number)[] = ['TOTAL', ...totals.map((t, i) => i === 1 ? Number(t.toFixed(2)) : t)];
+        rows.push(totalRow);
+        
+        return { headers, rows };
+    };
+        const leaveTypeStrings = leaveTypes.map(lt => lt.type);
         const headers = ['Employee Name', 'Total Shifts', 'Total Hours', ...leaveTypeStrings];
         const rows: (string | number)[][] = [];
         

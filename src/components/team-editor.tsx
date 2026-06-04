@@ -54,6 +54,7 @@ const employeeSchema = z.object({
   }).optional(),
   gender: z.enum(['Male', 'Female']).optional(),
   employeeClassification: z.enum(['Rank-and-File', 'Confidential', 'Managerial']).optional(),
+  workScheduleType: z.enum(['8h-paid', '8h-unpaid', '10h-paid', '10h-unpaid']).optional(),
 }).refine(data => {
     // If it's a new user (no ID), password can be blank (to send activation link)
     if (!data.id) {
@@ -126,6 +127,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
               orgChart: true,
               mobileLoad: true,
             },
+            workScheduleType: '8h-paid' as const,
         } : {
             ...employee,
             employeeNumber: employee.employeeNumber || '',
@@ -141,7 +143,8 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
               onDuty: employee.visibility?.onDuty ?? true,
               orgChart: employee.visibility?.orgChart ?? true,
               mobileLoad: employee.visibility?.mobileLoad ?? true,
-            }
+            },
+            workScheduleType: (employee.workScheduleType ?? '8h-paid') as '8h-paid' | '8h-unpaid' | '10h-paid' | '10h-unpaid',
         };
         form.reset(defaultValues as any);
         setAvatarPreview(employee?.avatar || null);
@@ -466,6 +469,30 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                                 <SelectItem value="Rank-and-File">Rank-and-File</SelectItem>
                                                 <SelectItem value="Confidential">Confidential</SelectItem>
                                                 <SelectItem value="Managerial">Managerial</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="workScheduleType"
+                                    render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Work Schedule Type</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value ?? '8h-paid'}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select work schedule" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="8h-paid">8-Hour / Paid Break</SelectItem>
+                                                <SelectItem value="8h-unpaid">8-Hour / Unpaid Break</SelectItem>
+                                                <SelectItem value="10h-paid">10-Hour / Paid Break</SelectItem>
+                                                <SelectItem value="10h-unpaid">10-Hour / Unpaid Break</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <FormMessage />

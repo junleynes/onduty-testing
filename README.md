@@ -1,56 +1,84 @@
+# OnDuty - Modern Duty Scheduling Application
 
-# OnDuty - Modern Duty Scheduling
+A comprehensive scheduling and shift management application built with Next.js, React, Tailwind CSS, and SQLite. Streamline your team's duty scheduling with drag-and-drop functionality, AI-powered assistance, and automated reporting.
 
-A comprehensive scheduling and shift management application built with Next.js, React, Tailwind CSS, and SQLite.
+## 📋 Table of Contents
+- [Features](#features)
+- [Technology Stack](#technology-stack)
+- [Prerequisites](#prerequisites)
+- [Installation Instructions](#installation-instructions)
+- [Configuration](#configuration)
+- [Running the Application](#running-the-application)
+- [Default Credentials](#default-credentials)
+- [Database Management](#database-management)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
 
-## Features
+## ✨ Features
 
-- **Shift Management:** Drag-and-drop scheduling, shift templates, and recurring shifts.
-- **Time Off:** Leave requests, offsets, and work extensions with automated ALAF PDF generation.
-- **Reporting:** Work schedules, attendance sheets, user summaries, and tardiness reports.
-- **Team Management:** User roles (Admin, Manager, Member), group assignments, and organizational charts.
-- **AI-Powered:** Smart scheduling constraint resolution using Genkit.
+### Core Scheduling
+- **Drag-and-Drop Interface**: Intuitive schedule creation with drag-and-drop functionality
+- **Shift Templates**: Create and reuse shift templates for common scheduling patterns
+- **Recurring Shifts**: Automatically schedule repeating shifts (daily, weekly, monthly)
+- **Real-time Conflict Detection**: Automatic identification of scheduling conflicts
+- **Multi-View Calendar**: Day, week, and month views for flexible planning
 
-## Getting Started
+### Time Off Management
+- **Leave Requests**: Submit and approve time-off requests with history tracking
+- **Offsets & Comp Time**: Track and manage time offsets and compensatory time
+- **Work Extensions**: Handle overtime and work extension requests
+- **ALAF PDF Generation**: Automated generation of ALAF (Aviso de Liberação de Antecipação de Férias) documents
+- **Leave Balance Tracking**: Real-time tracking of available leave balances
 
-### Prerequisites
+### Reporting & Analytics
+- **Work Schedules**: Generate detailed work schedule reports
+- **Attendance Sheets**: Create daily, weekly, and monthly attendance records
+- **User Summaries**: Individual performance and attendance summaries
+- **Tardiness Reports**: Track and report late arrivals and early departures
+- **Export Options**: Export reports to PDF, Excel, and CSV formats
 
-- Node.js (v18 or higher)
-- npm (installed automatically with Node.js)
+### Team Management
+- **Role-Based Access**: Three user roles with granular permissions
+  - **Admin**: Full system access and configuration
+  - **Manager**: Schedule creation, approval powers, team oversight
+  - **Member**: View schedules, submit requests, personal management
+- **Group Assignments**: Organize users into teams and departments
+- **Organizational Charts**: Visual representation of team structure
+- **User Profiles**: Customizable user profiles with contact information
 
-### Installation
+### AI-Powered Features
+- **Smart Scheduling**: AI-assisted scheduling constraint resolution using Google Genkit
+- **Optimization Suggestions**: Automated recommendations for schedule improvements
+- **Pattern Recognition**: Identifies scheduling patterns and optimization opportunities
+- **Predictive Analytics**: Forecasts staffing needs based on historical data
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd <project-folder>
-   ```
+### Additional Features
+- **Mobile Responsive**: Fully responsive design for desktop, tablet, and mobile devices
+- **Real-time Notifications**: Email and in-app notifications for schedule changes
+- **Calendar Integration**: Export schedules to Google Calendar, Outlook, and iCal
+- **Audit Logging**: Complete audit trail of all schedule changes and user actions
+- **Bulk Operations**: Mass assign shifts, approve requests, and update schedules
+- **Custom Fields**: Add custom data fields to shifts, users, and schedules
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+## 🛠️ Technology Stack
 
-3. **Set up environment variables:**
-   Create a `.env` file in the root directory and add your Gemini API key for AI features:
-   ```env
-   GEMINI_API_KEY=your_api_key_here
-   ```
+| Category | Technologies |
+|----------|--------------|
+| **Frontend** | Next.js 14, React 18, Tailwind CSS |
+| **Backend** | Next.js API Routes, NextAuth.js |
+| **Database** | SQLite (local.db), Prisma ORM |
+| **AI/ML** | Google Genkit, Gemini API |
+| **Authentication** | NextAuth.js v5 (beta) |
+| **PDF Generation** | Custom PDF engine for ALAF documents |
+| **Language** | TypeScript (95.5%) |
+| **Development** | Node.js, npm, Firebase Studio |
 
-4. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
+## 📋 Prerequisites
 
-The application will be available at `http://localhost:9002`.
+Before installing, ensure you have the following:
 
-## Default Admin Credentials
-
-Use these credentials to log in for the first time and configure your team:
-
-- **Email:** `admin@onduty.local`
-- **Password:** `P@ssw0rd`
-
-## Database
-
-The application uses a local SQLite database (`local.db`) which is automatically initialized when the server starts. You do not need to perform any manual database setup.
+- **Node.js**: Version 18.0 or higher
+  ```bash
+  node --version  # Should show v18.0.0 or higher

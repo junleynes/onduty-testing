@@ -33,9 +33,11 @@ type AdminPanelProps = {
   onImportMembers: () => void;
   onManageGroups: () => void;
   smtpSettings: SmtpSettings;
+  workScheduleType: string;
+  setWorkScheduleType: (value: string) => void;
 };
 
-export default function AdminPanel({ users, setUsers, groups, onAddMember, onEditMember, onDeleteMember, onBatchDelete, onImportMembers, onManageGroups, smtpSettings }: AdminPanelProps) {
+export default function AdminPanel({ users, setUsers, groups, onAddMember, onEditMember, onDeleteMember, onBatchDelete, onImportMembers, onManageGroups, smtpSettings, workScheduleType, setWorkScheduleType }: AdminPanelProps) {
   const { toast } = useToast();
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [isSending, startSendingTransition] = useTransition();
@@ -311,6 +313,37 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
             </DialogFooter>
         </DialogContent>
     </Dialog>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Work Schedule Settings</CardTitle>
+        <CardDescription>
+          Set the default workweek type for your organization. This affects how work hours and breaks are calculated across reports.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3 max-w-sm">
+          <Label htmlFor="workScheduleType">Workweek Type</Label>
+          <Select value={workScheduleType} onValueChange={setWorkScheduleType}>
+            <SelectTrigger id="workScheduleType">
+              <SelectValue placeholder="Select workweek type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="8h-paid">8-Hour Workday / Paid Break</SelectItem>
+              <SelectItem value="8h-unpaid">8-Hour Workday / Unpaid Break</SelectItem>
+              <SelectItem value="10h-paid">10-Hour Workday / Paid Break</SelectItem>
+              <SelectItem value="10h-unpaid">10-Hour Workday / Unpaid Break</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {workScheduleType === '8h-paid' && 'Standard 8-hour shift. Break time is included in paid hours.'}
+            {workScheduleType === '8h-unpaid' && 'Standard 8-hour shift. Break time is deducted from paid hours.'}
+            {workScheduleType === '10h-paid' && 'Extended 10-hour shift. Break time is included in paid hours.'}
+            {workScheduleType === '10h-unpaid' && 'Extended 10-hour shift. Break time is deducted from paid hours.'}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
     </>
   );
 }

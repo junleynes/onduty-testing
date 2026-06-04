@@ -78,6 +78,7 @@ function AppContent() {
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [preferredAvl, setPreferredAvl] = useState<PreferredAvl[]>([]);
   const [avlLocks, setAvlLocks] = useState<Record<string, boolean>>({});
+  const [workScheduleType, setWorkScheduleType] = useState<string>('8h-paid');
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -154,6 +155,7 @@ function AppContent() {
         faqs,
         preferredAvl,
         avlLocks,
+        workScheduleType,
     };
 
     const saveData = async () => {
@@ -224,6 +226,7 @@ function AppContent() {
           setFaqs(result.data.faqs);
           setPreferredAvl(result.data.preferredAvl);
           setAvlLocks(result.data.avlLocks || {});
+          setWorkScheduleType(result.data.workScheduleType || '8h-paid');
 
           // Set currentUser from DB employees using session user id
           const sessionId = session?.user?.id;
@@ -822,6 +825,8 @@ function AppContent() {
                 onImportMembers={() => setIsImporterOpen(true)}
                 onManageGroups={() => setIsGroupEditorOpen(true)}
                 smtpSettings={smtpSettings}
+                workScheduleType={workScheduleType}
+                setWorkScheduleType={setWorkScheduleType}
             />
         );
        case 'permissions':

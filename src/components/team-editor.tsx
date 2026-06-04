@@ -688,12 +688,14 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                 </>
             )}
 
+            {!isPasswordResetMode && (
             <DialogFooter className="pt-4">
                 <Button type="button" variant="ghost" onClick={() => setIsOpen(false)} disabled={isSaving}>Cancel</Button>
                 <Button type="submit" disabled={isSaving}>
                     {isSaving ? 'Saving...' : 'Save'}
                 </Button>
             </DialogFooter>
+            )}
           </form>
         </Form>
       </DialogContent>

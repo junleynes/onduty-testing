@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import type { Employee, PreferredAvl, PreferredAvlDay } from '@/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn, getFullName } from '@/lib/utils';
-import { Save, Lock, Unlock, Check, Trash2 } from 'lucide-react';
+import { Save, Lock, Unlock, Trash2, Download, Upload, AlertTriangle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -17,6 +17,7 @@ import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { ScrollArea } from './ui/scroll-area';
+import { Switch } from './ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import Papa from 'papaparse';
+import { saveAs } from 'file-saver';
 
 type AvlManagementViewProps = {
   currentUser: Employee;
@@ -50,6 +53,8 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   const [isPlotDialogOpen, setIsPlotDialogOpen] = useState(false);
   const [editingCell, setEditingCell] = useState<{ employeeId: string; month: number } | null>(null);
   const [tempPlottedDays, setTempPlottedDays] = useState<PreferredAvlDay[]>([]);
+  const [preventConflicts, setPreventConflicts] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
   const lockKey = `${currentUser.group}-${selectedYear}`;
@@ -72,12 +77,30 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
       .reduce((sum, p) => sum + p.plottedDays.length, 0);
   };
 
+  /**
+   * Returns the set of day-numbers that are already taken by OTHER employees
+   * in the same group for the given month/year.
+   */
+  const getConflictingDays = useMemo(() => {
+    return (forEmployeeId: string, month: number): Set<number> => {
+      if (!preventConflicts) return new Set();
+      const taken = new Set<number>();
+      for (const p of preferredAvl) {
+        if (p.employeeId === forEmployeeId) continue;
+        if (p.year !== selectedYear || p.month !== month) continue;
+        const emp = employees.find(e => e.id === p.employeeId);
+        if (!emp || emp.group !== currentUser.group) continue;
+        for (const d of p.plottedDays) taken.add(d.day);
+      }
+      return taken;
+    };
+  }, [preventConflicts, preferredAvl, selectedYear, employees, currentUser.group]);
+
   const handleOpenPlot = (employeeId: string, month: number) => {
     if (isLocked && !isManager) {
         toast({ variant: 'destructive', title: 'Editing Locked', description: 'This year has been locked for editing by a manager.' });
         return;
     }
-    
     if (!isManager && employeeId !== currentUser.id) return;
     
     const existing = getCellData(employeeId, month);
@@ -86,12 +109,15 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
     setIsPlotDialogOpen(true);
   };
 
-  const toggleDaySelection = (day: number) => {
+  const toggleDaySelection = (day: number, conflictDays: Set<number>) => {
+    const isSelected = !!tempPlottedDays.find(d => d.day === day);
+    if (!isSelected && conflictDays.has(day)) {
+      toast({ variant: 'destructive', title: 'Date Conflict', description: `Day ${day} is already taken by another member in your group.` });
+      return;
+    }
     setTempPlottedDays(prev => {
         const exists = prev.find(d => d.day === day);
-        if (exists) {
-            return prev.filter(d => d.day !== day);
-        }
+        if (exists) return prev.filter(d => d.day !== day);
         return [...prev, { day, isClaimed: false }];
     });
   };
@@ -105,11 +131,9 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
 
   const currentAnnualTotal = useMemo(() => {
     if (!editingCell) return 0;
-    
     const otherMonthsTotal = preferredAvl
         .filter(p => p.employeeId === editingCell.employeeId && p.year === selectedYear && p.month !== editingCell.month)
         .reduce((sum, p) => sum + p.plottedDays.length, 0);
-    
     return otherMonthsTotal + tempPlottedDays.length;
   }, [editingCell, preferredAvl, selectedYear, tempPlottedDays]);
 
@@ -117,9 +141,13 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
     editingCell ? groupEmployees.find(e => e.id === editingCell.employeeId) : null,
   [editingCell, groupEmployees]);
 
+  const conflictDaysForEdit = useMemo(() => {
+    if (!editingCell) return new Set<number>();
+    return getConflictingDays(editingCell.employeeId, editingCell.month);
+  }, [editingCell, getConflictingDays]);
+
   const handleSavePlot = () => {
     if (!editingCell || !targetEmployee) return;
-
     const allotted = targetEmployee.avlAllotted || 0;
     if (currentAnnualTotal > allotted) {
         toast({ 
@@ -130,8 +158,20 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
         return;
     }
 
-    const existing = getCellData(editingCell.employeeId, editingCell.month);
+    // Double-check conflict on save (in case preventConflicts was toggled mid-edit)
+    if (preventConflicts) {
+      const conflicts = tempPlottedDays.filter(d => conflictDaysForEdit.has(d.day));
+      if (conflicts.length > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Conflict Detected',
+          description: `Day(s) ${conflicts.map(d => d.day).join(', ')} conflict with another group member. Please deselect them first.`,
+        });
+        return;
+      }
+    }
 
+    const existing = getCellData(editingCell.employeeId, editingCell.month);
     if (existing) {
       setPreferredAvl(prev => prev.map(p => p.id === existing.id ? { ...p, plottedDays: tempPlottedDays } : p));
     } else {
@@ -144,7 +184,6 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
       };
       setPreferredAvl(prev => [...prev, newAvl]);
     }
-
     setIsPlotDialogOpen(false);
     toast({ title: "Plot Updated" });
   };
@@ -164,10 +203,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   };
 
   const toggleLock = () => {
-    setAvlLocks(prev => ({
-        ...prev,
-        [lockKey]: !isLocked
-    }));
+    setAvlLocks(prev => ({ ...prev, [lockKey]: !isLocked }));
     toast({ 
         title: isLocked ? "Grid Unlocked" : "Grid Locked", 
         description: isLocked ? "Users can now edit their preferred dates." : "Regular users are now restricted from editing."
@@ -176,23 +212,147 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
 
   const handleClearAll = () => {
     const groupEmployeeIds = new Set(groupEmployees.map(e => e.id));
-    
-    // Clear Plotted Dates
-    setPreferredAvl(prev => prev.filter(p => 
-      !(p.year === selectedYear && groupEmployeeIds.has(p.employeeId))
-    ));
-    
-    // Clear Balances
+    setPreferredAvl(prev => prev.filter(p => !(p.year === selectedYear && groupEmployeeIds.has(p.employeeId))));
     setEmployees(prev => prev.map(e => {
-      if (groupEmployeeIds.has(e.id)) {
-        return { ...e, avlBeginningBalance: 0, avlAllotted: 0 };
-      }
+      if (groupEmployeeIds.has(e.id)) return { ...e, avlBeginningBalance: 0, avlAllotted: 0 };
       return e;
     }));
+    toast({ title: "Grid & Balances Cleared", description: `All plotted dates and AVL balances for your group in ${selectedYear} have been removed.` });
+  };
 
-    toast({ 
-      title: "Grid & Balances Cleared", 
-      description: `All plotted dates and AVL balances for your group in ${selectedYear} have been removed.` 
+  // ── CSV Export ────────────────────────────────────────────────────────────
+  const handleExportCsv = () => {
+    const rows: Record<string, string | number>[] = [];
+    for (const emp of groupEmployees) {
+      const row: Record<string, string | number> = {
+        'EMPLOYEE_ID': emp.id,
+        'EMPLOYEE': getFullName(emp),
+        'GROUP': emp.group || '',
+        'YEAR': selectedYear,
+        'VL_BEGINNING_BALANCE': emp.avlBeginningBalance ?? 0,
+        'AVL_TO_BE_SCHEDULED': emp.avlAllotted ?? 0,
+      };
+      for (let m = 0; m < 12; m++) {
+        const data = getCellData(emp.id, m);
+        row[MONTHS[m]] = data
+          ? data.plottedDays
+              .sort((a, b) => a.day - b.day)
+              .map(d => d.isClaimed ? `${d.day}*` : String(d.day))
+              .join(',')
+          : '';
+      }
+      rows.push(row);
+    }
+    const csv = Papa.unparse(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, `PreferredAVL_${currentUser.group || 'group'}_${selectedYear}.csv`);
+    toast({ title: 'Export Successful', description: 'Preferred AVL data exported to CSV.' });
+  };
+
+  // ── CSV Import ────────────────────────────────────────────────────────────
+  const handleImportCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset file input so same file can be re-imported
+    e.target.value = '';
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        try {
+          const requiredHeaders = ['EMPLOYEE', 'YEAR'];
+          const headers = results.meta.fields?.map(h => h.toUpperCase()) || [];
+          const missing = requiredHeaders.filter(h => !headers.includes(h));
+          if (missing.length > 0) throw new Error(`Missing columns: ${missing.join(', ')}`);
+
+          const newPreferredAvl: PreferredAvl[] = [];
+          const updatedEmployees: { id: string; avlBeginningBalance: number; avlAllotted: number }[] = [];
+          const skipped: string[] = [];
+
+          for (const row of results.data as Record<string, string>[]) {
+            const rawName = row['EMPLOYEE'] || '';
+            const rowYear = parseInt(row['YEAR'] || String(selectedYear));
+
+            // Match employee by ID first, then by name
+            let emp = row['EMPLOYEE_ID']
+              ? groupEmployees.find(e => e.id === row['EMPLOYEE_ID'])
+              : undefined;
+            if (!emp) {
+              const normalName = rawName.trim().toLowerCase();
+              emp = groupEmployees.find(e =>
+                getFullName(e).toLowerCase() === normalName
+              );
+            }
+            if (!emp) { skipped.push(rawName || row['EMPLOYEE_ID'] || '?'); continue; }
+
+            // Balance columns
+            const beginBal = parseFloat(row['VL_BEGINNING_BALANCE'] || '') || emp.avlBeginningBalance || 0;
+            const allotted = parseFloat(row['AVL_TO_BE_SCHEDULED'] || '') || emp.avlAllotted || 0;
+            updatedEmployees.push({ id: emp.id, avlBeginningBalance: beginBal, avlAllotted: allotted });
+
+            // Month columns
+            for (let m = 0; m < 12; m++) {
+              const monthKey = MONTHS[m];
+              const raw = (row[monthKey] || '').trim();
+              if (!raw) continue;
+              const days: PreferredAvlDay[] = raw.split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+                .map(s => {
+                  const isClaimed = s.endsWith('*');
+                  const day = parseInt(s.replace('*', ''));
+                  return isNaN(day) ? null : { day, isClaimed };
+                })
+                .filter((d): d is PreferredAvlDay => d !== null);
+              if (days.length === 0) continue;
+
+              // Find existing or create new record
+              const existingIdx = newPreferredAvl.findIndex(
+                p => p.employeeId === emp!.id && p.year === rowYear && p.month === m
+              );
+              const record: PreferredAvl = {
+                id: uuidv4(),
+                employeeId: emp.id,
+                year: rowYear,
+                month: m,
+                plottedDays: days,
+              };
+              if (existingIdx >= 0) newPreferredAvl[existingIdx] = record;
+              else newPreferredAvl.push(record);
+            }
+          }
+
+          // Merge imported data: replace same employee+year+month records, keep others
+          const groupEmpIds = new Set(groupEmployees.map(e => e.id));
+          const importedKeys = new Set(newPreferredAvl.map(p => `${p.employeeId}-${p.year}-${p.month}`));
+          setPreferredAvl(prev => [
+            ...prev.filter(p => {
+              if (!groupEmpIds.has(p.employeeId)) return true; // keep other groups
+              return !importedKeys.has(`${p.employeeId}-${p.year}-${p.month}`);
+            }),
+            ...newPreferredAvl,
+          ]);
+
+          // Update employee balances
+          if (updatedEmployees.length > 0) {
+            const balMap = new Map(updatedEmployees.map(u => [u.id, u]));
+            setEmployees(prev => prev.map(e => {
+              const update = balMap.get(e.id);
+              if (!update) return e;
+              return { ...e, avlBeginningBalance: update.avlBeginningBalance, avlAllotted: update.avlAllotted };
+            }));
+          }
+
+          const msg = skipped.length > 0
+            ? `${newPreferredAvl.length} records imported. Skipped (not found): ${skipped.join(', ')}.`
+            : `${newPreferredAvl.length} records imported successfully.`;
+          toast({ title: 'Import Successful', description: msg });
+        } catch (err) {
+          toast({ variant: 'destructive', title: 'Import Failed', description: (err as Error).message });
+        }
+      },
+      error: (err) => toast({ variant: 'destructive', title: 'CSV Error', description: err.message }),
     });
   };
 
@@ -216,9 +376,39 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
            {isManager && (
               <>
+                {/* Conflict prevention toggle */}
+                <div className="flex items-center gap-2 border rounded-md px-3 py-2 bg-muted/30">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <Label htmlFor="conflict-toggle" className="text-xs font-medium cursor-pointer whitespace-nowrap">
+                    Block group conflicts
+                  </Label>
+                  <Switch
+                    id="conflict-toggle"
+                    checked={preventConflicts}
+                    onCheckedChange={setPreventConflicts}
+                  />
+                </div>
+
+                {/* Import CSV */}
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleImportCsv}
+                />
+                <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-2" /> Import CSV
+                </Button>
+
+                {/* Export CSV */}
+                <Button variant="outline" onClick={handleExportCsv}>
+                  <Download className="h-4 w-4 mr-2" /> Export CSV
+                </Button>
+
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive">
@@ -240,6 +430,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+
                 <Button variant={isLocked ? "outline" : "secondary"} onClick={toggleLock}>
                   {isLocked ? <><Unlock className="h-4 w-4 mr-2" /> Unlock</> : <><Lock className="h-4 w-4 mr-2" /> Lock for Members</>}
                 </Button>
@@ -264,6 +455,16 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
         </div>
       </div>
 
+      {/* Conflict mode notice */}
+      {preventConflicts && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-4 py-2 text-sm text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            <strong>Group conflict prevention is ON.</strong> Dates already taken by another member in this group are highlighted and blocked.
+          </span>
+        </div>
+      )}
+
       <Card className="overflow-hidden border-2 border-primary/20">
         <div className="overflow-x-auto">
           <Table className="border-collapse text-[11px] leading-tight">
@@ -282,7 +483,6 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
               {groupEmployees.map(emp => {
                 const totalScheduled = calculateTotalScheduled(emp.id);
                 const isOverLimit = totalScheduled > (emp.avlAllotted || 0);
-
                 return (
                   <TableRow key={emp.id} className="h-10">
                     <TableCell className="border border-border p-0">
@@ -310,6 +510,8 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                     </TableCell>
                     {MONTHS.map((_, mIdx) => {
                       const data = getCellData(emp.id, mIdx);
+                      const conflictDays = getConflictingDays(emp.id, mIdx);
+                      const hasConflict = data && preventConflicts && data.plottedDays.some(d => conflictDays.has(d.day));
                       const isClickable = isManager || (emp.id === currentUser.id && !isLocked);
                       return (
                         <TableCell 
@@ -317,15 +519,22 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                           className={cn(
                             "border border-border text-center p-1 transition-colors",
                             isClickable ? "cursor-pointer hover:bg-primary/10" : "cursor-not-allowed bg-muted/5",
+                            hasConflict && "bg-amber-50 dark:bg-amber-950/20",
                           )}
                           onClick={() => handleOpenPlot(emp.id, mIdx)}
                         >
                           <div className="flex flex-wrap justify-center gap-0.5">
-                            {data?.plottedDays.sort((a,b) => a.day - b.day).map((pd, i) => (
-                                <span key={pd.day} className={cn(pd.isClaimed && "text-green-600 font-bold underline")}>
-                                    {pd.day}{i < data.plottedDays.length - 1 ? ',' : ''}
+                            {data?.plottedDays.sort((a,b) => a.day - b.day).map((pd, i) => {
+                              const isConflicted = preventConflicts && conflictDays.has(pd.day);
+                              return (
+                                <span key={pd.day} className={cn(
+                                  pd.isClaimed && "text-green-600 font-bold underline",
+                                  isConflicted && "text-amber-600 font-bold",
+                                )}>
+                                  {pd.day}{i < (data?.plottedDays.length ?? 0) - 1 ? ',' : ''}
                                 </span>
-                            ))}
+                              );
+                            })}
                           </div>
                         </TableCell>
                       );
@@ -350,6 +559,11 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
             <DialogTitle>Plot Preferred Dates</DialogTitle>
             <DialogDescription>
               Select dates for {editingCell ? MONTHS[editingCell.month] : ''} {selectedYear}.
+              {preventConflicts && conflictDaysForEdit.size > 0 && (
+                <span className="block mt-1 text-amber-600 font-medium text-xs">
+                  ⚠ Days already taken by your group: {[...conflictDaysForEdit].sort((a,b)=>a-b).join(', ')}
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
@@ -364,19 +578,25 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                 {calendarDays.map(day => {
                     const isSelected = !!tempPlottedDays.find(d => d.day === day);
                     const isClaimed = !!tempPlottedDays.find(d => d.day === day && d.isClaimed);
+                    const isConflicted = conflictDaysForEdit.has(day) && !isSelected;
                     return (
                         <Button
                             key={day}
                             variant={isSelected ? "default" : "outline"}
                             className={cn(
-                                "h-10 w-full p-0",
-                                isClaimed && "bg-green-600 hover:bg-green-700 text-white border-green-800"
+                                "h-10 w-full p-0 relative",
+                                isClaimed && "bg-green-600 hover:bg-green-700 text-white border-green-800",
+                                isConflicted && "border-amber-400 bg-amber-50 dark:bg-amber-950/30 text-amber-700 cursor-not-allowed opacity-70",
                             )}
-                            onClick={() => toggleDaySelection(day)}
+                            onClick={() => toggleDaySelection(day, conflictDaysForEdit)}
+                            title={isConflicted ? "Taken by another group member" : undefined}
                         >
                             {day}
+                            {isConflicted && (
+                              <span className="absolute -top-1 -right-1 text-[8px] leading-none bg-amber-500 text-white rounded-full w-3 h-3 flex items-center justify-center">!</span>
+                            )}
                         </Button>
-                    )
+                    );
                 })}
             </div>
             
@@ -400,7 +620,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                                             />
                                             <Label htmlFor={`claimed-${pd.day}`} className="text-xs cursor-pointer">Claimed</Label>
                                         </div>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleDaySelection(pd.day)}>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleDaySelection(pd.day, new Set())}>
                                             <Trash2 className="h-4 w-4" />
                                         </Button>
                                     </div>

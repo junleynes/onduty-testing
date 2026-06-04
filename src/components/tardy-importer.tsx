@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Label } from './ui/label';
 import { Loader2 } from 'lucide-react';
 import type { Employee, TardyRecord } from '@/types';
-import { findEmployeeByName } from '@/lib/utils';
+import { findEmployeeByName, getFullName } from '@/lib/utils';
 import { isDate } from 'date-fns';
 
 type TardyImporterProps = {

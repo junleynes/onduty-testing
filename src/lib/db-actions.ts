@@ -47,7 +47,7 @@ export async function getData() {
         SELECT id, employeeNumber, firstName, lastName, middleInitial, email, phone,
                position, role, "group", birthDate, startDate, loadAllocation,
                visibility, lastPromotionDate, reportsTo, gender, employeeClassification,
-               personnelNumber, avlAllotted, avlBeginningBalance
+               personnelNumber, avlAllotted, avlBeginningBalance, workScheduleType
         FROM employees
     `).all() as any[];
 
@@ -104,7 +104,6 @@ export async function getData() {
     let monthlyOrderData = '{}';
     let faqData = '[]';
     let avlLockData = '{}';
-    let workScheduleType = '8h-paid';
 
     keyValuePairs.forEach(row => {
       if (row.key === 'monthlyEmployeeOrder') {
@@ -113,8 +112,6 @@ export async function getData() {
         faqData = row.value;
       } else if (row.key === 'avlLocks') {
         avlLockData = row.value;
-      } else if (row.key === 'workScheduleType') {
-        workScheduleType = row.value;
       } else {
         templatesMap[row.key] = row.value;
       }
@@ -249,7 +246,6 @@ export async function getData() {
         faqs: faqsValue,
         preferredAvl: processedPreferredAvl,
         avlLocks: avlLocksValue,
-        workScheduleType,
       }
     };
   } catch (error) {
@@ -278,7 +274,6 @@ export async function saveAllData({
   faqs,
   preferredAvl,
   avlLocks,
-  workScheduleType,
 }: {
   employees: Employee[];
   shifts: Shift[];
@@ -298,7 +293,6 @@ export async function saveAllData({
   faqs: FaqItem[];
   preferredAvl: PreferredAvl[];
   avlLocks: Record<string, boolean>;
-  workScheduleType: string;
 }): Promise<{ success: boolean; error?: string }> {
   try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
   const db = getDb();
@@ -319,10 +313,12 @@ export async function saveAllData({
         const empUpsertStmt = db.prepare(`
             INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password,
                 position, role, "group", birthDate, startDate, loadAllocation, visibility, lastPromotionDate,
-                reportsTo, gender, employeeClassification, personnelNumber, avlAllotted, avlBeginningBalance)
+                reportsTo, gender, employeeClassification, personnelNumber, avlAllotted, avlBeginningBalance,
+                workScheduleType)
             VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password,
                 @position, @role, @group, @birthDate, @startDate, @loadAllocation, @visibility, @lastPromotionDate,
-                @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlAllotted, @avlBeginningBalance)
+                @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlAllotted, @avlBeginningBalance,
+                @workScheduleType)
             ON CONFLICT(id) DO UPDATE SET
                 employeeNumber=excluded.employeeNumber, firstName=excluded.firstName, lastName=excluded.lastName,
                 middleInitial=excluded.middleInitial, email=excluded.email, phone=excluded.phone,
@@ -332,7 +328,8 @@ export async function saveAllData({
                 reportsTo=excluded.reportsTo, gender=excluded.gender,
                 employeeClassification=excluded.employeeClassification,
                 personnelNumber=excluded.personnelNumber, avlAllotted=excluded.avlAllotted,
-                avlBeginningBalance=excluded.avlBeginningBalance
+                avlBeginningBalance=excluded.avlBeginningBalance,
+                workScheduleType=excluded.workScheduleType
                 -- avatar and signature intentionally excluded: preserved from DB, updated by dedicated actions
         `);
         for (const e of employees) {
@@ -350,6 +347,7 @@ export async function saveAllData({
                 employeeClassification: e.employeeClassification || null,
                 personnelNumber: e.personnelNumber || null,
                 avlAllotted: e.avlAllotted || 0, avlBeginningBalance: e.avlBeginningBalance || 0,
+                workScheduleType: e.workScheduleType || '8h-paid',
             });
         }
 
@@ -520,7 +518,6 @@ export async function saveAllData({
         kvStmt.run({ key: 'monthlyEmployeeOrder', value: JSON.stringify(monthlyEmployeeOrder) });
         kvStmt.run({ key: 'faqs', value: JSON.stringify(faqs) });
         kvStmt.run({ key: 'avlLocks', value: JSON.stringify(avlLocks) });
-        kvStmt.run({ key: 'workScheduleType', value: workScheduleType });
 
         // ── Permissions: upsert ───────────────────────────────────────────────
         const permStmt = db.prepare('INSERT INTO permissions (role, allowed_views) VALUES (@role, @allowed_views) ON CONFLICT(role) DO UPDATE SET allowed_views=excluded.allowed_views');

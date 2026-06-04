@@ -104,6 +104,7 @@ export async function getData() {
     let monthlyOrderData = '{}';
     let faqData = '[]';
     let avlLockData = '{}';
+    let workScheduleType = '8h-paid';
 
     keyValuePairs.forEach(row => {
       if (row.key === 'monthlyEmployeeOrder') {
@@ -112,6 +113,8 @@ export async function getData() {
         faqData = row.value;
       } else if (row.key === 'avlLocks') {
         avlLockData = row.value;
+      } else if (row.key === 'workScheduleType') {
+        workScheduleType = row.value;
       } else {
         templatesMap[row.key] = row.value;
       }
@@ -246,6 +249,7 @@ export async function getData() {
         faqs: faqsValue,
         preferredAvl: processedPreferredAvl,
         avlLocks: avlLocksValue,
+        workScheduleType,
       }
     };
   } catch (error) {
@@ -274,6 +278,7 @@ export async function saveAllData({
   faqs,
   preferredAvl,
   avlLocks,
+  workScheduleType,
 }: {
   employees: Employee[];
   shifts: Shift[];
@@ -293,6 +298,7 @@ export async function saveAllData({
   faqs: FaqItem[];
   preferredAvl: PreferredAvl[];
   avlLocks: Record<string, boolean>;
+  workScheduleType: string;
 }): Promise<{ success: boolean; error?: string }> {
   try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
   const db = getDb();
@@ -514,6 +520,7 @@ export async function saveAllData({
         kvStmt.run({ key: 'monthlyEmployeeOrder', value: JSON.stringify(monthlyEmployeeOrder) });
         kvStmt.run({ key: 'faqs', value: JSON.stringify(faqs) });
         kvStmt.run({ key: 'avlLocks', value: JSON.stringify(avlLocks) });
+        kvStmt.run({ key: 'workScheduleType', value: workScheduleType });
 
         // ── Permissions: upsert ───────────────────────────────────────────────
         const permStmt = db.prepare('INSERT INTO permissions (role, allowed_views) VALUES (@role, @allowed_views) ON CONFLICT(role) DO UPDATE SET allowed_views=excluded.allowed_views');

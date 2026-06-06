@@ -38,6 +38,8 @@ const employeeSchema = z.object({
   }).optional(),
   gender: z.enum(['Male', 'Female']).optional().nullable(),
   employeeClassification: z.enum(['Rank-and-File', 'Confidential', 'Managerial']).optional().nullable(),
+  workScheduleType: z.enum(['8h-paid', '8h-unpaid', '10h-paid', '10h-unpaid']).optional().nullable(),
+  defaultShiftTemplateId: z.string().optional().nullable(),
 }).refine(data => {
     if (!data.id) return true;
     if (data.password && data.password.length > 0) {

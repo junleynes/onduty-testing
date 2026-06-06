@@ -651,7 +651,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 p-0 overflow-auto">
+      <CardContent className="flex-1 p-0 overflow-auto" style={{ isolation: 'isolate' }}>
         <div className="overflow-auto">
             <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${viewMode === 'month' ? 15 : displayedDays.length}, minmax(140px, 1fr))` }}>
                 {viewMode === 'month' ? (

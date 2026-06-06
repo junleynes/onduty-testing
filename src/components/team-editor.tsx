@@ -100,21 +100,9 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   
   const isNewEmployee = !employee?.id;
   const selectedGroup = form.watch("group");
-  const selectedWorkScheduleType = form.watch("workScheduleType");
 
   // Determine if a shift template matches the selected work schedule type by hours
-  const filteredShiftTemplates = useMemo(() => {
-    if (!selectedWorkScheduleType) return shiftTemplates;
-    const expectedHours = selectedWorkScheduleType.startsWith('10') ? 10 : 8;
-    return shiftTemplates.filter(t => {
-      if (!t.startTime || !t.endTime) return true;
-      const [sh, sm] = t.startTime.split(':').map(Number);
-      const [eh, em] = t.endTime.split(':').map(Number);
-      let diffH = (eh * 60 + em - (sh * 60 + sm)) / 60;
-      if (diffH < 0) diffH += 24;
-      return Math.round(diffH) === expectedHours;
-    });
-  }, [shiftTemplates, selectedWorkScheduleType]);
+  const filteredShiftTemplates = useMemo(() => shiftTemplates, [shiftTemplates]);
 
   useEffect(() => {
     if(isOpen) {

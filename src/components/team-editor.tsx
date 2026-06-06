@@ -17,6 +17,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import type { Employee, UserRole, AppVisibility } from '@/types';
+import type { ShiftTemplate } from '@/components/shift-editor';
 import { DatePicker } from './ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
@@ -55,6 +56,7 @@ const employeeSchema = z.object({
   gender: z.enum(['Male', 'Female']).optional(),
   employeeClassification: z.enum(['Rank-and-File', 'Confidential', 'Managerial']).optional(),
   workScheduleType: z.enum(['8h-paid', '8h-unpaid', '10h-paid', '10h-unpaid']).optional(),
+  defaultShiftTemplateId: z.string().optional().nullable(),
 }).refine(data => {
     // If it's a new user (no ID), password can be blank (to send activation link)
     if (!data.id) {
@@ -82,9 +84,10 @@ type TeamEditorProps = {
   groups: string[];
   setGroups: React.Dispatch<React.SetStateAction<string[]>>;
   employees: Employee[];
+  shiftTemplates: ShiftTemplate[];
 };
 
-export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordResetMode = false, context = 'manager', groups, setGroups, employees }: TeamEditorProps) {
+export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordResetMode = false, context = 'manager', groups, setGroups, employees, shiftTemplates }: TeamEditorProps) {
     const { toast } = useToast();
     const [positions] = useState(() => [...new Set(employees.map(e => e.position).filter(Boolean))]);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -97,6 +100,21 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   
   const isNewEmployee = !employee?.id;
   const selectedGroup = form.watch("group");
+  const selectedWorkScheduleType = form.watch("workScheduleType");
+
+  // Determine if a shift template matches the selected work schedule type by hours
+  const filteredShiftTemplates = useMemo(() => {
+    if (!selectedWorkScheduleType) return shiftTemplates;
+    const expectedHours = selectedWorkScheduleType.startsWith('10') ? 10 : 8;
+    return shiftTemplates.filter(t => {
+      if (!t.startTime || !t.endTime) return true;
+      const [sh, sm] = t.startTime.split(':').map(Number);
+      const [eh, em] = t.endTime.split(':').map(Number);
+      let diffH = (eh * 60 + em - (sh * 60 + sm)) / 60;
+      if (diffH < 0) diffH += 24;
+      return Math.round(diffH) === expectedHours;
+    });
+  }, [shiftTemplates, selectedWorkScheduleType]);
 
   useEffect(() => {
     if(isOpen) {
@@ -128,6 +146,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
               mobileLoad: true,
             },
             workScheduleType: '8h-paid' as const,
+            defaultShiftTemplateId: null,
         } : {
             ...employee,
             employeeNumber: employee.employeeNumber || '',
@@ -145,6 +164,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
               mobileLoad: employee.visibility?.mobileLoad ?? true,
             },
             workScheduleType: (employee.workScheduleType ?? '8h-paid') as '8h-paid' | '8h-unpaid' | '10h-paid' | '10h-unpaid',
+            defaultShiftTemplateId: employee.defaultShiftTemplateId ?? null,
         };
         form.reset(defaultValues as any);
         setAvatarPreview(employee?.avatar || null);
@@ -482,7 +502,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                     render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Work Schedule Type</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value ?? '8h-paid'}>
+                                        <Select onValueChange={(v) => { field.onChange(v); form.setValue('defaultShiftTemplateId', null); }} value={field.value ?? '8h-paid'}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Select work schedule" />
@@ -495,6 +515,43 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                                 <SelectItem value="10h-unpaid">10-Hour / Unpaid Break</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="defaultShiftTemplateId"
+                                    render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Default Schedule</FormLabel>
+                                        <Select
+                                            onValueChange={(v) => field.onChange(v === 'none' ? null : v)}
+                                            value={field.value ?? 'none'}
+                                        >
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select default shift" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="none">None</SelectItem>
+                                                {filteredShiftTemplates.map(t => (
+                                                    <SelectItem key={t.id} value={t.id}>
+                                                        {t.name} ({t.startTime}–{t.endTime})
+                                                    </SelectItem>
+                                                ))}
+                                                {filteredShiftTemplates.length === 0 && (
+                                                    <SelectItem value="none" disabled>
+                                                        No matching templates for this schedule type
+                                                    </SelectItem>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormDescription className="text-xs">
+                                            Used in the Work Schedule report when the employee is on leave or a holiday.
+                                        </FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                     )}

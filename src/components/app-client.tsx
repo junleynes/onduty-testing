@@ -888,6 +888,7 @@ function AppContent() {
         groups={groups}
         setGroups={setGroups}
         employees={employees}
+        shiftTemplates={shiftTemplates}
     />
     <MemberImporter
         isOpen={isImporterOpen}

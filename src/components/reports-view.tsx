@@ -198,10 +198,16 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     };
     
     const getDefaultShiftTemplate = (employee: Employee): ShiftTemplate | undefined => {
+        // 1. Explicit default set by manager in Edit User
+        if (employee.defaultShiftTemplateId) {
+            const explicit = shiftTemplates.find(t => t.id === employee.defaultShiftTemplateId);
+            if (explicit) return explicit;
+        }
+
+        // 2. Fallback: most frequent actual shift pattern for this employee
         const empShifts = shifts.filter(s => s.employeeId === employee.id && !s.isDayOff && !s.isHolidayOff);
         
         if (empShifts.length > 0) {
-            // Find the most frequent shift pattern used by this employee
             const counts = empShifts.reduce((acc, s) => {
                 const key = `${s.startTime}-${s.endTime}`;
                 acc[key] = (acc[key] || 0) + 1;
@@ -210,17 +216,14 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
             
             const mostFrequentKey = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
             const [start, end] = mostFrequentKey.split('-');
-            
-            // Try to find a template that matches these times
             const matchedTemplate = shiftTemplates.find(t => t.startTime === start && t.endTime === end);
             if (matchedTemplate) return matchedTemplate;
         }
 
-        // Fallback: Use position-based guessing if no shifts found
+        // 3. Last resort: role-based name guess
         const isMgr = employee.role === 'manager' || employee.role === 'admin';
         const preferredName = isMgr ? "manager shift" : "mid shift";
         const preferred = shiftTemplates.find(t => t.name.toLowerCase().includes(preferredName));
-        
         return preferred || shiftTemplates[0];
     };
 

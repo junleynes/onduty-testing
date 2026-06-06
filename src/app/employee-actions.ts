@@ -263,7 +263,9 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
                 lastPromotionDate = @lastPromotionDate,
                 reportsTo = @reportsTo,
                 gender = @gender,
-                employeeClassification = @employeeClassification
+                employeeClassification = @employeeClassification,
+                workScheduleType = @workScheduleType,
+                defaultShiftTemplateId = @defaultShiftTemplateId
             WHERE id = @id
         `);
 
@@ -292,6 +294,8 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             reportsTo: updatedEmployee.reportsTo || null,
             gender: updatedEmployee.gender || null,
             employeeClassification: updatedEmployee.employeeClassification || null,
+            workScheduleType: updatedEmployee.workScheduleType || '8h-paid',
+            defaultShiftTemplateId: updatedEmployee.defaultShiftTemplateId || null,
         });
 
         return { success: true, employee: updatedEmployee };

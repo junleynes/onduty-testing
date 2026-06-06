@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS employees (
     avlAllotted REAL DEFAULT 0,
     avlBeginningBalance REAL DEFAULT 0,
     workScheduleType TEXT DEFAULT '8h-paid',
+    defaultShiftTemplateId TEXT,
     FOREIGN KEY(reportsTo) REFERENCES employees(id) ON DELETE SET NULL,
     FOREIGN KEY("group") REFERENCES groups(name) ON DELETE SET NULL
 );

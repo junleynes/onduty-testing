@@ -47,7 +47,8 @@ export async function getData() {
         SELECT id, employeeNumber, firstName, lastName, middleInitial, email, phone,
                position, role, "group", birthDate, startDate, loadAllocation,
                visibility, lastPromotionDate, reportsTo, gender, employeeClassification,
-               personnelNumber, avlAllotted, avlBeginningBalance, workScheduleType
+               personnelNumber, avlAllotted, avlBeginningBalance, workScheduleType,
+               defaultShiftTemplateId
         FROM employees
     `).all() as any[];
 
@@ -314,11 +315,11 @@ export async function saveAllData({
             INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password,
                 position, role, "group", birthDate, startDate, loadAllocation, visibility, lastPromotionDate,
                 reportsTo, gender, employeeClassification, personnelNumber, avlAllotted, avlBeginningBalance,
-                workScheduleType)
+                workScheduleType, defaultShiftTemplateId)
             VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password,
                 @position, @role, @group, @birthDate, @startDate, @loadAllocation, @visibility, @lastPromotionDate,
                 @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlAllotted, @avlBeginningBalance,
-                @workScheduleType)
+                @workScheduleType, @defaultShiftTemplateId)
             ON CONFLICT(id) DO UPDATE SET
                 employeeNumber=excluded.employeeNumber, firstName=excluded.firstName, lastName=excluded.lastName,
                 middleInitial=excluded.middleInitial, email=excluded.email, phone=excluded.phone,
@@ -329,7 +330,8 @@ export async function saveAllData({
                 employeeClassification=excluded.employeeClassification,
                 personnelNumber=excluded.personnelNumber, avlAllotted=excluded.avlAllotted,
                 avlBeginningBalance=excluded.avlBeginningBalance,
-                workScheduleType=excluded.workScheduleType
+                workScheduleType=excluded.workScheduleType,
+                defaultShiftTemplateId=excluded.defaultShiftTemplateId
                 -- avatar and signature intentionally excluded: preserved from DB, updated by dedicated actions
         `);
         for (const e of employees) {
@@ -348,6 +350,7 @@ export async function saveAllData({
                 personnelNumber: e.personnelNumber || null,
                 avlAllotted: e.avlAllotted || 0, avlBeginningBalance: e.avlBeginningBalance || 0,
                 workScheduleType: e.workScheduleType || '8h-paid',
+                defaultShiftTemplateId: e.defaultShiftTemplateId || null,
             });
         }
 

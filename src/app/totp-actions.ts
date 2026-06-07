@@ -1,9 +1,8 @@
 'use server';
 
-import { authenticator } from 'otplib';
+import { generateSecret, generateURI, generateSync, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { requireAuth, requireAdmin } from '@/lib/auth-guard';
-import { auth } from '@/auth';
 import { getDb } from '@/lib/db';
 
 const APP_NAME = 'OnDuty';
@@ -13,13 +12,13 @@ export async function adminSetupTotp(userId: string): Promise<{ success: boolean
     try {
         await requireAdmin();
         const db = getDb();
-        const user = db.prepare('SELECT id, email, totpEnabled FROM employees WHERE id = ?').get(userId) as any;
+        const user = db.prepare('SELECT id, email FROM employees WHERE id = ?').get(userId) as any;
         if (!user) return { success: false, error: 'User not found.' };
 
-        const secret = authenticator.generateSecret(20);
+        const secret = generateSecret();
         db.prepare('UPDATE employees SET totpSecret = @secret, totpEnabled = 1 WHERE id = @id').run({ secret, id: userId });
 
-        const otpauth = authenticator.keyuri(user.email, APP_NAME, secret);
+        const otpauth = generateURI({ secret, account: user.email, issuer: APP_NAME, type: 'totp' });
         const qrDataUri = await QRCode.toDataURL(otpauth);
 
         return { success: true, secret, qrDataUri, userEmail: user.email };
@@ -74,5 +73,21 @@ export async function getTotpStatus(userId: string): Promise<{ enabled: boolean 
         return { enabled: !!(user?.totpEnabled) };
     } catch {
         return { enabled: false };
+    }
+}
+
+/**
+ * Verify TOTP code at login.
+ * Called inside auth.ts authorize() — imported dynamically to avoid Edge Runtime issues.
+ */
+export async function verifyTotpAtLogin(userId: string, code: string): Promise<boolean> {
+    try {
+        const db = getDb();
+        const user = db.prepare('SELECT totpSecret, totpEnabled FROM employees WHERE id = ?').get(userId) as any;
+        if (!user?.totpEnabled || !user?.totpSecret) return true; // 2FA not enabled — pass through
+        const result = verifySync({ token: code.trim(), secret: user.totpSecret, type: 'totp' });
+        return result.valid === true;
+    } catch {
+        return false;
     }
 }

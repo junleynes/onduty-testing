@@ -16,9 +16,12 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { sendEmail } from '@/app/actions';
-import { Loader2, Mail } from 'lucide-react';
+import { Loader2, Mail, Key } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
+import { Separator } from './ui/separator';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 const smtpSchema = z.object({
   host: z.string().min(1, 'Host is required'),
@@ -48,6 +51,10 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
   const { toast } = useToast();
   const [isSending, startSendTransition] = useTransition();
   const [testEmail, setTestEmail] = useState('');
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('import_api_key') || '';
+    return '';
+  });
   
   const form = useForm<z.infer<typeof smtpSchema>>({
     resolver: zodResolver(smtpSchema),
@@ -246,6 +253,37 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
                 Send Test Email
             </Button>
        </CardFooter>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" />Import API Key</CardTitle>
+        <CardDescription>
+          Set the secret API key required by the <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/import-schedule</code> endpoint for external integrations.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-2">
+          <Label htmlFor="importApiKey">Secret API Key</Label>
+          <Input
+            id="importApiKey"
+            type="text"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="Enter secret token..."
+            className="font-mono"
+          />
+        </div>
+      </CardContent>
+      <CardFooter>
+        <Button onClick={() => {
+          if (!apiKey.trim()) return;
+          localStorage.setItem('import_api_key', apiKey.trim());
+          toast({ title: 'API Key Saved' });
+        }}>
+          <Key className="h-4 w-4 mr-2" />Save API Key
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

@@ -7,7 +7,6 @@ import type { ShiftTemplate, ShiftWithRepeat } from '@/components/shift-editor';
 import { SidebarProvider, Sidebar } from '@/components/ui/sidebar';
 import Header from '@/components/header';
 import SidebarNav from '@/components/sidebar-nav';
-import TotpSetup from '@/components/totp-setup';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/hooks/use-notifications';
 import { isSameDay, getMonth, getDate, getYear, format, differenceInYears, addDays, isBefore, startOfDay, isWithinInterval } from 'date-fns';
@@ -79,8 +78,6 @@ function AppContent() {
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [preferredAvl, setPreferredAvl] = useState<PreferredAvl[]>([]);
   const [avlLocks, setAvlLocks] = useState<Record<string, boolean>>({});
-  const [isTotpSetupOpen, setIsTotpSetupOpen] = useState(false);
-  const [totpEnabled, setTotpEnabled] = useState(false);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -228,16 +225,12 @@ function AppContent() {
           setPreferredAvl(result.data.preferredAvl);
           setAvlLocks(result.data.avlLocks || {});
 
-          // Load current user's 2FA status
+          // Set currentUser from DB employees using session user id
           const sessionId = session?.user?.id;
           const userFromDb = result.data.employees.find(emp => emp.id === sessionId);
           if (userFromDb) {
             setCurrentUser(userFromDb);
             setActiveView(userFromDb.role === 'admin' ? 'admin' : 'dashboard');
-            // Check TOTP status
-            const { getTotpStatus } = await import('@/app/totp-actions');
-            const totpStatus = await getTotpStatus(userFromDb.id);
-            setTotpEnabled(totpStatus.enabled);
           } else {
               // Session valid but employee not in DB — force logout
               await signOut({ callbackUrl: '/login' });
@@ -625,7 +618,7 @@ function AppContent() {
     toast({ title: 'Note Deleted', variant: 'destructive' });
   };
   
-  const handlePurgeData = (dataType: 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups') => {
+  const handlePurgeData = (dataType: 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'shifts') => {
         switch (dataType) {
             case 'users':
                 const adminUser = employees.find(e => e.id === 'emp-admin-01');
@@ -657,6 +650,9 @@ function AppContent() {
                 break;
             case 'groups':
                 setGroups([]);
+                break;
+            case 'shifts':
+                setShifts([]);
                 break;
         }
     };
@@ -867,7 +863,7 @@ function AppContent() {
     <>
     <div className='flex h-screen w-full'>
       <Sidebar>
-        <SidebarNav role={role} permissions={permissions} activeView={activeView} onNavigate={handleNavigate} currentUser={currentUser} onOpenTotpSetup={() => setIsTotpSetupOpen(true)} />
+        <SidebarNav role={role} permissions={permissions} activeView={activeView} onNavigate={handleNavigate} />
       </Sidebar>
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header 
@@ -958,25 +954,6 @@ function AppContent() {
             saveTemplate('offsetTemplate', data).catch(() => {});
         }}
     />
-
-    {/* 2FA Setup Dialog */}
-    {isTotpSetupOpen && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div className="relative w-full max-w-md mx-4">
-          <button
-            onClick={() => setIsTotpSetupOpen(false)}
-            className="absolute -top-3 -right-3 z-10 rounded-full bg-background border shadow p-1 hover:bg-muted"
-            aria-label="Close"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
-          <TotpSetup
-            totpEnabled={totpEnabled}
-            onStatusChange={(enabled) => { setTotpEnabled(enabled); }}
-          />
-        </div>
-      </div>
-    )}
     </>
   );
 }

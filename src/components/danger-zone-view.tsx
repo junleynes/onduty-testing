@@ -10,7 +10,7 @@ import { purgeData } from '@/app/actions';
 import { Loader2, History, Trash2 } from 'lucide-react';
 import { Separator } from './ui/separator';
 
-type PurgeableData = 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups';
+type PurgeableData = 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'shifts';
 
 type DangerZoneViewProps = {
     onPurgeData: (dataType: PurgeableData) => void;
@@ -33,6 +33,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
     };
 
     const purgeItems: { type: PurgeableData; title: string; description: string, buttonText: string, friendlyName: string }[] = [
+        { type: 'shifts', title: 'Clear All Schedule', description: 'This will permanently delete all scheduled shifts for all employees across all dates. Shift templates are not affected.', buttonText: 'Clear Schedule', friendlyName: 'scheduled shifts' },
         { type: 'users', title: 'Delete All Users', description: 'This will permanently delete all users except for the Super Admin, along with their associated shifts, leave, and tasks.', buttonText: 'Delete Users', friendlyName: 'users' },
         { type: 'shiftTemplates', title: 'Delete All Shift Templates', description: 'This will permanently delete all saved shift templates.', buttonText: 'Delete Shift Templates', friendlyName: 'shift templates' },
         { type: 'holidays', title: 'Delete All Holidays', description: 'This will permanently delete all holidays from the schedule.', buttonText: 'Delete Holidays', friendlyName: 'holidays' },

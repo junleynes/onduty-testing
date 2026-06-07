@@ -32,7 +32,7 @@ import {
     Palmtree,
 } from 'lucide-react';
 import { SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarContent, SidebarFooter, SidebarTrigger } from '@/components/ui/sidebar';
-import type { UserRole, RolePermissions } from '@/types';
+import type { Employee, UserRole, RolePermissions } from '@/types';
 import type { NavItem } from '@/app/page';
 
 interface SidebarNavProps {
@@ -40,6 +40,8 @@ interface SidebarNavProps {
   activeView: NavItem;
   onNavigate: (view: NavItem) => void;
   permissions: RolePermissions;
+  currentUser: Employee;
+  onOpenTotpSetup: () => void;
 }
 
 type NavItemConfig = {
@@ -113,8 +115,27 @@ const allNavItems: Record<string, NavGroup[]> = {
 };
 
 
-export default function SidebarNav({ role, activeView, onNavigate, permissions }: SidebarNavProps) {
-    if (role === 'admin') {
+export default function SidebarNav({ role, activeView, onNavigate, permissions, currentUser, onOpenTotpSetup }: SidebarNavProps) {
+
+  const UserFooter = () => (
+    <SidebarFooter className="border-t p-3">
+      <div className="flex items-center gap-2 px-1 py-1">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate">{currentUser.firstName} {currentUser.lastName}</p>
+          <p className="text-xs text-muted-foreground truncate">{currentUser.email}</p>
+        </div>
+        <button
+          onClick={onOpenTotpSetup}
+          title="Two-Factor Authentication"
+          className="p-1.5 rounded-md hover:bg-muted transition-colors shrink-0"
+        >
+          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </div>
+    </SidebarFooter>
+  );
+
+  if (role === 'admin') {
         return (
              <>
                 <SidebarContent>
@@ -139,6 +160,7 @@ export default function SidebarNav({ role, activeView, onNavigate, permissions }
                         </SidebarGroup>
                     </SidebarMenu>
                 </SidebarContent>
+                <UserFooter />
             </>
         );
     }
@@ -180,6 +202,7 @@ export default function SidebarNav({ role, activeView, onNavigate, permissions }
                 ))}
             </SidebarMenu>
         </SidebarContent>
+        <UserFooter />
     </>
   );
 }

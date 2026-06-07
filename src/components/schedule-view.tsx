@@ -390,7 +390,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   
   const renderNotesRow = (days: Date[]) => (
     <div className="contents">
-        <div className="sticky left-0 z-20 p-2 bg-card border-b border-r flex items-center justify-center">
+        <div className="sticky left-0 z-30 p-2 bg-card border-b border-r flex items-center justify-center">
             <p className="font-semibold text-sm">Notes</p>
         </div>
         {days.map(day => {
@@ -435,7 +435,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     
     return (
     <div className="contents" key={employee.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => {}}>
-        <div className="sticky left-0 z-20 py-1 px-2 border-b border-r flex items-center gap-3 min-h-[52px] bg-card group">
+        <div className="sticky left-0 z-30 py-1 px-2 border-b border-r flex items-center gap-3 min-h-[52px] bg-card group">
             <div className="flex items-center gap-3">
                  {employee.id !== 'unassigned' ? (
                     <Avatar className="h-9 w-9">

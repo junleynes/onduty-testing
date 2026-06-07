@@ -1,17 +1,22 @@
 /**
  * auth.ts — NextAuth configuration
- * 
+ *
  * IMPORTANT: This file is imported by middleware which runs in Edge Runtime.
  * It must NOT import anything that uses Node.js APIs (fs, path, better-sqlite3).
  * DB access happens only in the authorize() callback which runs server-side only.
+ *
+ * Rate limiting is handled by src/lib/rate-limit.ts (single shared Map).
  */
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
-// Login attempt tracking — in-memory, server-side only
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
+if (!process.env.NEXTAUTH_SECRET) {
+    throw new Error(
+        'NEXTAUTH_SECRET environment variable is not set. ' +
+        'Generate one with: openssl rand -base64 32'
+    );
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [
@@ -20,27 +25,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             credentials: {
                 email:    { label: 'Email',    type: 'email'    },
                 password: { label: 'Password', type: 'password' },
+                totpCode: { label: '2FA Code', type: 'text'     },
             },
             async authorize(credentials) {
                 const email    = (credentials?.email    as string || '').toLowerCase().trim();
                 const password =  credentials?.password as string || '';
+                const totpCode =  credentials?.totpCode as string || '';
+
                 if (!email || !password) return null;
 
-                // Rate limiting
-                const now = Date.now();
-                const record = loginAttempts.get(email);
-                if (record && record.lockedUntil > now) return null;
+                // Unified rate limiting
+                if (isLocked(email)) return null;
 
                 try {
-                    // Dynamic imports keep Node.js modules out of Edge Runtime bundle
-                    const { getDb }  = await import('@/lib/db');
-                    const bcrypt     = await import('bcryptjs');
+                    const { getDb } = await import('@/lib/db');
+                    const bcrypt    = await import('bcryptjs');
 
                     const db   = getDb();
                     const user = db.prepare('SELECT * FROM employees WHERE email = ?').get(email) as any;
 
-                    if (!user) { trackFailed(email, now); return null; }
+                    if (!user) { trackFailed(email); return null; }
 
+                    // Password check — auto-upgrade plaintext to bcrypt
                     let isMatch = false;
                     if (user.password?.startsWith('$2')) {
                         isMatch = await bcrypt.compare(password, user.password);
@@ -52,8 +58,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         }
                     }
 
-                    if (!isMatch) { trackFailed(email, now); return null; }
-                    loginAttempts.delete(email);
+                    if (!isMatch) { trackFailed(email); return null; }
+
+                    // 2FA check — if enabled, require a valid TOTP code
+                    if (user.totpEnabled && user.totpSecret) {
+                        if (!totpCode) {
+                            throw new Error('TOTP_REQUIRED');
+                        }
+                        const { verifySync } = await import('otplib');
+                        const result = verifySync({ token: totpCode.trim(), secret: user.totpSecret, type: 'totp' });
+                        if (!result.valid) { trackFailed(email); throw new Error('TOTP_INVALID'); }
+                    }
+
+                    clearAttempts(email);
 
                     return {
                         id:             user.id,
@@ -67,7 +84,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         position:       user.position,
                         phone:          user.phone,
                     } as any;
-                } catch { return null; }
+                } catch (err) {
+                    // Re-throw known signals so login-client can handle them
+                    const msg = (err as Error).message;
+                    if (msg === 'TOTP_REQUIRED' || msg === 'TOTP_INVALID') throw err;
+                    return null;
+                }
             },
         }),
     ],
@@ -109,20 +131,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         maxAge:   8 * 60 * 60, // 8 hours
     },
 
-    // trustHost: allows NextAuth to accept requests from any host/IP.
-    // Required when accessing via IP address (e.g. http://10.0.0.161:9988)
-    // or any domain not matching NEXTAUTH_URL exactly.
     trustHost: true,
-
-    secret: process.env.NEXTAUTH_SECRET || 'onduty-fallback-secret-change-in-production',
+    secret: process.env.NEXTAUTH_SECRET,
 });
-
-function trackFailed(email: string, now: number) {
-    const attempts = loginAttempts.get(email) || { count: 0, lockedUntil: 0 };
-    attempts.count += 1;
-    if (attempts.count >= MAX_ATTEMPTS) {
-        attempts.lockedUntil = now + LOCKOUT_MS;
-        attempts.count = 0;
-    }
-    loginAttempts.set(email, attempts);
-}

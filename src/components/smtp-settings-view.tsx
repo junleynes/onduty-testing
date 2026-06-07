@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useState, useTransition } from 'react';
@@ -103,184 +102,186 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
   };
 
   return (
-    <Card>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <CardHeader>
-            <CardTitle>Email Settings</CardTitle>
-            <CardDescription>
-              Configure your SMTP email service for sending notifications and reports.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             <Alert>
-                <Info className="h-4 w-4" />
-                <AlertTitle>Using Resend?</AlertTitle>
-                <AlertDescription>
-                    Select the "Resend" template, enter "resend" as the username, and use your Resend API key as the password.
-                </AlertDescription>
-             </Alert>
+    <>
+      <Card>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <CardHeader>
+              <CardTitle>Email Settings</CardTitle>
+              <CardDescription>
+                Configure your SMTP email service for sending notifications and reports.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+               <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Using Resend?</AlertTitle>
+                  <AlertDescription>
+                      Select the "Resend" template, enter "resend" as the username, and use your Resend API key as the password.
+                  </AlertDescription>
+               </Alert>
 
-             <div className="space-y-2">
-                <Label>Template</Label>
-                 <Select onValueChange={handleTemplateChange}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Select a template..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {smtpTemplates.map(template => (
-                            <SelectItem key={template.name} value={template.name}>
-                                {template.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-             <div className="grid grid-cols-[3fr_1fr] gap-4">
+               <div className="space-y-2">
+                  <Label>Template</Label>
+                   <Select onValueChange={handleTemplateChange}>
+                      <SelectTrigger>
+                          <SelectValue placeholder="Select a template..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                          {smtpTemplates.map(template => (
+                              <SelectItem key={template.name} value={template.name}>
+                                  {template.name}
+                              </SelectItem>
+                          ))}
+                      </SelectContent>
+                  </Select>
+              </div>
+               <div className="grid grid-cols-[3fr_1fr] gap-4">
+                <FormField
+                  control={form.control}
+                  name="host"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SMTP Host</FormLabel>
+                      <FormControl><Input {...field} placeholder="smtp.example.com" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="port"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Port</FormLabel>
+                      <FormControl><Input type="number" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                 <FormField
+                  control={form.control}
+                  name="user"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Username</FormLabel>
+                      <FormControl><Input {...field} placeholder="your_username" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="pass"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password / API Key</FormLabel>
+                      <FormControl><Input type="text" {...field} placeholder="your_password" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+               <div className="grid grid-cols-2 gap-4">
+                 <FormField
+                  control={form.control}
+                  name="fromEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>From Email</FormLabel>
+                      <FormControl><Input type="email" {...field} placeholder="noreply@example.com" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="fromName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>From Name</FormLabel>
+                      <FormControl><Input {...field} placeholder="OnDuty Notifier" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <FormField
                 control={form.control}
-                name="host"
+                name="secure"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>SMTP Host</FormLabel>
-                    <FormControl><Input {...field} placeholder="smtp.example.com" /></FormControl>
-                    <FormMessage />
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                       <FormControl>
+                          <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                          <FormLabel>
+                          Use SSL/TLS
+                          </FormLabel>
+                      </div>
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="port"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Port</FormLabel>
-                    <FormControl><Input type="number" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-               <FormField
-                control={form.control}
-                name="user"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl><Input {...field} placeholder="your_username" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={form.control}
-                name="pass"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password / API Key</FormLabel>
-                    <FormControl><Input type="text" {...field} placeholder="your_password" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-             <div className="grid grid-cols-2 gap-4">
-               <FormField
-                control={form.control}
-                name="fromEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>From Email</FormLabel>
-                    <FormControl><Input type="email" {...field} placeholder="noreply@example.com" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={form.control}
-                name="fromName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>From Name</FormLabel>
-                    <FormControl><Input {...field} placeholder="OnDuty Notifier" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <FormField
-              control={form.control}
-              name="secure"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                     <FormControl>
-                        <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                        <FormLabel>
-                        Use SSL/TLS
-                        </FormLabel>
-                    </div>
-                </FormItem>
-              )}
+            </CardContent>
+            <CardFooter>
+              <Button type="submit">Save Changes</Button>
+            </CardFooter>
+          </form>
+        </Form>
+        <Separator />
+         <CardHeader>
+              <CardTitle>Test Settings</CardTitle>
+              <CardDescription>Send a test email to verify your configuration is working correctly. Uses the settings in the form above.</CardDescription>
+         </CardHeader>
+         <CardContent className="space-y-4">
+              <div className="space-y-2">
+                  <Label htmlFor="testEmail">Recipient Email</Label>
+                  <Input id="testEmail" type="email" placeholder="recipient@example.com" value={testEmail} onChange={e => setTestEmail(e.target.value)} />
+              </div>
+         </CardContent>
+         <CardFooter>
+              <Button variant="outline" onClick={handleSendTestEmail} disabled={isSending}>
+                  {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                  Send Test Email
+              </Button>
+         </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" />Import API Key</CardTitle>
+          <CardDescription>
+            Set the secret API key required by the <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/import-schedule</code> endpoint for external integrations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="importApiKey">Secret API Key</Label>
+            <Input
+              id="importApiKey"
+              type="text"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="Enter secret token..."
+              className="font-mono"
             />
-          </CardContent>
-          <CardFooter>
-            <Button type="submit">Save Changes</Button>
-          </CardFooter>
-        </form>
-      </Form>
-      <Separator />
-       <CardHeader>
-            <CardTitle>Test Settings</CardTitle>
-            <CardDescription>Send a test email to verify your configuration is working correctly. Uses the settings in the form above.</CardDescription>
-       </CardHeader>
-       <CardContent className="space-y-4">
-            <div className="space-y-2">
-                <Label htmlFor="testEmail">Recipient Email</Label>
-                <Input id="testEmail" type="email" placeholder="recipient@example.com" value={testEmail} onChange={e => setTestEmail(e.target.value)} />
-            </div>
-       </CardContent>
-       <CardFooter>
-            <Button variant="outline" onClick={handleSendTestEmail} disabled={isSending}>
-                {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
-                Send Test Email
-            </Button>
-       </CardFooter>
-    </Card>
-
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" />Import API Key</CardTitle>
-        <CardDescription>
-          Set the secret API key required by the <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/import-schedule</code> endpoint for external integrations.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-2">
-          <Label htmlFor="importApiKey">Secret API Key</Label>
-          <Input
-            id="importApiKey"
-            type="text"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="Enter secret token..."
-            className="font-mono"
-          />
-        </div>
-      </CardContent>
-      <CardFooter>
-        <Button onClick={() => {
-          if (!apiKey.trim()) return;
-          localStorage.setItem('import_api_key', apiKey.trim());
-          toast({ title: 'API Key Saved' });
-        }}>
-          <Key className="h-4 w-4 mr-2" />Save API Key
-        </Button>
-      </CardFooter>
-    </Card>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button onClick={() => {
+            if (!apiKey.trim()) return;
+            localStorage.setItem('import_api_key', apiKey.trim());
+            toast({ title: 'API Key Saved' });
+          }}>
+            <Key className="h-4 w-4 mr-2" />Save API Key
+          </Button>
+        </CardFooter>
+      </Card>
+    </>
   );
 }

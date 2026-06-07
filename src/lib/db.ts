@@ -72,6 +72,8 @@ function initializeDatabase() {
     runMigration("ALTER TABLE employees ADD COLUMN avlBeginningBalance REAL DEFAULT 0;", "Added 'avlBeginningBalance' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN workScheduleType TEXT DEFAULT '8h-paid';", "Added 'workScheduleType' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN defaultShiftTemplateId TEXT;", "Added 'defaultShiftTemplateId' to 'employees'");
+    runMigration("ALTER TABLE employees ADD COLUMN totpSecret TEXT;", "Added 'totpSecret' to 'employees'");
+    runMigration("ALTER TABLE employees ADD COLUMN totpEnabled INTEGER NOT NULL DEFAULT 0;", "Added 'totpEnabled' to 'employees'");
 
     // Make password nullable — SQLite cannot ALTER COLUMN, so we recreate the table
     // using the proper pattern: create new with correct definition, copy, drop, rename.

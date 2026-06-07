@@ -226,6 +226,8 @@ export async function getData() {
         processedEmployees.push(adminUser);
     }
 
+    // Strip SMTP password before sending to client — only read server-side when actually sending mail
+    const { pass: _smtpPass, ...safeSmtpSettings } = smtpSettings as any;
     return {
       success: true,
       data: {
@@ -237,7 +239,7 @@ export async function getData() {
         tasks: processedTasks,
         allowances: processedAllowances,
         groups,
-        smtpSettings,
+        smtpSettings: safeSmtpSettings,
         tardyRecords: processedTardyRecords,
         templates: templatesMap,
         shiftTemplates: processedShiftTemplates,

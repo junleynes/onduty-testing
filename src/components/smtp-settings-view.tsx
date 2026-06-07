@@ -19,9 +19,6 @@ import { sendEmail } from '@/app/actions';
 import { Loader2, Mail, Key } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
-import { Separator } from './ui/separator';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
 
 const smtpSchema = z.object({
   host: z.string().min(1, 'Host is required'),

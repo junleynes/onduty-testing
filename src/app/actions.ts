@@ -20,10 +20,7 @@ import {
     ensureUploadDirs,
 } from '@/lib/file-storage';
 
-// Login attempt tracking for rate limiting (in-memory, resets on server restart)
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
 /**
  * pdf-lib's updateFieldAppearances() silently skips multiline text fields (Ff bit 13 = 0x1000).
@@ -104,8 +101,16 @@ export async function sendEmail(
     if (!smtpSettings.fromEmail || !smtpSettings.fromName) {
         return { success: false, error: 'SMTP settings (From Email and From Name) are not configured.' };
     }
-    if (!smtpSettings.host || !smtpSettings.port || !smtpSettings.user || !smtpSettings.pass) {
-        return { success: false, error: 'SMTP connection settings (Host, Port, User, Pass) are not fully configured.' };
+    if (!smtpSettings.host || !smtpSettings.port || !smtpSettings.user) {
+        return { success: false, error: 'SMTP connection settings (Host, Port, User) are not fully configured.' };
+    }
+
+    // Always read SMTP password fresh from DB server-side — never trust client-supplied value
+    const { getDb } = await import('@/lib/db');
+    const dbSmtp = getDb().prepare('SELECT pass FROM smtp_settings WHERE id = 1').get() as any;
+    const smtpPass = dbSmtp?.pass;
+    if (!smtpPass) {
+        return { success: false, error: 'SMTP password is not configured.' };
     }
 
     const isSecure = smtpSettings.port === 465 || smtpSettings.secure;
@@ -116,7 +121,7 @@ export async function sendEmail(
         secure: isSecure,
         auth: {
             user: smtpSettings.user,
-            pass: smtpSettings.pass,
+            pass: smtpPass,
         },
         tls: {
             rejectUnauthorized: true,
@@ -150,12 +155,9 @@ export async function verifyUser(email: string, password: string): Promise<{ suc
     const db = getDb();
     const key = email.toLowerCase().trim();
 
-    // ── Rate limiting ─────────────────────────────────────────────────────────
-    const now = Date.now();
-    const record = loginAttempts.get(key);
-    if (record && record.lockedUntil > now) {
-        const mins = Math.ceil((record.lockedUntil - now) / 60000);
-        return { success: false, error: `Too many failed attempts. Try again in ${mins} minute${mins !== 1 ? 's' : ''}.` };
+    // ── Rate limiting (shared with auth.ts) ───────────────────────────────────
+    if (isLocked(key)) {
+        return { success: false, error: 'Too many failed attempts. Try again in 15 minutes.' };
     }
 
     try {
@@ -166,12 +168,8 @@ export async function verifyUser(email: string, password: string): Promise<{ suc
 
             let isMatch = false;
             if (user.password && user.password.startsWith('$2')) {
-                // Bcrypt hash — compare securely
                 isMatch = await bcrypt.compare(password, user.password);
             } else if (user.password) {
-                // FIX #1: plaintext password in DB — compare then immediately upgrade to bcrypt
-                // This handles accounts created before bcrypt was introduced.
-                // After this login, the account is bcrypt-protected going forward.
                 isMatch = user.password === password;
                 if (isMatch) {
                     const hashed = await bcrypt.hash(password, 12);
@@ -180,23 +178,13 @@ export async function verifyUser(email: string, password: string): Promise<{ suc
             }
 
             if (isMatch) {
-                // Clear failed attempts on success
-                loginAttempts.delete(key);
-                // FIX #2: strip password from returned user object — never send to client
-                const { password: _pw, ...safeUser } = user as any;
+                clearAttempts(key);
+                const { password: _pw, totpSecret: _ts, ...safeUser } = user as any;
                 return { success: true, user: safeUser as Employee };
             }
         }
 
-        // Track failed attempt
-        const attempts = loginAttempts.get(key) || { count: 0, lockedUntil: 0 };
-        attempts.count += 1;
-        if (attempts.count >= MAX_ATTEMPTS) {
-            attempts.lockedUntil = now + LOCKOUT_MS;
-            attempts.count = 0;
-        }
-        loginAttempts.set(key, attempts);
-
+        trackFailed(key);
         return { success: false, error: 'Invalid email or password.' };
 
     } catch (error) {
@@ -947,7 +935,7 @@ export async function deleteLeaveRecipient(id: string): Promise<{ success: boole
 
 export async function getLeaveWithPdf(leaveId: string): Promise<{ success: boolean; pdfDataUri?: string; employeeSignature?: string; managerSignature?: string; error?: string }> {
     try {
-        // Read from disk (file-based storage)
+        await requireAuth();
         const pdfDataUri = readPdf(leaveId) || undefined;
         const employeeSignature = readSignature(`leave_emp_${leaveId}`) || undefined;
         const managerSignature  = readSignature(`leave_mgr_${leaveId}`) || undefined;
@@ -959,6 +947,7 @@ export async function getLeaveWithPdf(leaveId: string): Promise<{ success: boole
 
 export async function getEmployeeBinary(employeeId: string): Promise<{ success: boolean; avatar?: string; signature?: string; error?: string }> {
     try {
+        await requireAuth();
         const avatar    = readAvatar(employeeId)    || undefined;
         const signature = readSignature(employeeId) || undefined;
         return { success: true, avatar, signature };

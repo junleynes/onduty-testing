@@ -59,12 +59,15 @@ A self-hosted workforce scheduling and HR management application for broadcast a
 
 ### Security
 - bcrypt password hashing (auto-upgrades legacy plaintext passwords on first login)
+- **Two-factor authentication (2FA)** — TOTP-based, compatible with Google Authenticator, Authy, and any RFC 6238 app. Per-user opt-in via the sidebar shield icon
 - JWT sessions with 8-hour expiry
-- Rate limiting — 5 failed login attempts triggers 15-minute lockout
-- Per-role server action guards (`requireAdmin`, `requireManager`, `requireAuth`)
+- Unified rate limiting — 5 failed login attempts triggers 15-minute lockout (shared across all login paths)
+- Per-role server action guards (`requireAdmin`, `requireManager`, `requireAuth`) on all mutating and file-reading actions
 - Middleware protection on all routes except public auth pages
+- SMTP password never sent to the browser — read server-side only at send time
 - Security headers — `X-Frame-Options`, `X-Content-Type-Options`, `Content-Security-Policy`
 - Password reset via secure time-limited email tokens
+- `NEXTAUTH_SECRET` required at startup — app refuses to start if not set
 
 ---
 
@@ -76,8 +79,6 @@ A self-hosted workforce scheduling and HR management application for broadcast a
 | npm | 9 or higher (bundled with Node) |
 | Operating System | Linux (Ubuntu 22.04+ recommended), macOS, or Windows |
 | Disk space | ~500 MB (app + dependencies) |
-
-> **Optional:** A Google Gemini API key for AI scheduling features. The app works fully without it.
 
 > **Optional:** An SMTP mail server or service (Gmail, Mailgun, etc.) for email notifications and password resets.
 
@@ -104,9 +105,6 @@ Edit `.env` and fill in your values:
 ```env
 # Required — generate with: openssl rand -base64 32
 NEXTAUTH_SECRET=your-secret-here
-
-# Optional — for AI scheduling features
-GEMINI_API_KEY=your-gemini-api-key
 
 # Optional — set if accessing via a specific domain
 NEXTAUTH_URL=http://localhost:9002

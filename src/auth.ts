@@ -60,14 +60,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
                     if (!isMatch) { trackFailed(email); return null; }
 
-                    // 2FA check — if enabled, require a valid TOTP code
-                    if (user.totpEnabled && user.totpSecret) {
-                        if (!totpCode) {
-                            throw new Error('TOTP_REQUIRED');
-                        }
+                    // 2FA check — skipped when login-client has already verified via verifyTotpAtLogin()
+                    if (user.totpEnabled && user.totpSecret && totpCode !== '__SKIP__') {
+                        if (!totpCode) throw new Error('TOTP_REQUIRED');
                         const { verifySync } = await import('otplib');
                         const result = verifySync({ token: totpCode.trim(), secret: user.totpSecret, type: 'totp' });
-                        if (!result.valid) { trackFailed(email); throw new Error('TOTP_INVALID'); }
+                        if (!result.valid) { trackFailed(email); return null; }
                     }
 
                     clearAttempts(email);

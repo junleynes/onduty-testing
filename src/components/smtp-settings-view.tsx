@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState, useTransition } from 'react';
@@ -18,6 +19,9 @@ import { sendEmail } from '@/app/actions';
 import { Loader2, Mail, Key } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
+import { Separator } from './ui/separator';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 const smtpSchema = z.object({
   host: z.string().min(1, 'Host is required'),
@@ -102,7 +106,6 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
   };
 
   return (
-    <>
     <Card>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -282,6 +285,5 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
         </Button>
       </CardFooter>
     </Card>
-    </>
   );
 }

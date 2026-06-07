@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useTransition, useEffect } from 'react';
@@ -355,3 +356,36 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
     </>
   );
 }
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import type { Employee, SmtpSettings, UserRole } from '@/types';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Button } from './ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu';
+import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download, Key } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Checkbox } from './ui/checkbox';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+import { sendActivationLink } from '@/app/actions';
+import Papa from 'papaparse';
+import { saveAs } from 'file-saver';
+import { format } from 'date-fns';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Label } from './ui/label';
+import { Input } from './ui/input';
+
+type AdminPanelProps = {
+  users: Employee[];
+  setUsers: React.Dispatch<React.SetStateAction<Employee[]>>;
+  groups: string[];
+  onAddMember: () => void;
+  onEditMember: (employee: Employee, isPasswordReset?: boolean) => void;
+  onDeleteMember: (employeeId: string) => void;
+  onBatchDelete: (employeeIds: string[]) => void;
+  onImportMembers: () => void;
+  onManageGroups: () => void;
+  smtpSettings: SmtpSettings;
+};

@@ -263,7 +263,7 @@ export async function resetToFactorySettings(): Promise<{ success: boolean; erro
 }
 
 
-export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'leave'): Promise<{ success: boolean; error?: string }> {
+export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'leave' | 'shifts'): Promise<{ success: boolean; error?: string }> {
     try { await requireAdmin(); } catch (e) { return { success: false, error: (e as Error).message }; }
     const db = getDb();
     try {
@@ -292,6 +292,9 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
                 break;
             case 'leave':
                 db.prepare('DELETE FROM leave').run();
+                break;
+            case 'shifts':
+                db.prepare('DELETE FROM shifts').run();
                 break;
             case 'groups':
                 db.prepare("UPDATE employees SET 'group' = NULL").run();

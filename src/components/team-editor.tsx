@@ -18,6 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Input } from '@/components/ui/input';
 import type { Employee, UserRole, AppVisibility } from '@/types';
 import type { ShiftTemplate } from '@/components/shift-editor';
+import { validatePassword, passwordStrength, PASSWORD_RULES } from '@/lib/password-rules';
 import { DatePicker } from './ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
@@ -186,27 +187,25 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   };
 
   const [isSaving, setIsSaving] = useState(false);
-  const [pwValue, setPwValue] = useState('');
-  const [pwError, setPwError] = useState('');
+  const [pwValue, setPwValue]       = useState('');
+  const [pwConfirm, setPwConfirm]   = useState('');
+  const [pwError, setPwError]       = useState('');
 
   // Handle password reset separately — bypasses full schema validation which
   // requires firstName/lastName/email that may be missing from currentUser state
   const handlePasswordReset = async () => {
     setPwError('');
-    if (!pwValue || pwValue.length < 6) {
-        setPwError('Password must be at least 6 characters.');
-        return;
-    }
-    if (!employee?.id) {
-        setPwError('Employee ID is missing.');
-        return;
-    }
+    const { valid, errors } = validatePassword(pwValue);
+    if (!valid) { setPwError(errors[0]); return; }
+    if (pwValue !== pwConfirm) { setPwError('Passwords do not match.'); return; }
+    if (!employee?.id) { setPwError('Employee ID is missing.'); return; }
     setIsSaving(true);
     try {
         const { updatePassword } = await import('@/app/employee-actions');
         const result = await updatePassword(employee.id, pwValue);
         if (result.success) {
             setPwValue('');
+            setPwConfirm('');
             setIsOpen(false);
             toast({ title: 'Password Updated', description: 'The password has been changed successfully.' });
         } else {
@@ -263,14 +262,47 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                             type="password"
                             value={pwValue}
                             onChange={e => { setPwValue(e.target.value); setPwError(''); }}
-                            placeholder="Enter new password (min 6 characters)"
+                            placeholder="New password"
                             disabled={isSaving}
                         />
-                        {pwError && <p className="text-sm text-destructive">{pwError}</p>}
                     </div>
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium">Confirm Password</label>
+                        <Input
+                            type="password"
+                            value={pwConfirm}
+                            onChange={e => { setPwConfirm(e.target.value); setPwError(''); }}
+                            placeholder="Confirm new password"
+                            disabled={isSaving}
+                        />
+                    </div>
+                    {/* Strength indicator */}
+                    {pwValue && (
+                        <div className="space-y-1.5">
+                            <div className="flex gap-1">
+                                {(['weak','fair','strong'] as const).map(level => {
+                                    const s = passwordStrength(pwValue);
+                                    const active = level === 'weak' ? true : level === 'fair' ? s !== 'weak' : s === 'strong';
+                                    const color = s === 'weak' ? 'bg-red-500' : s === 'fair' ? 'bg-amber-500' : 'bg-green-500';
+                                    return <div key={level} className={`h-1.5 flex-1 rounded-full ${active ? color : 'bg-muted'}`} />;
+                                })}
+                            </div>
+                            <ul className="space-y-0.5">
+                                {PASSWORD_RULES.map(rule => (
+                                    <li key={rule.message} className={`text-xs flex items-center gap-1.5 ${rule.test(pwValue) ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                        <span>{rule.test(pwValue) ? '✓' : '○'}</span>{rule.message}
+                                    </li>
+                                ))}
+                                <li className={`text-xs flex items-center gap-1.5 ${pwConfirm && pwValue === pwConfirm ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                    <span>{pwConfirm && pwValue === pwConfirm ? '✓' : '○'}</span>Passwords match
+                                </li>
+                            </ul>
+                        </div>
+                    )}
+                    {pwError && <p className="text-sm text-destructive">{pwError}</p>}
                     <DialogFooter className="pt-2">
                         <Button type="button" variant="ghost" onClick={() => setIsOpen(false)} disabled={isSaving}>Cancel</Button>
-                        <Button type="button" onClick={handlePasswordReset} disabled={isSaving || !pwValue}>
+                        <Button type="button" onClick={handlePasswordReset} disabled={isSaving || !pwValue || !pwConfirm}>
                             {isSaving ? 'Saving...' : 'Update Password'}
                         </Button>
                     </DialogFooter>

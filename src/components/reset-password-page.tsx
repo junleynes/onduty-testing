@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { LayoutGrid, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { verifyPasswordResetToken, resetPasswordWithToken } from '@/app/actions';
 import Link from 'next/link';
+import { validatePassword, passwordStrength, PASSWORD_RULES } from '@/lib/password-rules';
 
 function ResetPasswordContent() {
     const router = useRouter();
@@ -52,8 +53,9 @@ function ResetPasswordContent() {
             toast({ variant: 'destructive', title: 'Passwords do not match.' });
             return;
         }
-        if (password.length < 6) {
-            toast({ variant: 'destructive', title: 'Password must be at least 6 characters long.' });
+        const { valid, errors } = validatePassword(password);
+        if (!valid) {
+            toast({ variant: 'destructive', title: 'Password too weak', description: errors[0] });
             return;
         }
 
@@ -115,6 +117,25 @@ function ResetPasswordContent() {
                             onChange={(e) => setPassword(e.target.value)}
                         />
                     </div>
+                    {password && (
+                        <div className="space-y-1.5">
+                            <div className="flex gap-1">
+                                {(['weak','fair','strong'] as const).map(level => {
+                                    const s = passwordStrength(password);
+                                    const active = level === 'weak' ? true : level === 'fair' ? s !== 'weak' : s === 'strong';
+                                    const color = s === 'weak' ? 'bg-red-500' : s === 'fair' ? 'bg-amber-500' : 'bg-green-500';
+                                    return <div key={level} className={`h-1.5 flex-1 rounded-full ${active ? color : 'bg-muted'}`} />;
+                                })}
+                            </div>
+                            <ul className="space-y-0.5">
+                                {PASSWORD_RULES.map(rule => (
+                                    <li key={rule.message} className={`text-xs flex items-center gap-1.5 ${rule.test(password) ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                        <span>{rule.test(password) ? '✓' : '○'}</span>{rule.message}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                      <div className="grid gap-2">
                         <Label htmlFor="confirmPassword">Confirm New Password</Label>
                         <Input
@@ -124,6 +145,11 @@ function ResetPasswordContent() {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                         />
+                        {confirmPassword && (
+                            <p className={`text-xs ${password === confirmPassword ? 'text-green-600' : 'text-destructive'}`}>
+                                {password === confirmPassword ? '✓ Passwords match' : '○ Passwords do not match'}
+                            </p>
+                        )}
                     </div>
                 </CardContent>
                 <CardFooter>

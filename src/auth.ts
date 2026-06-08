@@ -25,12 +25,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             credentials: {
                 email:    { label: 'Email',    type: 'email'    },
                 password: { label: 'Password', type: 'password' },
-                totpCode: { label: '2FA Code', type: 'text'     },
             },
             async authorize(credentials) {
                 const email    = (credentials?.email    as string || '').toLowerCase().trim();
                 const password =  credentials?.password as string || '';
-                const totpCode =  credentials?.totpCode as string || '';
 
                 if (!email || !password) return null;
 
@@ -60,14 +58,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
                     if (!isMatch) { trackFailed(email); return null; }
 
-                    // 2FA check — skipped when login-client has already verified via verifyTotpAtLogin()
-                    if (user.totpEnabled && user.totpSecret && totpCode !== '__SKIP__') {
-                        if (!totpCode) throw new Error('TOTP_REQUIRED');
-                        const { verifySync } = await import('otplib');
-                        const result = verifySync({ token: totpCode.trim(), secret: user.totpSecret, type: 'totp' });
-                        if (!result.valid) { trackFailed(email); return null; }
-                    }
-
                     clearAttempts(email);
 
                     return {
@@ -83,9 +73,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         phone:          user.phone,
                     } as any;
                 } catch (err) {
-                    // Re-throw known signals so login-client can handle them
-                    const msg = (err as Error).message;
-                    if (msg === 'TOTP_REQUIRED' || msg === 'TOTP_INVALID') throw err;
                     return null;
                 }
             },

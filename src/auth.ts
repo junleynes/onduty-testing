@@ -9,7 +9,6 @@
  */
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
 if (!process.env.NEXTAUTH_SECRET) {
     throw new Error(
@@ -32,12 +31,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
                 if (!email || !password) return null;
 
-                // Unified rate limiting
-                if (isLocked(email)) return null;
-
                 try {
-                    const { getDb } = await import('@/lib/db');
-                    const bcrypt    = await import('bcryptjs');
+                    // All Node.js-dependent imports are dynamic so they never
+                    // get bundled into the Edge Runtime middleware
+                    const { getDb }                         = await import('@/lib/db');
+                    const bcrypt                            = await import('bcryptjs');
+                    const { isLocked, trackFailed, clearAttempts } = await import('@/lib/rate-limit');
+
+                    if (isLocked(email)) return null;
 
                     const db   = getDb();
                     const user = db.prepare('SELECT * FROM employees WHERE email = ?').get(email) as any;
@@ -72,7 +73,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         position:       user.position,
                         phone:          user.phone,
                     } as any;
-                } catch (err) {
+                } catch {
                     return null;
                 }
             },

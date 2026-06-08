@@ -155,9 +155,9 @@ export async function verifyUser(email: string, password: string): Promise<{ suc
     const db = getDb();
     const key = email.toLowerCase().trim();
 
-    // ── Rate limiting (shared with auth.ts) ───────────────────────────────────
+    // ── Rate limiting (DB-backed, persists across restarts) ──────────────────
     if (isLocked(key)) {
-        return { success: false, error: 'Too many failed attempts. Try again in 15 minutes.' };
+        return { success: false, error: 'Too many failed attempts. Account is locked for 15 minutes.' };
     }
 
     try {
@@ -801,6 +801,10 @@ export async function verifyPasswordResetToken(token: string): Promise<{ success
 export async function resetPasswordWithToken(token: string, newPassword: string):Promise<{ success: boolean; error?: string }> {
     const db = getDb();
     try {
+        const { validatePassword } = await import('@/lib/password-rules');
+        const { valid, errors } = validatePassword(newPassword);
+        if (!valid) return { success: false, error: errors[0] };
+
         const tokenRecord = db.prepare('SELECT * FROM password_reset_tokens WHERE token = ?').get(token) as { employeeId: string, expiresAt: string } | undefined;
         
         if (!tokenRecord || new Date(tokenRecord.expiresAt) < new Date()) {

@@ -170,7 +170,9 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
 export async function updatePassword(employeeId: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
     try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     if (!employeeId) return { success: false, error: 'Employee ID is required.' };
-    if (!newPassword || newPassword.trim().length < 6) return { success: false, error: 'Password must be at least 6 characters.' };
+    const { validatePassword } = await import('@/lib/password-rules');
+    const { valid, errors } = validatePassword(newPassword);
+    if (!valid) return { success: false, error: errors[0] };
 
     const db = getDb();
     try {

@@ -222,8 +222,6 @@ WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'emp-admin-01');
 
 -- Default groups
 INSERT INTO groups (name) VALUES ('Administration') ON CONFLICT(name) DO NOTHING;
-INSERT INTO groups (name) VALUES ('Management')     ON CONFLICT(name) DO NOTHING;
-INSERT INTO groups (name) VALUES ('Operations')     ON CONFLICT(name) DO NOTHING;
 
 -- Default permissions
 INSERT INTO permissions (role, allowed_views) VALUES

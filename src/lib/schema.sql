@@ -215,7 +215,13 @@ CREATE INDEX IF NOT EXISTS idx_tardy_date         ON tardy_records(date);
 CREATE INDEX IF NOT EXISTS idx_allowance_emp_ym   ON communication_allowances(employeeId, year, month);
 CREATE INDEX IF NOT EXISTS idx_preferred_avl_emp  ON preferred_avl(employeeId, year, month);
 
--- Default groups (must come before admin employee insert due to FK constraint)
+CREATE TABLE IF NOT EXISTS login_attempts (
+    email       TEXT PRIMARY KEY,
+    count       INTEGER NOT NULL DEFAULT 0,
+    locked_until INTEGER NOT NULL DEFAULT 0
+);
+
+
 INSERT INTO groups (name) VALUES ('Administration') ON CONFLICT(name) DO NOTHING;
 
 -- Default admin user (password: P@ssw0rd — change immediately after first login)

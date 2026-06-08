@@ -18,8 +18,8 @@ export async function adminSetupTotp(userId: string): Promise<{ success: boolean
         const secret = generateSecret();
         db.prepare('UPDATE employees SET totpSecret = @secret, totpEnabled = 1 WHERE id = @id').run({ secret, id: userId });
 
-        const account = user.email || userId;
-        const otpauth = generateURI({ secret, account, issuer: APP_NAME, type: 'totp' });
+        const label = user.email || userId;
+        const otpauth = generateURI({ secret, label, issuer: APP_NAME, type: 'totp' });
         const qrDataUri = await QRCode.toDataURL(otpauth);
 
         return { success: true, secret, qrDataUri, userEmail: user.email };

@@ -115,6 +115,17 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             signature: signaturePath,
         };
 
+        // Auto-create the group if it doesn't exist (prevents FK constraint failure)
+        if (newEmployee.group) {
+            db.prepare(`INSERT INTO groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`).run(newEmployee.group);
+        }
+
+        // Validate reportsTo references a real employee — clear if not found
+        if (newEmployee.reportsTo) {
+            const refExists = db.prepare('SELECT id FROM employees WHERE id = ?').get(newEmployee.reportsTo);
+            if (!refExists) newEmployee.reportsTo = undefined;
+        }
+
         const stmt = db.prepare(`
             INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, avlAllotted, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber, avlBeginningBalance)
             VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @avlAllotted, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlBeginningBalance)
@@ -239,6 +250,11 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             updatedEmployee.signature = saveSignature(data.id!, data.signature);
         } else if (!data.signature) {
             updatedEmployee.signature = existingEmployee.signature;
+        }
+
+        // Auto-create group if it doesn't exist (prevents FK constraint failure)
+        if (updatedEmployee.group) {
+            db.prepare(`INSERT INTO groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`).run(updatedEmployee.group);
         }
 
         const stmt = db.prepare(`

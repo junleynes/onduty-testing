@@ -1,6 +1,6 @@
 'use server';
 
-import { generateSecret, generateURI, generateSync, verifySync } from 'otplib';
+import { generateSecret, generateURI, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { requireAuth, requireAdmin } from '@/lib/auth-guard';
 import { getDb } from '@/lib/db';
@@ -12,13 +12,14 @@ export async function adminSetupTotp(userId: string): Promise<{ success: boolean
     try {
         await requireAdmin();
         const db = getDb();
-        const user = db.prepare('SELECT id, email FROM employees WHERE id = ?').get(userId) as any;
+        const user = db.prepare('SELECT id, email FROM employees WHERE id = ?').get(userId) as { id: string; email: string } | undefined;
         if (!user) return { success: false, error: 'User not found.' };
 
         const secret = generateSecret();
         db.prepare('UPDATE employees SET totpSecret = @secret, totpEnabled = 1 WHERE id = @id').run({ secret, id: userId });
 
-        const otpauth = generateURI({ secret, account: user.email, issuer: APP_NAME, type: 'totp' });
+        const account = user.email || userId;
+        const otpauth = generateURI({ secret, account, issuer: APP_NAME, type: 'totp' });
         const qrDataUri = await QRCode.toDataURL(otpauth);
 
         return { success: true, secret, qrDataUri, userEmail: user.email };

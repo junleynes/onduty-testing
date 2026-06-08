@@ -218,9 +218,10 @@ CREATE INDEX IF NOT EXISTS idx_preferred_avl_emp  ON preferred_avl(employeeId, y
 -- Default groups (must come before admin employee insert due to FK constraint)
 INSERT INTO groups (name) VALUES ('Administration') ON CONFLICT(name) DO NOTHING;
 
--- Default admin user
-INSERT INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group")
-SELECT 'emp-admin-01', '001', 'Super', 'Admin', 'admin@onduty.local', '123-456-7890', 'System Administrator', 'admin', 'Administration'
+-- Default admin user (password: P@ssw0rd — change immediately after first login)
+INSERT INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group", password)
+SELECT 'emp-admin-01', '001', 'Super', 'Admin', 'admin@onduty.local', '123-456-7890', 'System Administrator', 'admin', 'Administration',
+       '$2a$12$LslfVzV/1fffhZ7opQaA7O2M5MoHtrNkbtMaj2SuwhiCjl7UrpVvS'
 WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'emp-admin-01');
 
 -- Default permissions

@@ -40,8 +40,13 @@ function initializeDatabase() {
     if (fs.existsSync(schemaPath)) {
         try {
             const schema = fs.readFileSync(schemaPath, 'utf8');
+            // Temporarily disable FK constraints during schema init so seed
+            // insert order doesn't matter (groups must exist before employees FK fires)
+            db.pragma('foreign_keys = OFF');
             db.exec(schema);
+            db.pragma('foreign_keys = ON');
         } catch(e: any) {
+            db.pragma('foreign_keys = ON'); // always re-enable
             if (e.code === 'SQLITE_READONLY') {
                 console.error('CRITICAL: Database is read-only. Ensure the app has write permissions to local.db and its parent directory.');
             }

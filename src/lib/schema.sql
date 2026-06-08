@@ -215,13 +215,13 @@ CREATE INDEX IF NOT EXISTS idx_tardy_date         ON tardy_records(date);
 CREATE INDEX IF NOT EXISTS idx_allowance_emp_ym   ON communication_allowances(employeeId, year, month);
 CREATE INDEX IF NOT EXISTS idx_preferred_avl_emp  ON preferred_avl(employeeId, year, month);
 
+-- Default groups (must come before admin employee insert due to FK constraint)
+INSERT INTO groups (name) VALUES ('Administration') ON CONFLICT(name) DO NOTHING;
+
 -- Default admin user
 INSERT INTO employees (id, employeeNumber, firstName, lastName, email, phone, position, role, "group")
 SELECT 'emp-admin-01', '001', 'Super', 'Admin', 'admin@onduty.local', '123-456-7890', 'System Administrator', 'admin', 'Administration'
 WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'emp-admin-01');
-
--- Default groups
-INSERT INTO groups (name) VALUES ('Administration') ON CONFLICT(name) DO NOTHING;
 
 -- Default permissions
 INSERT INTO permissions (role, allowed_views) VALUES

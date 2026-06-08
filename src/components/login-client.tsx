@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { LayoutGrid, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { verifyUser } from '@/app/actions';
+import { getTotpStatus } from '@/app/totp-actions';
 
 type Step = 'credentials' | 'totp';
 
@@ -17,51 +19,76 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [step, setStep]         = useState<Step>('credentials');
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [totpCode, setTotpCode] = useState('');
+  const [step, setStep]           = useState<Step>('credentials');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [totpCode, setTotpCode]   = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Store verified userId between steps so we don't re-verify password on step 2
+  const [verifiedUserId, setVerifiedUserId] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // ── Step 1: verify credentials via server action ──────────────────────────
+  const handleCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    const result = await signIn('credentials', {
-      email: email.toLowerCase().trim(),
-      password,
-      totpCode: step === 'totp' ? totpCode.trim() : '',
-      redirect: false,
-    });
-
+    const result = await verifyUser(email.toLowerCase().trim(), password);
     setIsLoading(false);
 
-    if (result?.ok && !result?.error) {
-      toast({ title: 'Login Successful', description: 'Welcome back!' });
-      router.push('/');
-      router.refresh();
+    if (!result.success || !result.user) {
+      toast({ variant: 'destructive', title: 'Login Failed', description: result.error || 'Invalid email or password.' });
       return;
     }
 
-    const errCode = result?.error ?? '';
-
-    if (errCode.includes('TOTP_REQUIRED')) {
-      // Password was correct — now need the authenticator code
+    // Check if this user has 2FA enabled
+    const totpStatus = await getTotpStatus(result.user.id);
+    if (totpStatus.enabled) {
+      setVerifiedUserId(result.user.id);
       setStep('totp');
       setTotpCode('');
       return;
     }
 
-    if (errCode.includes('TOTP_INVALID')) {
+    // No 2FA — sign in directly
+    await completeSignIn();
+  };
+
+  // ── Step 2: verify TOTP then sign in ──────────────────────────────────────
+  const handleTotp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifiedUserId || totpCode.length !== 6) return;
+    setIsLoading(true);
+
+    // Import server action dynamically to verify TOTP
+    const { verifyTotpAtLogin } = await import('@/app/totp-actions');
+    const valid = await verifyTotpAtLogin(verifiedUserId, totpCode.trim());
+    setIsLoading(false);
+
+    if (!valid) {
       toast({ variant: 'destructive', title: '2FA Failed', description: 'Invalid authenticator code. Please try again.' });
       setTotpCode('');
       return;
     }
 
-    const msg = errCode.includes('TOO_MANY_ATTEMPTS')
-      ? 'Too many failed attempts. Please try again in 15 minutes.'
-      : 'Invalid email or password.';
-    toast({ variant: 'destructive', title: 'Login Failed', description: msg });
+    await completeSignIn();
+  };
+
+  // ── Final sign-in (after all checks pass) ─────────────────────────────────
+  const completeSignIn = async () => {
+    setIsLoading(true);
+    const result = await signIn('credentials', {
+      email: email.toLowerCase().trim(),
+      password,
+      redirect: false,
+    });
+    setIsLoading(false);
+
+    if (result?.ok) {
+      router.push('/');
+      router.refresh();
+    } else {
+      toast({ variant: 'destructive', title: 'Login Failed', description: 'Something went wrong. Please try again.' });
+    }
   };
 
   return (
@@ -90,7 +117,7 @@ export default function LoginPage() {
           )}
         </CardHeader>
 
-        <form onSubmit={handleLogin}>
+        <form onSubmit={step === 'credentials' ? handleCredentials : handleTotp}>
           <CardContent className="grid gap-4">
             {step === 'credentials' ? (
               <>
@@ -126,14 +153,14 @@ export default function LoginPage() {
           </CardContent>
 
           <CardFooter className="flex flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || (step === 'totp' && totpCode.length !== 6)}>
               {isLoading
                 ? (step === 'totp' ? 'Verifying...' : 'Signing in...')
                 : (step === 'totp' ? 'Verify Code' : 'Sign in')}
             </Button>
             {step === 'totp' && (
               <Button type="button" variant="ghost" className="w-full text-sm"
-                onClick={() => { setStep('credentials'); setTotpCode(''); }}>
+                onClick={() => { setStep('credentials'); setTotpCode(''); setVerifiedUserId(null); }}>
                 ← Back to login
               </Button>
             )}

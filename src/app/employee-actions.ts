@@ -40,6 +40,7 @@ const employeeSchema = z.object({
   employeeClassification: z.enum(['Rank-and-File', 'Confidential', 'Managerial']).optional().nullable(),
   workScheduleType: z.enum(['8h-paid', '8h-unpaid', '10h-paid', '10h-unpaid']).optional().nullable(),
   defaultShiftTemplateId: z.string().optional().nullable(),
+  department: z.string().optional().nullable(),
 }).refine(data => {
     if (!data.id) return true;
     if (data.password && data.password.length > 0) {
@@ -127,8 +128,8 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
         }
 
         const stmt = db.prepare(`
-            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, avlAllotted, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber, avlBeginningBalance)
-            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @avlAllotted, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlBeginningBalance)
+            INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password, position, role, "group", avatar, loadAllocation, avlAllotted, birthDate, startDate, signature, visibility, lastPromotionDate, reportsTo, gender, employeeClassification, personnelNumber, avlBeginningBalance, department)
+            VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password, @position, @role, @group, @avatar, @loadAllocation, @avlAllotted, @birthDate, @startDate, @signature, @visibility, @lastPromotionDate, @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlBeginningBalance, @department)
         `);
 
         stmt.run({
@@ -156,6 +157,7 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
             reportsTo: newEmployee.reportsTo || null,
             gender: newEmployee.gender || null,
             employeeClassification: newEmployee.employeeClassification || null,
+            department: newEmployee.department || null,
         });
 
         // Return employee with actual binary data for immediate UI use
@@ -285,7 +287,8 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
                 gender = @gender,
                 employeeClassification = @employeeClassification,
                 workScheduleType = @workScheduleType,
-                defaultShiftTemplateId = @defaultShiftTemplateId
+                defaultShiftTemplateId = @defaultShiftTemplateId,
+                department = @department
             WHERE id = @id
         `);
 
@@ -316,6 +319,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             employeeClassification: updatedEmployee.employeeClassification || null,
             workScheduleType: updatedEmployee.workScheduleType || '8h-paid',
             defaultShiftTemplateId: updatedEmployee.defaultShiftTemplateId || null,
+            department: updatedEmployee.department || null,
         });
 
         return { success: true, employee: updatedEmployee };

@@ -505,7 +505,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // ── Text fields (exact names from ALAF_Template_Image_Sig.pdf) ────────────
         trySet('employee_name', getFullName(employee));
         trySet('employee_id',   leaveRequest.idNumber || employee.employeeNumber || '');
-        trySet('department',    leaveRequest.department || employee.group || '');
+        trySet('department',    leaveRequest.department || employee.department || employee.group || '');
         trySet('contact_info',  leaveRequest.contactInfo || employee.phone || '');
         trySet('date_filed',    formatComponentDate(leaveRequest.dateFiled || new Date()));
         trySet('leave_dates',   datesDisplay);
@@ -551,7 +551,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         fixFieldAppearance(pdfDoc, form, 'date_filed',    formatComponentDate(leaveRequest.dateFiled || new Date()));
         fixFieldAppearance(pdfDoc, form, 'leave_dates',   datesDisplay);
         fixFieldAppearance(pdfDoc, form, 'total_days',    leaveTotalDays);
-        fixFieldAppearance(pdfDoc, form, 'department',    leaveRequest.department || employee.group || '');
+        fixFieldAppearance(pdfDoc, form, 'department',    leaveRequest.department || employee.department || employee.group || '');
         fixFieldAppearance(pdfDoc, form, 'contact_info',  leaveRequest.contactInfo || employee.phone || '');
         fixFieldAppearance(pdfDoc, form, 'employee_id',   leaveRequest.idNumber || employee.employeeNumber || '');
         fixFieldAppearance(pdfDoc, form, 'approval_date', formatComponentDate(leaveRequest.managedAt));
@@ -635,7 +635,7 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
         // ── ALAF section — offset data only ──────────────────────────────────────
         trySet('employee_name',  getFullName(employee));
         trySet('employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
-        trySet('department',     leaveRequest.department || employee?.group || '');
+        trySet('department',     leaveRequest.department || employee?.department || employee?.group || '');
         trySet('contact_info',   leaveRequest.contactInfo || employee?.phone || '');
         trySet('date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
         trySet('leave_dates',    formatComponentDate(leaveRequest.startDate));
@@ -652,7 +652,7 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
         // ── WE section — WE record data only ─────────────────────────────────────
         if (weRequest) {
             trySet('we_employee_name', getFullName(employee));
-            trySet('we_department',    weRequest.department || employee?.group || '');
+            trySet('we_department',    weRequest.department || employee?.department || employee?.group || '');
             trySet('we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
             trySet('extended_date',    formatComponentDate(weRequest.startDate));
             trySet('we_shiftfrom',     weRequest.originalStartTime || '');
@@ -668,7 +668,7 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
         form.updateFieldAppearances();
         fixFieldAppearance(pdfDoc, form, 'employee_name',  getFullName(employee));
         fixFieldAppearance(pdfDoc, form, 'employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
-        fixFieldAppearance(pdfDoc, form, 'department',     leaveRequest.department || employee?.group || '');
+        fixFieldAppearance(pdfDoc, form, 'department',     leaveRequest.department || employee?.department || employee?.group || '');
         fixFieldAppearance(pdfDoc, form, 'contact_info',   leaveRequest.contactInfo || employee?.phone || '');
         fixFieldAppearance(pdfDoc, form, 'date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
         fixFieldAppearance(pdfDoc, form, 'leave_dates',    formatComponentDate(leaveRequest.startDate));
@@ -678,7 +678,7 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
         fixFieldAppearance(pdfDoc, form, 'approval_date',  formatComponentDate(leaveRequest.managedAt));
         if (weRequest) {
             fixFieldAppearance(pdfDoc, form, 'we_employee_name', getFullName(employee));
-            fixFieldAppearance(pdfDoc, form, 'we_department',    weRequest.department || employee?.group || '');
+            fixFieldAppearance(pdfDoc, form, 'we_department',    weRequest.department || employee?.department || employee?.group || '');
             fixFieldAppearance(pdfDoc, form, 'we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
             fixFieldAppearance(pdfDoc, form, 'extended_date',    formatComponentDate(weRequest.startDate));
             fixFieldAppearance(pdfDoc, form, 'we_shiftfrom',     weRequest.originalStartTime || '');

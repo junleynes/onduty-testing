@@ -457,7 +457,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         let templateBase64 = readTemplate('alafTemplate');
         if (!templateBase64) {
             const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'alafTemplate'").get() as { value: string } | undefined;
-            if (!templateData?.value || templateData.value.startsWith('file:')) return { success: false, error: "ALAF template not found. Please upload it in Settings." };
+            if (!templateData?.value) return { success: false, error: "ALAF template not found. Please re-upload it in Settings → Report Templates." };
+            if (templateData.value.startsWith('file:')) return { success: false, error: "ALAF template file is missing from disk. Please re-upload it in Settings → Report Templates. (The file was previously uploaded but is no longer on disk — this can happen after a server migration or deploy.)" };
             templateBase64 = templateData.value;
         }
 
@@ -579,7 +580,8 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
         let templateBase64 = readTemplate('offsetTemplate');
         if (!templateBase64) {
             const templateData = db.prepare("SELECT value FROM key_value_store WHERE key = 'offsetTemplate'").get() as { value: string } | undefined;
-            if (!templateData?.value || templateData.value.startsWith('file:')) return { success: false, error: "Offset template not found. Please upload it in Settings." };
+            if (!templateData?.value) return { success: false, error: "Offset template not found. Please re-upload it in Settings → Report Templates." };
+            if (templateData.value.startsWith('file:')) return { success: false, error: "Offset template file is missing from disk. Please re-upload it in Settings → Report Templates. (The file was previously uploaded but is no longer on disk — this can happen after a server migration or deploy.)" };
             templateBase64 = templateData.value;
         }
 
@@ -873,7 +875,7 @@ export async function saveAllowanceScreenshot(allowanceId: string, screenshot: s
 }
 
 export async function saveTemplate(key: string, value: string): Promise<{ success: boolean; error?: string }> {
-    await requireAdmin();
+    await requireManager();
     try {
         // Save to disk
         saveTemplateFile(key, value);

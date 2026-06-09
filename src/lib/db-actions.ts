@@ -301,10 +301,7 @@ export async function saveAllData({
   const db = getDb();
   
   const saveTransaction = db.transaction(() => {
-    db.prepare('PRAGMA foreign_keys = OFF').run();
-
-    try {
-        // ── Employees: upsert active, delete removed ──────────────────────────
+    // ── Employees: upsert active, delete removed ──────────────────────────
         const allDbEmployeeIds = new Set(db.prepare('SELECT id FROM employees').all().map((r: any) => r.id));
         const employeeIdsInState = new Set(employees.map(e => e.id));
         const employeesToDelete = [...allDbEmployeeIds].filter(id => !employeeIdsInState.has(id) && id !== 'emp-admin-01');
@@ -540,15 +537,15 @@ export async function saveAllData({
         const avlStmt = db.prepare('INSERT OR REPLACE INTO preferred_avl (id, employeeId, year, month, plottedDays) VALUES (?, ?, ?, ?, ?)');
         for (const p of preferredAvl) { avlStmt.run(p.id, p.employeeId, p.year, p.month, JSON.stringify(p.plottedDays)); }
 
-    } finally {
-        db.prepare('PRAGMA foreign_keys = ON').run();
-    }
   });
 
   try {
+    db.pragma('foreign_keys = OFF');
     saveTransaction();
+    db.pragma('foreign_keys = ON');
     return { success: true };
   } catch (error) {
+    db.pragma('foreign_keys = ON');
     console.error('Failed to save data:', error);
     return { success: false, error: (error as Error).message };
   }

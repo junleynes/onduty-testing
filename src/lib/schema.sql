@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS employees (
     position TEXT,
     role TEXT NOT NULL CHECK(role IN ('admin', 'manager', 'member')),
     "group" TEXT,
+    department TEXT,
     avatar TEXT,
     birthDate TEXT,
     startDate TEXT,

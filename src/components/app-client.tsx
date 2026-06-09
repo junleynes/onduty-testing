@@ -835,7 +835,15 @@ function AppContent() {
             />
         );
       case 'templates':
-        return <TemplatesView templates={templates} setTemplates={setTemplates} />;
+        return <TemplatesView
+          templates={templates}
+          setTemplates={setTemplates}
+          groups={groups}
+          shiftTemplates={shiftTemplates}
+          setShiftTemplates={setShiftTemplates}
+          leaveTypes={leaveTypes}
+          setLeaveTypes={setLeaveTypes}
+        />;
        case 'permissions':
         return <PermissionsEditor permissions={permissions} setPermissions={setPermissions} />;
       case 'smtp-settings':

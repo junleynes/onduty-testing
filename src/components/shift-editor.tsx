@@ -161,20 +161,22 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
   }, [editingTask]);
 
   const filteredTemplates = useMemo(() => {
-    // Find the employee being edited to filter templates by their group
+    // Find the employee being edited to filter templates by their group.
+    // If Unassigned (employeeId is null/undefined), show ALL templates.
     const assignedEmployee = shift?.employeeId
       ? employees.find(e => e.id === shift.employeeId)
       : null;
-    const employeeGroup = assignedEmployee?.group ?? null;
 
-    const groupFiltered = shiftTemplates.filter(t =>
-      t.groupName === null || t.groupName === undefined || t.groupName === employeeGroup
-    );
+    const groupFiltered = assignedEmployee
+      ? shiftTemplates.filter(t =>
+          t.groupName === null || t.groupName === undefined || t.groupName === assignedEmployee.group
+        )
+      : shiftTemplates; // Unassigned — show all
 
     if (!templateSearch) return groupFiltered;
     const lowerSearch = templateSearch.toLowerCase();
-    return groupFiltered.filter(t => 
-        t.name.toLowerCase().includes(lowerSearch) || 
+    return groupFiltered.filter(t =>
+        t.name.toLowerCase().includes(lowerSearch) ||
         t.label.toLowerCase().includes(lowerSearch)
     );
   }, [shiftTemplates, templateSearch, shift, employees]);

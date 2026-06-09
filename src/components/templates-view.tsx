@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, FileText } from 'lucide-react';
+import { Upload, FileText, Settings2, CalendarDays } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlafTemplateUploader } from '@/components/alaf-template-uploader';
 import { OffsetTemplateUploader } from '@/components/offset-template-uploader';
 import { ReportTemplateUploader } from '@/components/report-template-uploader';
@@ -11,14 +12,25 @@ import { AttendanceTemplateUploader } from '@/components/attendance-template-upl
 import { WfhCertificationTemplateUploader } from '@/components/wfh-certification-template-uploader';
 import { WorkExtensionTemplateUploader } from '@/components/work-extension-template-uploader';
 import { OvertimeTemplateUploader } from '@/components/overtime-template-uploader';
+import { ShiftTemplateManager } from '@/components/shift-template-manager';
+import { LeaveTypeEditor } from '@/components/leave-type-editor';
+import { LeaveTypeImporter } from '@/components/leave-type-importer';
 import { saveTemplate } from '@/app/actions';
+import type { LeaveTypeOption } from '@/components/leave-type-editor';
+import type { ShiftTemplate } from '@/components/shift-editor';
 
 type TemplatesViewProps = {
   templates: Record<string, string | null>;
   setTemplates: React.Dispatch<React.SetStateAction<Record<string, string | null>>>;
+  groups: string[];
+  shiftTemplates: ShiftTemplate[];
+  setShiftTemplates: React.Dispatch<React.SetStateAction<ShiftTemplate[]>>;
+  leaveTypes: LeaveTypeOption[];
+  setLeaveTypes: React.Dispatch<React.SetStateAction<LeaveTypeOption[]>>;
 };
 
-export default function TemplatesView({ templates, setTemplates }: TemplatesViewProps) {
+export default function TemplatesView({ templates, setTemplates, groups, shiftTemplates, setShiftTemplates, leaveTypes, setLeaveTypes }: TemplatesViewProps) {
+  // PDF / Report template uploaders
   const [isAlafUploaderOpen, setIsAlafUploaderOpen] = useState(false);
   const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = useState(false);
   const [isWorkScheduleUploaderOpen, setIsWorkScheduleUploaderOpen] = useState(false);
@@ -26,6 +38,15 @@ export default function TemplatesView({ templates, setTemplates }: TemplatesView
   const [isWfhCertUploaderOpen, setIsWfhCertUploaderOpen] = useState(false);
   const [isWorkExtensionUploaderOpen, setIsWorkExtensionUploaderOpen] = useState(false);
   const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = useState(false);
+
+  // Shift templates (group-scoped)
+  const [isShiftTemplateManagerOpen, setIsShiftTemplateManagerOpen] = useState(false);
+  const [selectedShiftGroup, setSelectedShiftGroup] = useState<string | null>(groups[0] ?? null);
+
+  // Leave types (group-scoped)
+  const [isLeaveTypeEditorOpen, setIsLeaveTypeEditorOpen] = useState(false);
+  const [isLeaveTypeImporterOpen, setIsLeaveTypeImporterOpen] = useState(false);
+  const [selectedLeaveGroup, setSelectedLeaveGroup] = useState<string | null>(groups[0] ?? null);
 
   const handleSave = (key: string, data: string) => {
     setTemplates(prev => ({ ...prev, [key]: data }));
@@ -41,8 +62,62 @@ export default function TemplatesView({ templates, setTemplates }: TemplatesView
 
   return (
     <>
-      {/* ── PDF Leave Templates ─────────────────────────────────────── */}
+      {/* ── Shift Templates (group-scoped) ──────────────────────────── */}
       <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings2 className="h-5 w-5" />Shift Templates
+          </CardTitle>
+          <CardDescription>
+            Manage shift templates per group. Select a group to view and edit its templates.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <Select value={selectedShiftGroup ?? '__none__'} onValueChange={v => setSelectedShiftGroup(v === '__none__' ? null : v)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select group…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— No group —</SelectItem>
+              {groups.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => setIsShiftTemplateManagerOpen(true)}>
+            <Settings2 className="mr-2 h-4 w-4" />
+            Manage Templates{selectedShiftGroup ? ` (${selectedShiftGroup})` : ''}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Leave Types (group-scoped) ───────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />Leave Types
+          </CardTitle>
+          <CardDescription>
+            Configure leave types per group. Select a group to view and edit its leave types.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <Select value={selectedLeaveGroup ?? '__none__'} onValueChange={v => setSelectedLeaveGroup(v === '__none__' ? null : v)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select group…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— No group —</SelectItem>
+              {groups.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => setIsLeaveTypeEditorOpen(true)}>
+            <CalendarDays className="mr-2 h-4 w-4" />
+            Manage Leave Types{selectedLeaveGroup ? ` (${selectedLeaveGroup})` : ''}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── PDF Leave Templates ─────────────────────────────────────── */}
+      <Card className="mt-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />PDF Leave Templates
@@ -112,6 +187,33 @@ export default function TemplatesView({ templates, setTemplates }: TemplatesView
       </Card>
 
       {/* ── Dialogs ──────────────────────────────────────────────────── */}
+      <ShiftTemplateManager
+        isOpen={isShiftTemplateManagerOpen}
+        setIsOpen={setIsShiftTemplateManagerOpen}
+        shiftTemplates={shiftTemplates}
+        setShiftTemplates={setShiftTemplates}
+        currentGroup={selectedShiftGroup}
+      />
+      <LeaveTypeEditor
+        isOpen={isLeaveTypeEditorOpen}
+        setIsOpen={setIsLeaveTypeEditorOpen}
+        leaveTypes={leaveTypes}
+        setLeaveTypes={setLeaveTypes}
+        onImport={() => setIsLeaveTypeImporterOpen(true)}
+        currentGroup={selectedLeaveGroup}
+      />
+      <LeaveTypeImporter
+        isOpen={isLeaveTypeImporterOpen}
+        setIsOpen={setIsLeaveTypeImporterOpen}
+        onImport={(newTypes) => {
+          setLeaveTypes(prev => {
+            const existing = new Set(prev.filter(lt => lt.groupName === (selectedLeaveGroup ?? null)).map(lt => lt.type));
+            const tagged = newTypes.filter(lt => !existing.has(lt.type)).map(lt => ({ ...lt, groupName: selectedLeaveGroup ?? null }));
+            return [...prev, ...tagged];
+          });
+          setIsLeaveTypeImporterOpen(false);
+        }}
+      />
       <AlafTemplateUploader
         isOpen={isAlafUploaderOpen}
         setIsOpen={setIsAlafUploaderOpen}

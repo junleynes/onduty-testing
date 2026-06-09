@@ -127,7 +127,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   
   const uniqueTypesForFilter = useMemo(() => {
     const types = new Set<string>();
-    leaveTypes.forEach(lt => types.add(lt.type.toUpperCase()));
+    // Only show leave types for the current user's group (or unscoped types)
+    leaveTypes
+      .filter(lt => lt.groupName === null || lt.groupName === undefined || lt.groupName === currentUser.group)
+      .forEach(lt => types.add(lt.type.toUpperCase()));
     leaveRequests.forEach(req => {
       if (req.type && req.type !== 'Work Extension') {
         types.add(req.type.toUpperCase());
@@ -135,7 +138,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     });
     types.add('OFFSET');
     return Array.from(types).sort();
-  }, [leaveTypes, leaveRequests]);
+  }, [leaveTypes, leaveRequests, currentUser.group]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);

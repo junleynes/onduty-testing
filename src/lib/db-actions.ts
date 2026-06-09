@@ -48,7 +48,7 @@ export async function getData() {
                position, role, "group", birthDate, startDate, loadAllocation,
                visibility, lastPromotionDate, reportsTo, gender, employeeClassification,
                personnelNumber, avlAllotted, avlBeginningBalance, workScheduleType,
-               defaultShiftTemplateId
+               defaultShiftTemplateId, department
         FROM employees
     `).all() as any[];
 
@@ -89,9 +89,9 @@ export async function getData() {
             { type: 'VL', color: '#3b82f6' },
             { type: 'SL', color: '#ef4444' },
             { type: 'EL', color: '#f59e0b' },
-            { type: 'PL', color: '#10b981' },
+            { type: 'CTO', color: '#10b981' },
             { type: 'OFFSET', color: '#8b5cf6' },
-            { type: 'BL', color: '#6b7280' },
+            { type: 'TARDY', color: '#6b7280' },
         ];
         const insertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (?, ?)');
         defaults.forEach(d => insertStmt.run(d.type, d.color));
@@ -317,11 +317,11 @@ export async function saveAllData({
             INSERT INTO employees (id, employeeNumber, firstName, lastName, middleInitial, email, phone, password,
                 position, role, "group", birthDate, startDate, loadAllocation, visibility, lastPromotionDate,
                 reportsTo, gender, employeeClassification, personnelNumber, avlAllotted, avlBeginningBalance,
-                workScheduleType, defaultShiftTemplateId)
+                workScheduleType, defaultShiftTemplateId, department)
             VALUES (@id, @employeeNumber, @firstName, @lastName, @middleInitial, @email, @phone, @password,
                 @position, @role, @group, @birthDate, @startDate, @loadAllocation, @visibility, @lastPromotionDate,
                 @reportsTo, @gender, @employeeClassification, @personnelNumber, @avlAllotted, @avlBeginningBalance,
-                @workScheduleType, @defaultShiftTemplateId)
+                @workScheduleType, @defaultShiftTemplateId, @department)
             ON CONFLICT(id) DO UPDATE SET
                 employeeNumber=excluded.employeeNumber, firstName=excluded.firstName, lastName=excluded.lastName,
                 middleInitial=excluded.middleInitial, email=excluded.email, phone=excluded.phone,
@@ -333,7 +333,8 @@ export async function saveAllData({
                 personnelNumber=excluded.personnelNumber, avlAllotted=excluded.avlAllotted,
                 avlBeginningBalance=excluded.avlBeginningBalance,
                 workScheduleType=excluded.workScheduleType,
-                defaultShiftTemplateId=excluded.defaultShiftTemplateId
+                defaultShiftTemplateId=excluded.defaultShiftTemplateId,
+                department=excluded.department
                 -- avatar and signature intentionally excluded: preserved from DB, updated by dedicated actions
         `);
         for (const e of employees) {
@@ -353,6 +354,7 @@ export async function saveAllData({
                 avlAllotted: e.avlAllotted || 0, avlBeginningBalance: e.avlBeginningBalance || 0,
                 workScheduleType: e.workScheduleType || '8h-paid',
                 defaultShiftTemplateId: e.defaultShiftTemplateId || null,
+                department: e.department || null,
             });
         }
 

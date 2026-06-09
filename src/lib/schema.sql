@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS employees (
     avlBeginningBalance REAL DEFAULT 0,
     workScheduleType TEXT DEFAULT '8h-paid',
     defaultShiftTemplateId TEXT,
+    department TEXT,
     totpSecret TEXT,
     totpEnabled INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(reportsTo) REFERENCES employees(id) ON DELETE SET NULL,

@@ -77,6 +77,7 @@ function initializeDatabase() {
     runMigration("ALTER TABLE employees ADD COLUMN avlBeginningBalance REAL DEFAULT 0;", "Added 'avlBeginningBalance' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN workScheduleType TEXT DEFAULT '8h-paid';", "Added 'workScheduleType' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN defaultShiftTemplateId TEXT;", "Added 'defaultShiftTemplateId' to 'employees'");
+    runMigration("ALTER TABLE employees ADD COLUMN department TEXT;", "Added 'department' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN totpSecret TEXT;", "Added 'totpSecret' to 'employees'");
     runMigration("ALTER TABLE employees ADD COLUMN totpEnabled INTEGER NOT NULL DEFAULT 0;", "Added 'totpEnabled' to 'employees'");
     // Create login_attempts table if it doesn't exist (can't use ALTER TABLE for new tables)

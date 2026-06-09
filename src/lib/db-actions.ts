@@ -89,9 +89,9 @@ export async function getData() {
             { type: 'VL', color: '#3b82f6' },
             { type: 'SL', color: '#ef4444' },
             { type: 'EL', color: '#f59e0b' },
-            { type: 'CTO', color: '#10b981' },
+            { type: 'BL', color: '#10b981' },
             { type: 'OFFSET', color: '#8b5cf6' },
-            { type: 'TARDY', color: '#6b7280' },
+            { type: 'PL', color: '#6b7280' },
         ];
         const insertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (?, ?)');
         defaults.forEach(d => insertStmt.run(d.type, d.color));

@@ -78,6 +78,7 @@ export type ShiftTemplate = {
   breakStartTime?: string;
   breakEndTime?: string;
   isUnpaidBreak?: boolean;
+  groupName?: string | null;
 };
 
 export type ShiftWithRepeat = z.infer<typeof shiftSchema>;
@@ -160,13 +161,23 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
   }, [editingTask]);
 
   const filteredTemplates = useMemo(() => {
-    if (!templateSearch) return shiftTemplates;
+    // Find the employee being edited to filter templates by their group
+    const assignedEmployee = shift?.employeeId
+      ? employees.find(e => e.id === shift.employeeId)
+      : null;
+    const employeeGroup = assignedEmployee?.group ?? null;
+
+    const groupFiltered = shiftTemplates.filter(t =>
+      t.groupName === null || t.groupName === undefined || t.groupName === employeeGroup
+    );
+
+    if (!templateSearch) return groupFiltered;
     const lowerSearch = templateSearch.toLowerCase();
-    return shiftTemplates.filter(t => 
+    return groupFiltered.filter(t => 
         t.name.toLowerCase().includes(lowerSearch) || 
         t.label.toLowerCase().includes(lowerSearch)
     );
-  }, [shiftTemplates, templateSearch]);
+  }, [shiftTemplates, templateSearch, shift, employees]);
 
   const handleEditTemplate = (template: ShiftTemplate) => {
     setEditingTemplate(template);

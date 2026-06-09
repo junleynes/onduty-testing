@@ -88,8 +88,11 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
   });
 
   const availableLeaveTypes = useMemo(() => 
-    leaveTypes.filter(lt => lt.type !== 'Work Extension' && lt.type !== 'Offset'), 
-  [leaveTypes]);
+    leaveTypes.filter(lt => 
+      lt.type !== 'Work Extension' && lt.type !== 'Offset' &&
+      (lt.groupName === null || lt.groupName === undefined || lt.groupName === (currentUser as any).group)
+    ), 
+  [leaveTypes, currentUser]);
 
   useEffect(() => {
     if (isOpen) {

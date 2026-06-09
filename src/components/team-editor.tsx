@@ -103,8 +103,11 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   const isNewEmployee = !employee?.id;
   const selectedGroup = form.watch("group");
 
-  // Determine if a shift template matches the selected work schedule type by hours
-  const filteredShiftTemplates = useMemo(() => shiftTemplates, [shiftTemplates]);
+  // Filter templates by the employee's group so only group-specific templates appear
+  const employeeGroup = employee?.group ?? form.watch('group') ?? null;
+  const filteredShiftTemplates = useMemo(() =>
+    shiftTemplates.filter(t => t.groupName === null || t.groupName === undefined || t.groupName === employeeGroup),
+  [shiftTemplates, employeeGroup]);
 
   useEffect(() => {
     if(isOpen) {

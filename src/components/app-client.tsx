@@ -23,6 +23,7 @@ import ScheduleView from '@/components/schedule-view';
 import MyScheduleView from '@/components/my-schedule-view';
 import TeamView from '@/components/team-view';
 import AdminPanel from '@/components/admin-panel';
+import TemplatesView from '@/components/templates-view';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { TeamEditor } from '@/components/team-editor';
 import { MemberImporter } from '@/components/member-importer';
@@ -833,6 +834,8 @@ function AppContent() {
                 setTemplates={setTemplates}
             />
         );
+      case 'templates':
+        return <TemplatesView templates={templates} setTemplates={setTemplates} />;
        case 'permissions':
         return <PermissionsEditor permissions={permissions} setPermissions={setPermissions} />;
       case 'smtp-settings':

@@ -858,7 +858,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                             font: { bold: true, size: 11, color: { argb: 'FF1A3C5E' } },
                             fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCFE2F3' } },
                         };
-                        worksheet.mergeCells(currentRow, 1, currentRow, days.length + 1);
+                        worksheet.mergeCells(currentRow, 1, currentRow, days.length + 2);
                         labelRow.height = 18;
                         currentRow++;
 
@@ -866,8 +866,10 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         const headerRow = worksheet.getRow(currentRow);
                         headerRow.getCell(1).value = 'Employee';
                         headerRow.getCell(1).style = headerStyle;
+                        headerRow.getCell(2).value = 'Department';
+                        headerRow.getCell(2).style = headerStyle;
                         days.forEach((day, idx) => {
-                            const cell = headerRow.getCell(idx + 2);
+                            const cell = headerRow.getCell(idx + 3);
                             cell.value = format(day, 'EEE\nMM/dd');
                             cell.style = headerStyle;
                         });
@@ -879,6 +881,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                             const row = worksheet.getRow(currentRow);
                             row.getCell(1).value = getFullName(emp) || 'Unassigned';
                             row.getCell(1).style = nameStyle;
+                            row.getCell(2).value = (emp as any).department || (emp as any).group || '';
+                            row.getCell(2).style = { ...nameStyle, font: { ...nameStyle.font, bold: false } };
                             row.height = 18;
 
                             days.forEach((day, idx) => {
@@ -903,7 +907,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                                     else { cellValue = `${shiftOnDay.startTime}-${shiftOnDay.endTime}`; cellColor = (shiftOnDay.color || '').replace('#', 'FF') || 'FFDBEAFE'; }
                                 }
 
-                                const cell = row.getCell(idx + 2);
+                                const cell = row.getCell(idx + 3);
                                 cell.value = cellValue;
                                 cell.style = {
                                     alignment: { vertical: 'middle', horizontal: 'center' },
@@ -921,14 +925,15 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
 
                         // Separator row
                         const sepRow = worksheet.getRow(currentRow);
-                        for (let c = 1; c <= days.length + 1; c++) sepRow.getCell(c).style = separatorStyle;
+                        for (let c = 1; c <= days.length + 2; c++) sepRow.getCell(c).style = separatorStyle;
                         sepRow.height = 6;
                         currentRow++;
                     }
 
                     // Column widths
                     worksheet.getColumn(1).width = 24;
-                    for (let c = 2; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 1 : 20); c++) {
+                    worksheet.getColumn(2).width = 18; // Department
+                    for (let c = 3; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 2 : 21); c++) {
                         worksheet.getColumn(c).width = 13;
                     }
 

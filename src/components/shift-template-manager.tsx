@@ -46,28 +46,35 @@ type ShiftTemplateManagerProps = {
   setIsOpen: (open: boolean) => void;
   shiftTemplates: ShiftTemplate[];
   setShiftTemplates: React.Dispatch<React.SetStateAction<ShiftTemplate[]>>;
+  currentGroup?: string | null;
 };
 
 export function ShiftTemplateManager({ 
   isOpen, 
   setIsOpen, 
   shiftTemplates, 
-  setShiftTemplates
+  setShiftTemplates,
+  currentGroup
 }: ShiftTemplateManagerProps) {
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isTemplateImporterOpen, setIsTemplateImporterOpen] = useState(false);
 
+  // Only show templates belonging to the current group
+  const groupTemplates = useMemo(() => {
+    return shiftTemplates.filter(t => t.groupName === (currentGroup ?? null));
+  }, [shiftTemplates, currentGroup]);
+
   const filteredTemplates = useMemo(() => {
-    return shiftTemplates.filter(t => 
+    return groupTemplates.filter(t => 
       t.name.toLowerCase().includes(search.toLowerCase()) || 
       t.label.toLowerCase().includes(search.toLowerCase())
     );
-  }, [shiftTemplates, search]);
+  }, [groupTemplates, search]);
 
   const handleExportTemplates = () => {
-    const csvData = shiftTemplates.map(t => ({
+    const csvData = groupTemplates.map(t => ({
       'Shift Label': t.label,
       'Start Time': t.startTime,
       'End Time': t.endTime,
@@ -212,7 +219,7 @@ export function ShiftTemplateManager({
         isOpen={isTemplateImporterOpen}
         setIsOpen={setIsTemplateImporterOpen}
         onImport={(tpls) => {
-          setShiftTemplates(prev => [...prev, ...tpls]);
+          setShiftTemplates(prev => [...prev, ...tpls.map(t => ({ ...t, groupName: currentGroup ?? null }))]);
           setIsTemplateImporterOpen(false);
         }}
       />

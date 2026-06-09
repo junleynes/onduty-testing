@@ -1,65 +1,152 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Upload, Download } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Upload, FileText } from 'lucide-react';
+import { AlafTemplateUploader } from '@/components/alaf-template-uploader';
+import { OffsetTemplateUploader } from '@/components/offset-template-uploader';
+import { ReportTemplateUploader } from '@/components/report-template-uploader';
+import { AttendanceTemplateUploader } from '@/components/attendance-template-uploader';
+import { WfhCertificationTemplateUploader } from '@/components/wfh-certification-template-uploader';
+import { WorkExtensionTemplateUploader } from '@/components/work-extension-template-uploader';
+import { OvertimeTemplateUploader } from '@/components/overtime-template-uploader';
+import { saveTemplate } from '@/app/actions';
 
-const sampleTemplates = [
-  { id: 'template-1', name: 'Standard Week', description: 'A typical week with full coverage.' },
-  { id: 'template-2', name: 'Holiday Schedule', description: 'Reduced staff for holiday periods.' },
-  { id: 'template-3', name: 'Summer Season', description: 'Increased staff for the busy summer season.' },
-];
+type TemplatesViewProps = {
+  templates: Record<string, string | null>;
+  setTemplates: React.Dispatch<React.SetStateAction<Record<string, string | null>>>;
+};
 
-export default function TemplatesView() {
+export default function TemplatesView({ templates, setTemplates }: TemplatesViewProps) {
+  const [isAlafUploaderOpen, setIsAlafUploaderOpen] = useState(false);
+  const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = useState(false);
+  const [isWorkScheduleUploaderOpen, setIsWorkScheduleUploaderOpen] = useState(false);
+  const [isAttendanceUploaderOpen, setIsAttendanceUploaderOpen] = useState(false);
+  const [isWfhCertUploaderOpen, setIsWfhCertUploaderOpen] = useState(false);
+  const [isWorkExtensionUploaderOpen, setIsWorkExtensionUploaderOpen] = useState(false);
+  const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = useState(false);
+
+  const handleSave = (key: string, data: string) => {
+    setTemplates(prev => ({ ...prev, [key]: data }));
+    saveTemplate(key, data).catch(() => {});
+  };
+
+  const templateStatus = (key: string) =>
+    templates[key] ? (
+      <span className="text-xs text-green-600 font-medium ml-2">✓ Uploaded</span>
+    ) : (
+      <span className="text-xs text-muted-foreground ml-2">Not set</span>
+    );
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Schedule Templates</CardTitle>
-          <CardDescription>Manage your reusable schedule templates.</CardDescription>
-        </div>
-        <Button>
-          <PlusCircle className="h-4 w-4 mr-2" />
-          New Template
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Template Name</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sampleTemplates.map((template) => (
-              <TableRow key={template.id}>
-                <TableCell className="font-medium">{template.name}</TableCell>
-                <TableCell className="text-muted-foreground">{template.description}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="outline" size="sm" className="mr-2">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Load
-                  </Button>
-                   <Button variant="outline" size="sm">
-                    <Download className="h-4 w-4 mr-2" />
-                    Save
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!sampleTemplates.length && (
-            <div className="text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">
-              <p>You haven't saved any templates yet.</p>
-              <p className="text-sm mt-2">Create a schedule and save it as a template to get started.</p>
-            </div>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      {/* ── PDF Leave Templates ─────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />PDF Leave Templates
+          </CardTitle>
+          <CardDescription>
+            Upload the PDF templates used for leave (ALAF) and offset/work-extension forms.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsAlafUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />ALAF / Leave Template
+            </Button>
+            {templateStatus('alafTemplate')}
+          </div>
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsOffsetUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Offset / WE Template
+            </Button>
+            {templateStatus('offsetTemplate')}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Report Templates ────────────────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />Report Templates
+          </CardTitle>
+          <CardDescription>
+            Upload the Excel templates used for generating reports.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsWorkScheduleUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Work Schedule
+            </Button>
+            {templateStatus('workScheduleTemplate')}
+          </div>
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsAttendanceUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Attendance Sheet
+            </Button>
+            {templateStatus('attendanceSheetTemplate')}
+          </div>
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsWorkExtensionUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Work Extension
+            </Button>
+            {templateStatus('workExtensionTemplate')}
+          </div>
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsWfhCertUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />WFH Certification
+            </Button>
+            {templateStatus('wfhCertificationTemplate')}
+          </div>
+          <div className="flex items-center">
+            <Button variant="outline" onClick={() => setIsOvertimeUploaderOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Overtime
+            </Button>
+            {templateStatus('overtimeTemplate')}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Dialogs ──────────────────────────────────────────────────── */}
+      <AlafTemplateUploader
+        isOpen={isAlafUploaderOpen}
+        setIsOpen={setIsAlafUploaderOpen}
+        onTemplateUpload={(data) => handleSave('alafTemplate', data)}
+      />
+      <OffsetTemplateUploader
+        isOpen={isOffsetUploaderOpen}
+        setIsOpen={setIsOffsetUploaderOpen}
+        onTemplateUpload={(data) => handleSave('offsetTemplate', data)}
+      />
+      <ReportTemplateUploader
+        isOpen={isWorkScheduleUploaderOpen}
+        setIsOpen={setIsWorkScheduleUploaderOpen}
+        onTemplateUpload={(data) => handleSave('workScheduleTemplate', data)}
+      />
+      <AttendanceTemplateUploader
+        isOpen={isAttendanceUploaderOpen}
+        setIsOpen={setIsAttendanceUploaderOpen}
+        onTemplateUpload={(data) => handleSave('attendanceSheetTemplate', data)}
+      />
+      <WorkExtensionTemplateUploader
+        isOpen={isWorkExtensionUploaderOpen}
+        setIsOpen={setIsWorkExtensionUploaderOpen}
+        onTemplateUpload={(data) => handleSave('workExtensionTemplate', data)}
+      />
+      <WfhCertificationTemplateUploader
+        isOpen={isWfhCertUploaderOpen}
+        setIsOpen={setIsWfhCertUploaderOpen}
+        onTemplateUpload={(data) => handleSave('wfhCertificationTemplate', data)}
+      />
+      <OvertimeTemplateUploader
+        isOpen={isOvertimeUploaderOpen}
+        setIsOpen={setIsOvertimeUploaderOpen}
+        onTemplateUpload={(data) => handleSave('overtimeTemplate', data)}
+      />
+    </>
   );
 }

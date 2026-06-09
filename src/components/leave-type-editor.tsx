@@ -22,8 +22,10 @@ import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
 
 export type LeaveTypeOption = {
+  id?: string;
   type: string;
   color: string;
+  groupName?: string | null;
 };
 
 const leaveTypeSchema = z.object({
@@ -41,13 +43,20 @@ type LeaveTypeEditorProps = {
   leaveTypes: LeaveTypeOption[];
   setLeaveTypes: React.Dispatch<React.SetStateAction<LeaveTypeOption[]>>;
   onImport: () => void;
+  currentGroup?: string | null;
 };
 
-export function LeaveTypeEditor({ isOpen, setIsOpen, leaveTypes, setLeaveTypes, onImport }: LeaveTypeEditorProps) {
+export function LeaveTypeEditor({ isOpen, setIsOpen, leaveTypes, setLeaveTypes, onImport, currentGroup }: LeaveTypeEditorProps) {
+  // Only show leave types for the current group
+  const groupLeaveTypes = React.useMemo(
+    () => leaveTypes.filter(lt => lt.groupName === (currentGroup ?? null)),
+    [leaveTypes, currentGroup]
+  );
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      leaveTypes: leaveTypes,
+      leaveTypes: groupLeaveTypes,
     },
   });
 
@@ -58,12 +67,19 @@ export function LeaveTypeEditor({ isOpen, setIsOpen, leaveTypes, setLeaveTypes, 
 
   useEffect(() => {
     if (isOpen) {
-      form.reset({ leaveTypes });
+      form.reset({ leaveTypes: groupLeaveTypes });
     }
-  }, [isOpen, leaveTypes, form]);
+  }, [isOpen, groupLeaveTypes, form]);
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
-    setLeaveTypes(values.leaveTypes);
+    // Preserve leave types for other groups, replace only this group's
+    const otherGroupTypes = leaveTypes.filter(lt => lt.groupName !== (currentGroup ?? null));
+    const updatedGroupTypes = values.leaveTypes.map(lt => ({
+      ...lt,
+      id: (lt as any).id || `lt-${lt.type}-${Date.now()}`,
+      groupName: currentGroup ?? null,
+    }));
+    setLeaveTypes([...otherGroupTypes, ...updatedGroupTypes]);
     setIsOpen(false);
   };
 
@@ -71,9 +87,9 @@ export function LeaveTypeEditor({ isOpen, setIsOpen, leaveTypes, setLeaveTypes, 
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Manage Leave Types</DialogTitle>
+          <DialogTitle>Manage Leave Types{currentGroup ? ` — ${currentGroup}` : ''}</DialogTitle>
           <DialogDescription>
-            Add, edit, or remove leave types and their associated colors.
+            Add, edit, or remove leave types and their associated colors{currentGroup ? ` for the ${currentGroup} group` : ''}.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

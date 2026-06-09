@@ -56,6 +56,7 @@ type NavGroup = {
 
 const adminNavItems: NavItemConfig[] = [
     { view: 'admin', label: 'Users and Groups', icon: Shield, iconColor: 'bg-red-500' },
+    { view: 'templates', label: 'Templates', icon: FileText, iconColor: 'bg-indigo-500' },
     { view: 'permissions', label: 'Permissions', icon: ShieldCheck, iconColor: 'bg-red-500' },
     { view: 'smtp-settings', label: 'SMTP Settings', icon: Mail, iconColor: 'bg-gray-500' },
     { view: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle, iconColor: 'bg-destructive' },

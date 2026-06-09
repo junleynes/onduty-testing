@@ -203,6 +203,13 @@ function initializeDatabase() {
         );
     `, "Created 'leave_recipients' table");
 
+    // Add groupName to shift_templates (group-scoped templates)
+    runMigration("ALTER TABLE shift_templates ADD COLUMN groupName TEXT;", "Added 'groupName' to 'shift_templates'");
+
+    // Migrate leave_types: add id + groupName columns (group-scoped leave types)
+    runMigration("ALTER TABLE leave_types ADD COLUMN id TEXT;", "Added 'id' to 'leave_types'");
+    runMigration("ALTER TABLE leave_types ADD COLUMN groupName TEXT;", "Added 'groupName' to 'leave_types'");
+
     // Ensure the super-admin account always exists in DB.
     try {
         const admin = db.prepare("SELECT id FROM employees WHERE id = 'emp-admin-01'").get();
@@ -234,22 +241,65 @@ export function getDb() {
         dbInstance = initializeDatabase();
     } catch(error: any) {
         if (error.code === 'SQLITE_CORRUPT' || error.message.includes('malformed') || error.message.includes('not a database')) {
-            console.error(`Database file at ${DB_PATH} is corrupted. Deleting and re-initializing.`, error);
+            console.error(`Database file at ${DB_PATH} is corrupted. Attempting recovery...`, error);
             if (dbInstance && dbInstance.open) {
-                dbInstance.close();
+                try { dbInstance.close(); } catch (_) {}
             }
+
+            // --- Recovery attempt: try to recover via a fresh connection + integrity_check ---
+            let recovered = false;
             try {
-                fs.unlinkSync(DB_PATH);
-                const shmPath = `${DB_PATH}-shm`;
-                if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
-                const walPath = `${DB_PATH}-wal`;
-                if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
-                console.log('Corrupted database file deleted.');
-            } catch (unlinkError) {
-                console.error('Failed to delete corrupted database file:', unlinkError);
-                throw unlinkError; 
+                const recoverDb = new (require('better-sqlite3'))(DB_PATH, { readonly: false });
+                const integrityResult = recoverDb.pragma('integrity_check') as { integrity_check: string }[];
+                const ok = integrityResult.length === 1 && integrityResult[0].integrity_check === 'ok';
+                if (ok) {
+                    // Integrity check passed — WAL/SHM files may have been the issue; delete them only
+                    recoverDb.close();
+                    const shmPath = `${DB_PATH}-shm`;
+                    const walPath = `${DB_PATH}-wal`;
+                    if (fs.existsSync(shmPath)) { fs.unlinkSync(shmPath); console.log('Deleted stale -shm file.'); }
+                    if (fs.existsSync(walPath)) { fs.unlinkSync(walPath); console.log('Deleted stale -wal file.'); }
+                    console.log('Integrity check passed after WAL/SHM cleanup. Re-initializing.');
+                    recovered = true;
+                } else {
+                    // Corruption confirmed — backup the corrupted DB before deleting
+                    recoverDb.close();
+                    const backupPath = `${DB_PATH}.corrupt-${Date.now()}`;
+                    try {
+                        fs.copyFileSync(DB_PATH, backupPath);
+                        console.error(`Corrupted database backed up to ${backupPath}`);
+                    } catch (backupErr) {
+                        console.error('Could not back up corrupted database file:', backupErr);
+                    }
+                    fs.unlinkSync(DB_PATH);
+                    const shmPath = `${DB_PATH}-shm`;
+                    if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+                    const walPath = `${DB_PATH}-wal`;
+                    if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+                    console.log('Corrupted database deleted (backup preserved). Re-initializing with fresh DB.');
+                    recovered = true;
+                }
+            } catch (recoverError) {
+                console.error('Recovery attempt failed:', recoverError);
+                // Last resort: delete and restart
+                try {
+                    const backupPath = `${DB_PATH}.corrupt-${Date.now()}`;
+                    fs.copyFileSync(DB_PATH, backupPath);
+                    fs.unlinkSync(DB_PATH);
+                    const shmPath = `${DB_PATH}-shm`;
+                    if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+                    const walPath = `${DB_PATH}-wal`;
+                    if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+                    recovered = true;
+                } catch (unlinkError) {
+                    console.error('Failed to delete corrupted database file:', unlinkError);
+                    throw unlinkError;
+                }
             }
-            dbInstance = initializeDatabase();
+
+            if (recovered) {
+                dbInstance = initializeDatabase();
+            }
         } else {
             throw error;
         }

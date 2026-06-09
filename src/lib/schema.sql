@@ -170,12 +170,16 @@ CREATE TABLE IF NOT EXISTS shift_templates (
     color TEXT,
     breakStartTime TEXT,
     breakEndTime TEXT,
-    isUnpaidBreak INTEGER
+    isUnpaidBreak INTEGER,
+    groupName TEXT
 );
 
 CREATE TABLE IF NOT EXISTS leave_types (
-    type TEXT PRIMARY KEY,
-    color TEXT NOT NULL
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    color TEXT NOT NULL,
+    groupName TEXT NOT NULL,
+    UNIQUE(type, groupName)
 );
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -233,7 +237,7 @@ WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'emp-admin-01');
 
 -- Default permissions
 INSERT INTO permissions (role, allowed_views) VALUES
-('admin',   '["admin","smtp-settings","permissions","danger-zone","dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","report-alaf"]'),
+('admin',   '["admin","templates","smtp-settings","permissions","danger-zone","dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","report-alaf"]'),
 ('manager', '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime"]'),
 ('member',  '["dashboard","my-schedule","my-tasks","onduty","time-off","allowance","team","org-chart","celebrations","holidays","faq","reports","report-wfh"]')
 ON CONFLICT(role) DO NOTHING;

@@ -82,19 +82,19 @@ export async function getData() {
     const shiftTemplates = db.prepare('SELECT * FROM shift_templates').all() as any[];
     let leaveTypes = db.prepare('SELECT * FROM leave_types').all() as any[];
     
-    // Seed default leave types if empty
+    // Seed default leave types if empty (legacy global migration — assigned to null group)
     if (leaveTypes.length === 0) {
         const defaults: LeaveTypeOption[] = [
-            { type: 'AVL', color: '#14b8a6' },
-            { type: 'VL', color: '#3b82f6' },
-            { type: 'SL', color: '#ef4444' },
-            { type: 'EL', color: '#f59e0b' },
-            { type: 'BL', color: '#10b981' },
-            { type: 'OFFSET', color: '#8b5cf6' },
-            { type: 'PL', color: '#6b7280' },
+            { id: 'lt-avl', type: 'AVL', color: '#14b8a6', groupName: null },
+            { id: 'lt-vl', type: 'VL', color: '#3b82f6', groupName: null },
+            { id: 'lt-sl', type: 'SL', color: '#ef4444', groupName: null },
+            { id: 'lt-el', type: 'EL', color: '#f59e0b', groupName: null },
+            { id: 'lt-bl', type: 'BL', color: '#10b981', groupName: null },
+            { id: 'lt-offset', type: 'OFFSET', color: '#8b5cf6', groupName: null },
+            { id: 'lt-pl', type: 'PL', color: '#6b7280', groupName: null },
         ];
-        const insertStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (?, ?)');
-        defaults.forEach(d => insertStmt.run(d.type, d.color));
+        const insertStmt = db.prepare('INSERT OR IGNORE INTO leave_types (id, type, color, groupName) VALUES (?, ?, ?, ?)');
+        defaults.forEach(d => insertStmt.run(d.id, d.type, d.color, d.groupName ?? null));
         leaveTypes = defaults;
     }
 
@@ -500,15 +500,15 @@ export async function saveAllData({
         if (templatesToDelete.length > 0) {
             db.prepare(`DELETE FROM shift_templates WHERE id IN (${templatesToDelete.map(() => '?').join(',')})`).run(...templatesToDelete);
         }
-        const shiftTemplateStmt = db.prepare('INSERT OR REPLACE INTO shift_templates (id, name, label, startTime, endTime, color, breakStartTime, breakEndTime, isUnpaidBreak) VALUES (@id, @name, @label, @startTime, @endTime, @color, @breakStartTime, @breakEndTime, @isUnpaidBreak)');
+        const shiftTemplateStmt = db.prepare('INSERT OR REPLACE INTO shift_templates (id, name, label, startTime, endTime, color, breakStartTime, breakEndTime, isUnpaidBreak, groupName) VALUES (@id, @name, @label, @startTime, @endTime, @color, @breakStartTime, @breakEndTime, @isUnpaidBreak, @groupName)');
         for (const tpl of shiftTemplates) {
-            shiftTemplateStmt.run({ id: tpl.id, name: tpl.name, label: tpl.label, startTime: tpl.startTime, endTime: tpl.endTime, color: tpl.color, breakStartTime: tpl.breakStartTime || null, breakEndTime: tpl.breakEndTime || null, isUnpaidBreak: tpl.isUnpaidBreak ? 1 : 0 });
+            shiftTemplateStmt.run({ id: tpl.id, name: tpl.name, label: tpl.label, startTime: tpl.startTime, endTime: tpl.endTime, color: tpl.color, breakStartTime: tpl.breakStartTime || null, breakEndTime: tpl.breakEndTime || null, isUnpaidBreak: tpl.isUnpaidBreak ? 1 : 0, groupName: (tpl as any).groupName ?? null });
         }
 
-        // ── Leave types: full replace (no stable PK) ──────────────────────────
+        // ── Leave types: full replace (group-scoped) ──────────────────────────
         db.prepare('DELETE FROM leave_types').run();
-        const leaveTypeStmt = db.prepare('INSERT INTO leave_types (type, color) VALUES (@type, @color)');
-        for (const lt of leaveTypes) { leaveTypeStmt.run({ type: lt.type, color: lt.color }); }
+        const leaveTypeStmt = db.prepare('INSERT INTO leave_types (id, type, color, groupName) VALUES (@id, @type, @color, @groupName)');
+        for (const lt of leaveTypes) { leaveTypeStmt.run({ id: (lt as any).id || `lt-${lt.type}-${Date.now()}`, type: lt.type, color: lt.color, groupName: (lt as any).groupName ?? null }); }
 
         // ── SMTP: upsert ──────────────────────────────────────────────────────
         if (smtpSettings && smtpSettings.host) {

@@ -140,12 +140,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
       setNdTypeCode(getInitialState('ndTypeCode', '803'));
     }, []);
 
-    const [isWorkScheduleUploaderOpen, setIsWorkScheduleUploaderOpen] = useState(false);
-    const [isAttendanceUploaderOpen, setIsAttendanceUploaderOpen] = useState(false);
-    const [isWfhCertUploaderOpen, setIsWfhCertUploaderOpen] = useState(false);
     const [isTardyImporterOpen, setIsTardyImporterOpen] = useState(false);
-    const [isWorkExtensionUploaderOpen, setIsWorkExtensionUploaderOpen] = useState(false);
-    const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = useState(false);
     const [isOvertimeSettingsOpen, setIsOvertimeSettingsOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
@@ -1531,7 +1526,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                   </Popover>
               ),
               templateKey: 'workScheduleTemplate',
-              openUploader: () => setIsWorkScheduleUploaderOpen(true),
+              openUploader: () => {},
           },
           attendance: {
               label: 'Attendance Sheet',
@@ -1571,7 +1566,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                   </Popover>
               ),
               templateKey: 'attendanceSheetTemplate',
-              openUploader: () => setIsAttendanceUploaderOpen(true),
+              openUploader: () => {},
           },
           workExtension: {
               label: "Work Extension Summary",
@@ -1632,7 +1627,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                   </div>
               ),
               templateKey: 'workExtensionTemplate',
-              openUploader: () => setIsWorkExtensionUploaderOpen(true),
+              openUploader: () => {},
           },
           overtime: {
               label: "Overtime and Night Differential",
@@ -1678,7 +1673,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                   </Popover>
               ),
                templateKey: 'overtimeTemplate',
-               openUploader: () => setIsOvertimeUploaderOpen(true),
+               openUploader: () => {},
                settingsComponent: (
                    <Button variant="outline" size="icon" onClick={() => setIsOvertimeSettingsOpen(true)}>
                       <Settings className="h-4 w-4" />
@@ -1808,7 +1803,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                   </Popover>
               ),
               templateKey: 'wfhCertificationTemplate',
-              openUploader: () => setIsWfhCertUploaderOpen(true),
+              openUploader: () => {},
           }
       };
       return config;
@@ -1928,7 +1923,7 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                               <div className="flex flex-col sm:flex-row gap-4">
                                  {currentReport.dateComponent}
                                   <div className="flex items-center gap-2">
-                                      {currentReport.openUploader && (
+                                      {currentReport.openUploader && (selectedReportType === 'tardy' || currentUser.role === 'admin') && (
                                           <Button variant="outline" onClick={currentReport.openUploader}>
                                               <Upload className="mr-2 h-4 w-4" />
                                               {selectedReportType === 'tardy' ? 'Import Tardy Data' : 'Upload Template'}
@@ -1961,38 +1956,13 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     )}
                 </CardContent>
             </Card>
-            <ReportTemplateUploader
-                isOpen={isWorkScheduleUploaderOpen}
-                setIsOpen={setIsWorkScheduleUploaderOpen}
-                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, workScheduleTemplate: data})); saveTemplate('workScheduleTemplate', data).catch(() => {}); }}
-            />
-            <AttendanceTemplateUploader
-                isOpen={isAttendanceUploaderOpen}
-                setIsOpen={setIsAttendanceUploaderOpen}
-                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, attendanceSheetTemplate: data})); saveTemplate('attendanceSheetTemplate', data).catch(() => {}); }}
-            />
-             <WorkExtensionTemplateUploader
-                isOpen={isWorkExtensionUploaderOpen}
-                setIsOpen={setIsWorkExtensionUploaderOpen}
-                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, workExtensionTemplate: data})); saveTemplate('workExtensionTemplate', data).catch(() => {}); }}
-            />
-            <WfhCertificationTemplateUploader
-                isOpen={isWfhCertUploaderOpen}
-                setIsOpen={setIsWfhCertUploaderOpen}
-                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, wfhCertificationTemplate: data})); saveTemplate('wfhCertificationTemplate', data).catch(() => {}); }}
-            />
-             <TardyImporter
+<TardyImporter
                 isOpen={isTardyImporterOpen}
                 setIsOpen={setIsTardyImporterOpen}
                 onImport={setTardyRecords}
                 employees={employees}
             />
-            <OvertimeTemplateUploader
-                isOpen={isOvertimeUploaderOpen}
-                setIsOpen={setIsOvertimeUploaderOpen}
-                onTemplateUpload={(data) => { setTemplates(prev => ({...prev, overtimeTemplate: data})); saveTemplate('overtimeTemplate', data).catch(() => {}); }}
-            />
-            <Dialog open={isOvertimeSettingsOpen} onOpenChange={setIsOvertimeSettingsOpen}>
+<Dialog open={isOvertimeSettingsOpen} onOpenChange={setIsOvertimeSettingsOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Overtime & Night Differential Settings</DialogTitle>

@@ -16,13 +16,11 @@ import { LeaveEditor } from './leave-editor';
 import { ShiftBlock } from './shift-block';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from './ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { LeaveTypeEditor, type LeaveTypeOption } from './leave-type-editor';
-import { LeaveTypeImporter } from './leave-type-importer';
+import type { LeaveTypeOption } from './leave-type-editor';
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
-import { ShiftTemplateManager } from './shift-template-manager';
 import { ScheduleImporter } from './schedule-importer';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -54,12 +52,11 @@ type ScheduleViewProps = {
   shiftTemplates: ShiftTemplate[];
   setShiftTemplates: React.Dispatch<React.SetStateAction<ShiftTemplate[]>>;
   leaveTypes: LeaveTypeOption[];
-  setLeaveTypes: React.Dispatch<React.SetStateAction<LeaveTypeOption[]>>;
   monthlyEmployeeOrder: Record<string, string[]>;
   setMonthlyEmployeeOrder: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
 }
 
-export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, setLeaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder }: ScheduleViewProps) {
+export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder }: ScheduleViewProps) {
   const isReadOnly = currentUser?.role === 'member';
   
   const visibleEmployees = useMemo(() => employees.filter(e => e.visibility?.schedule !== false), [employees]);
@@ -68,7 +65,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
-  const [isManageShiftsOpen, setIsManageShiftsOpen] = useState(false);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
@@ -88,8 +84,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
 
   const [isLeaveEditorOpen, setIsLeaveEditorOpen] = useState(false);
   const [editingLeave, setEditingLeave] = useState<Partial<Leave> | null>(null);
-  const [isLeaveTypeEditorOpen, setIsLeaveTypeEditorOpen] = useState(false);
-  const [isLeaveTypeImporterOpen, setIsLeaveTypeImporterOpen] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [clearType, setClearType] = useState<'week' | 'month' | 'year' | 'drafts' | 'unassign-week' | null>(null);
   
@@ -602,8 +596,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Settings</DropdownMenuLabel>
                          <DropdownMenuGroup>
-                             <DropdownMenuItem onClick={() => setIsManageShiftsOpen(true)}><Settings2 className="mr-2 h-4 w-4" /><span>Manage Shift Templates</span></DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => setIsLeaveTypeEditorOpen(true)}><Settings className="mr-2 h-4 w-4" /><span>Manage Leave Types</span></DropdownMenuItem>
                             <DropdownMenuItem onClick={onManageHolidays}><Settings className="mr-2 h-4 w-4" /><span>Manage Holidays</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
@@ -689,19 +681,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         employees={employees}
         leaveTypes={leaveTypes}
       />
-      <LeaveTypeEditor
-        isOpen={isLeaveTypeEditorOpen}
-        setIsOpen={setIsLeaveTypeEditorOpen}
-        leaveTypes={leaveTypes}
-        setLeaveTypes={setLeaveTypes}
-        onImport={() => setIsLeaveTypeImporterOpen(true)}
-      />
-      <ShiftTemplateManager
-        isOpen={isManageShiftsOpen}
-        setIsOpen={setIsManageShiftsOpen}
-        shiftTemplates={shiftTemplates}
-        setShiftTemplates={setShiftTemplates}
-      />
+
       <ScheduleImporter
         isOpen={isScheduleImporterOpen}
         setIsOpen={setIsScheduleImporterOpen}

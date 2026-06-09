@@ -47,8 +47,6 @@ import { PermissionsEditor } from '@/components/permissions-editor';
 import DangerZoneView from '@/components/danger-zone-view';
 import DashboardView from '@/components/dashboard-view';
 import FaqView from '@/components/faq-view';
-import { AlafTemplateUploader } from '@/components/alaf-template-uploader';
-import { OffsetTemplateUploader } from '@/components/offset-template-uploader';
 import WorkExtensionsView from '@/components/work-extensions-view';
 import AvlManagementView from '@/components/avl-management-view';
 
@@ -99,8 +97,6 @@ function AppContent() {
   const [viewingNote, setViewingNote] = useState<Note | Holiday | null>(null);
   const [isNoteEditorOpen, setIsNoteEditorOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Partial<Note> | null>(null);
-  const [isAlafUploaderOpen, setIsAlafUploaderOpen] = useState(false);
-  const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = useState(false);
 
 
   const { notifications, setNotifications, addNotification, addNotificationForUser } = useNotifications();
@@ -460,6 +456,13 @@ function AppContent() {
     let errorCount = 0;
     let updatedEmployees = [...employees];
 
+    // Auto-create any groups from the CSV that do not exist yet
+    const csvGroups = [...new Set(newMembers.map(m => m.group).filter((g): g is string => !!g))];
+    const newGroups = csvGroups.filter(g => !groups.includes(g));
+    if (newGroups.length > 0) {
+      setGroups(prev => [...prev, ...newGroups]);
+    }
+
     for (const member of newMembers) {
       if (!member.email) {
         console.warn('Skipping member with no email:', member);
@@ -726,7 +729,6 @@ function AppContent() {
             shiftTemplates={shiftTemplates}
             setShiftTemplates={setShiftTemplates}
             leaveTypes={leaveTypes}
-            setLeaveTypes={setLeaveTypes}
             monthlyEmployeeOrder={monthlyEmployeeOrder}
             setMonthlyEmployeeOrder={setMonthlyEmployeeOrder}
           />
@@ -758,8 +760,6 @@ function AppContent() {
                   employees={employees}
                   leaveTypes={leaveTypes}
                   smtpSettings={smtpSettings}
-                  onUploadAlaf={() => setIsAlafUploaderOpen(true)}
-                  onUploadOffset={() => setIsOffsetUploaderOpen(true)}
                />;
         case 'avl-management':
           return <AvlManagementView
@@ -825,6 +825,12 @@ function AppContent() {
                 onImportMembers={() => setIsImporterOpen(true)}
                 onManageGroups={() => setIsGroupEditorOpen(true)}
                 smtpSettings={smtpSettings}
+                shiftTemplates={shiftTemplates}
+                setShiftTemplates={setShiftTemplates}
+                leaveTypes={leaveTypes}
+                setLeaveTypes={setLeaveTypes}
+                templates={templates}
+                setTemplates={setTemplates}
             />
         );
        case 'permissions':
@@ -938,22 +944,7 @@ function AppContent() {
             }}
         />
     )}
-     <AlafTemplateUploader 
-        isOpen={isAlafUploaderOpen}
-        setIsOpen={setIsAlafUploaderOpen}
-        onTemplateUpload={(data) => {
-            setTemplates(prev => ({...prev, alafTemplate: data}));
-            saveTemplate('alafTemplate', data).catch(() => {});
-        }}
-    />
-    <OffsetTemplateUploader
-        isOpen={isOffsetUploaderOpen}
-        setIsOpen={setIsOffsetUploaderOpen}
-        onTemplateUpload={(data) => {
-            setTemplates(prev => ({...prev, offsetTemplate: data}));
-            saveTemplate('offsetTemplate', data).catch(() => {});
-        }}
-    />
+
     </>
   );
 }

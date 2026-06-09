@@ -21,6 +21,20 @@ import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
+import type { ShiftTemplate } from '@/components/shift-editor';
+import type { LeaveTypeOption } from '@/components/leave-type-editor';
+import { ShiftTemplateManager } from '@/components/shift-template-manager';
+import { LeaveTypeEditor } from '@/components/leave-type-editor';
+import { LeaveTypeImporter } from '@/components/leave-type-importer';
+import { AlafTemplateUploader } from '@/components/alaf-template-uploader';
+import { OffsetTemplateUploader } from '@/components/offset-template-uploader';
+import { ReportTemplateUploader } from '@/components/report-template-uploader';
+import { AttendanceTemplateUploader } from '@/components/attendance-template-uploader';
+import { WfhCertificationTemplateUploader } from '@/components/wfh-certification-template-uploader';
+import { WorkExtensionTemplateUploader } from '@/components/work-extension-template-uploader';
+import { OvertimeTemplateUploader } from '@/components/overtime-template-uploader';
+import { saveTemplate } from '@/app/actions';
+import { FileText, Settings2, Settings, CalendarDays } from 'lucide-react';
 
 type AdminPanelProps = {
   users: Employee[];
@@ -33,14 +47,30 @@ type AdminPanelProps = {
   onImportMembers: () => void;
   onManageGroups: () => void;
   smtpSettings: SmtpSettings;
+  shiftTemplates: ShiftTemplate[];
+  setShiftTemplates: React.Dispatch<React.SetStateAction<ShiftTemplate[]>>;
+  leaveTypes: LeaveTypeOption[];
+  setLeaveTypes: React.Dispatch<React.SetStateAction<LeaveTypeOption[]>>;
+  templates: Record<string, string | null>;
+  setTemplates: React.Dispatch<React.SetStateAction<Record<string, string | null>>>;
 };
 
-export default function AdminPanel({ users, setUsers, groups, onAddMember, onEditMember, onDeleteMember, onBatchDelete, onImportMembers, onManageGroups, smtpSettings }: AdminPanelProps) {
+export default function AdminPanel({ users, setUsers, groups, onAddMember, onEditMember, onDeleteMember, onBatchDelete, onImportMembers, onManageGroups, smtpSettings, shiftTemplates, setShiftTemplates, leaveTypes, setLeaveTypes, templates, setTemplates }: AdminPanelProps) {
   const { toast } = useToast();
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [isSending, startSendingTransition] = useTransition();
   const [totpStatuses, setTotpStatuses] = useState<Record<string, boolean>>({});
   const [totpDialog, setTotpDialog] = useState<{ open: boolean; secret?: string; qrDataUri?: string; userEmail?: string }>({ open: false });
+  const [isShiftTemplateManagerOpen, setIsShiftTemplateManagerOpen] = useState(false);
+  const [isLeaveTypeEditorOpen, setIsLeaveTypeEditorOpen] = useState(false);
+  const [isLeaveTypeImporterOpen, setIsLeaveTypeImporterOpen] = useState(false);
+  const [isAlafUploaderOpen, setIsAlafUploaderOpen] = useState(false);
+  const [isOffsetUploaderOpen, setIsOffsetUploaderOpen] = useState(false);
+  const [isWorkScheduleUploaderOpen, setIsWorkScheduleUploaderOpen] = useState(false);
+  const [isAttendanceUploaderOpen, setIsAttendanceUploaderOpen] = useState(false);
+  const [isWfhCertUploaderOpen, setIsWfhCertUploaderOpen] = useState(false);
+  const [isWorkExtensionUploaderOpen, setIsWorkExtensionUploaderOpen] = useState(false);
+  const [isOvertimeUploaderOpen, setIsOvertimeUploaderOpen] = useState(false);
 
   // Load 2FA statuses on mount
   useEffect(() => {
@@ -353,7 +383,136 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {/* ── Shift Templates ─────────────────────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Settings2 className="h-5 w-5" />Shift Templates</CardTitle>
+          <CardDescription>Manage the shift templates available to all groups on the schedule.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={() => setIsShiftTemplateManagerOpen(true)}>
+            <Settings2 className="mr-2 h-4 w-4" />Manage Shift Templates
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Leave Types ──────────────────────────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5" />Leave Types</CardTitle>
+          <CardDescription>Configure the leave types and their colors available system-wide.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={() => setIsLeaveTypeEditorOpen(true)}>
+            <Settings className="mr-2 h-4 w-4" />Manage Leave Types
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── PDF Leave Templates ───────────────────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />PDF Leave Templates</CardTitle>
+          <CardDescription>Upload the PDF templates used for leave (ALAF) and offset/work-extension forms.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button variant="outline" onClick={() => setIsAlafUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />ALAF / Leave Template
+          </Button>
+          <Button variant="outline" onClick={() => setIsOffsetUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />Offset / WE Template
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Report Templates ──────────────────────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Report Templates</CardTitle>
+          <CardDescription>Upload the Excel templates used for generating reports.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button variant="outline" onClick={() => setIsWorkScheduleUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />Work Schedule
+          </Button>
+          <Button variant="outline" onClick={() => setIsAttendanceUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />Attendance Sheet
+          </Button>
+          <Button variant="outline" onClick={() => setIsWorkExtensionUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />Work Extension
+          </Button>
+          <Button variant="outline" onClick={() => setIsWfhCertUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />WFH Certification
+          </Button>
+          <Button variant="outline" onClick={() => setIsOvertimeUploaderOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />Overtime
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Dialogs ───────────────────────────────────────────────────────── */}
+      <ShiftTemplateManager
+        isOpen={isShiftTemplateManagerOpen}
+        setIsOpen={setIsShiftTemplateManagerOpen}
+        shiftTemplates={shiftTemplates}
+        setShiftTemplates={setShiftTemplates}
+      />
+      <LeaveTypeEditor
+        isOpen={isLeaveTypeEditorOpen}
+        setIsOpen={setIsLeaveTypeEditorOpen}
+        leaveTypes={leaveTypes}
+        setLeaveTypes={setLeaveTypes}
+        onImport={() => setIsLeaveTypeImporterOpen(true)}
+      />
+      <LeaveTypeImporter
+        isOpen={isLeaveTypeImporterOpen}
+        setIsOpen={setIsLeaveTypeImporterOpen}
+        onImport={(newTypes) => {
+          setLeaveTypes(prev => {
+            const existing = new Set(prev.map(lt => lt.type));
+            return [...prev, ...newTypes.filter(lt => !existing.has(lt.type))];
+          });
+          setIsLeaveTypeImporterOpen(false);
+        }}
+      />
+      <AlafTemplateUploader
+        isOpen={isAlafUploaderOpen}
+        setIsOpen={setIsAlafUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, alafTemplate: data })); saveTemplate('alafTemplate', data).catch(() => {}); }}
+      />
+      <OffsetTemplateUploader
+        isOpen={isOffsetUploaderOpen}
+        setIsOpen={setIsOffsetUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, offsetTemplate: data })); saveTemplate('offsetTemplate', data).catch(() => {}); }}
+      />
+      <ReportTemplateUploader
+        isOpen={isWorkScheduleUploaderOpen}
+        setIsOpen={setIsWorkScheduleUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, workScheduleTemplate: data })); saveTemplate('workScheduleTemplate', data).catch(() => {}); }}
+      />
+      <AttendanceTemplateUploader
+        isOpen={isAttendanceUploaderOpen}
+        setIsOpen={setIsAttendanceUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, attendanceSheetTemplate: data })); saveTemplate('attendanceSheetTemplate', data).catch(() => {}); }}
+      />
+      <WorkExtensionTemplateUploader
+        isOpen={isWorkExtensionUploaderOpen}
+        setIsOpen={setIsWorkExtensionUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, workExtensionTemplate: data })); saveTemplate('workExtensionTemplate', data).catch(() => {}); }}
+      />
+      <WfhCertificationTemplateUploader
+        isOpen={isWfhCertUploaderOpen}
+        setIsOpen={setIsWfhCertUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, wfhCertificationTemplate: data })); saveTemplate('wfhCertificationTemplate', data).catch(() => {}); }}
+      />
+      <OvertimeTemplateUploader
+        isOpen={isOvertimeUploaderOpen}
+        setIsOpen={setIsOvertimeUploaderOpen}
+        onTemplateUpload={(data) => { setTemplates(prev => ({ ...prev, overtimeTemplate: data })); saveTemplate('overtimeTemplate', data).catch(() => {}); }}
+      />
     </>
   );
 }
+
 

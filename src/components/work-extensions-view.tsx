@@ -123,7 +123,7 @@ export default function WorkExtensionsView({ leaveRequests, setLeaveRequests, cu
         ...requestData,
         endDate: requestData.endDate || requestData.startDate,
         dateFiled: new Date(),
-        department: targetEmployee.group || '',
+        department: targetEmployee.department || targetEmployee.group || '',
         idNumber: targetEmployee.employeeNumber || '',
         contactInfo: targetEmployee.phone || '',
         employeeSignature: targetEmployee.signature,

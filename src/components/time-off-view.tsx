@@ -38,14 +38,12 @@ type TimeOffViewProps = {
   employees: Employee[];
   leaveTypes: LeaveTypeOption[];
   smtpSettings: SmtpSettings;
-  onUploadAlaf: () => void;
-  onUploadOffset: () => void;
 };
 
 type SortKey = 'employee' | 'type' | 'startDate' | 'status' | 'dateFiled';
 type SortDirection = 'asc' | 'desc';
 
-export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings, onUploadAlaf, onUploadOffset }: TimeOffViewProps) {
+export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings }: TimeOffViewProps) {
   const { toast } = useToast();
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
   const [isOffsetDialogOpen, setIsOffsetDialogOpen] = useState(false);
@@ -212,7 +210,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         ...requestData,
         endDate: requestData.endDate || requestData.startDate,
         dateFiled: new Date(),
-        department: currentUser.group || '',
+        department: currentUser.department || currentUser.group || '',
         idNumber: currentUser.employeeNumber || '',
         contactInfo: currentUser.phone || '',
         employeeSignature: currentUser.signature,
@@ -648,27 +646,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
                             </AlertDialogContent>
                         </AlertDialog>
                     )}
-                    {isManager && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline">
-                                    <Settings className="h-4 w-4 mr-2" />
-                                    Manage Templates
-                                    <ChevronsUpDown className="h-4 w-4 ml-2" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={onUploadAlaf}>
-                                    <Upload className="h-4 w-4 mr-2" />
-                                    ALAF Template (Leave Form)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={onUploadOffset}>
-                                    <Upload className="h-4 w-4 mr-2" />
-                                    Offset Request Template
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    )}
+
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button>

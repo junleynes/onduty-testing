@@ -210,6 +210,32 @@ function initializeDatabase() {
     runMigration("ALTER TABLE leave_types ADD COLUMN id TEXT;", "Added 'id' to 'leave_types'");
     runMigration("ALTER TABLE leave_types ADD COLUMN groupName TEXT;", "Added 'groupName' to 'leave_types'");
 
+    // Fix: if leave_types.groupName was created as NOT NULL (old migration), rebuild it as nullable.
+    // SQLite doesn't support ALTER COLUMN, so we use the rename-recreate-copy pattern.
+    try {
+        const col = (db.pragma("table_info(leave_types)") as any[]).find((c: any) => c.name === 'groupName');
+        if (col && col.notnull === 1) {
+            db.exec(`
+                BEGIN;
+                ALTER TABLE leave_types RENAME TO leave_types_old;
+                CREATE TABLE leave_types (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    groupName TEXT,
+                    UNIQUE(type, groupName)
+                );
+                INSERT INTO leave_types (id, type, color, groupName)
+                    SELECT id, type, color, groupName FROM leave_types_old;
+                DROP TABLE leave_types_old;
+                COMMIT;
+            `);
+            console.log("Migration: rebuilt leave_types table with nullable groupName.");
+        }
+    } catch (e: any) {
+        console.error("Migration warning (leave_types nullable groupName):", e.message);
+    }
+
     // Ensure the super-admin account always exists in DB.
     try {
         const admin = db.prepare("SELECT id FROM employees WHERE id = 'emp-admin-01'").get();

@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS leave_types (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     color TEXT NOT NULL,
-    groupName TEXT NOT NULL,
+    groupName TEXT,
     UNIQUE(type, groupName)
 );
 

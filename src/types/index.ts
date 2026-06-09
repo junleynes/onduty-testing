@@ -35,6 +35,7 @@ export type Employee = {
   employeeClassification?: 'Rank-and-File' | 'Confidential' | 'Managerial';
   workScheduleType?: '8h-paid' | '8h-unpaid' | '10h-paid' | '10h-unpaid';
   defaultShiftTemplateId?: string | null;
+  department?: string;
 };
 
 export type Shift = {

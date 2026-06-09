@@ -964,3 +964,33 @@ export async function getEmployeeBinary(employeeId: string): Promise<{ success: 
         return { success: false, error: (error as Error).message };
     }
 }
+
+export async function backupDatabase(): Promise<{ success: boolean; data?: string; error?: string }> {
+    try {
+        await requireAdmin();
+        const dbPath = path.join(process.cwd(), 'local.db');
+        const db = getDb();
+        // Checkpoint WAL so the backup file is complete
+        db.pragma('wal_checkpoint(FULL)');
+        const buffer = fs.readFileSync(dbPath);
+        const base64 = buffer.toString('base64');
+        return { success: true, data: base64 };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function restoreDatabase(base64Data: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAdmin();
+        const dbPath = path.join(process.cwd(), 'local.db');
+        // Close the current DB connection before overwriting the file
+        const { dbInstance } = await import('@/lib/db');
+        if (dbInstance) dbInstance.close();
+        const buffer = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(dbPath, buffer);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

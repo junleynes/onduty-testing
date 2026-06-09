@@ -58,6 +58,7 @@ const employeeSchema = z.object({
   employeeClassification: z.enum(['Rank-and-File', 'Confidential', 'Managerial']).optional(),
   workScheduleType: z.enum(['8h-paid', '8h-unpaid', '10h-paid', '10h-unpaid']).optional(),
   defaultShiftTemplateId: z.string().optional().nullable(),
+  department: z.string().optional().nullable(),
 }).refine(data => {
     // If it's a new user (no ID), password can be blank (to send activation link)
     if (!data.id) {
@@ -136,6 +137,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
             },
             workScheduleType: '8h-paid' as const,
             defaultShiftTemplateId: null,
+            department: null,
         } : {
             ...employee,
             employeeNumber: employee.employeeNumber || '',
@@ -154,6 +156,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
             },
             workScheduleType: (employee.workScheduleType ?? '8h-paid') as '8h-paid' | '8h-unpaid' | '10h-paid' | '10h-unpaid',
             defaultShiftTemplateId: employee.defaultShiftTemplateId ?? null,
+            department: employee.department ?? null,
         };
         form.reset(defaultValues as any);
         setAvatarPreview(employee?.avatar || null);
@@ -511,6 +514,27 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                                 <SelectItem value="Managerial">Managerial</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="department"
+                                    render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Department</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                placeholder="e.g. Finance, Engineering, HR..."
+                                                value={field.value ?? ''}
+                                                onChange={field.onChange}
+                                            />
+                                        </FormControl>
+                                        <FormDescription className="text-xs">
+                                            Used in Time-off and Offset PDF forms.
+                                        </FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                     )}

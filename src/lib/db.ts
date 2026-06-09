@@ -236,6 +236,22 @@ function initializeDatabase() {
         console.error("Migration warning (leave_types nullable groupName):", e.message);
     }
 
+    // Patch manager permissions: add avl-management and work-extension if missing
+    try {
+        const managerRow = db.prepare("SELECT allowed_views FROM permissions WHERE role = 'manager'").get() as { allowed_views: string } | undefined;
+        if (managerRow) {
+            const views: string[] = JSON.parse(managerRow.allowed_views);
+            let changed = false;
+            for (const v of ['avl-management', 'work-extension']) {
+                if (!views.includes(v)) { views.push(v); changed = true; }
+            }
+            if (changed) {
+                db.prepare("UPDATE permissions SET allowed_views = ? WHERE role = 'manager'").run(JSON.stringify(views));
+                console.log("Migration: added avl-management, work-extension to manager permissions.");
+            }
+        }
+    } catch (e: any) { console.error('Migration warning (manager permissions):', e.message); }
+
     // Ensure the super-admin account always exists in DB.
     try {
         const admin = db.prepare("SELECT id FROM employees WHERE id = 'emp-admin-01'").get();

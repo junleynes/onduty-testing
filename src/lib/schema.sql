@@ -95,8 +95,10 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE TABLE IF NOT EXISTS holidays (
     id TEXT PRIMARY KEY,
-    date TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL
+    date TEXT NOT NULL,
+    title TEXT NOT NULL,
+    groupName TEXT,
+    UNIQUE(date, groupName)
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -238,7 +240,7 @@ WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'emp-admin-01');
 -- Default permissions
 INSERT INTO permissions (role, allowed_views) VALUES
 ('admin',   '["admin","templates","smtp-settings","permissions","danger-zone","dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","report-alaf"]'),
-('manager', '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","avl-management","work-extension"]'),
+('manager', '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-work-schedule","report-attendance","report-user-summary","report-tardy","report-wfh","report-work-extension","report-overtime","avl-management","work-extensions"]'),
 ('member',  '["dashboard","my-schedule","my-tasks","onduty","time-off","allowance","team","org-chart","celebrations","holidays","faq","reports","report-wfh"]')
 ON CONFLICT(role) DO NOTHING;
 

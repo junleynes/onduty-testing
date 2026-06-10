@@ -32,6 +32,19 @@ function toLocalDateString(date: Date | string | undefined | null): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Parses a YYYY-MM-DD string as LOCAL midnight (not UTC midnight).
+ * new Date("YYYY-MM-DD") parses as UTC, which shifts the date back one day
+ * for timezones east of UTC (e.g. UTC+8 Philippines). Appending T00:00:00
+ * forces local-time interpretation.
+ */
+function parseLocalDate(dateStr: string | null | undefined): Date {
+  if (!dateStr) return new Date();
+  // Already has time component — parse as-is
+  if (dateStr.includes('T') || dateStr.includes(' ')) return new Date(dateStr);
+  return new Date(dateStr + 'T00:00:00');
+}
+
 export async function getData() {
   // Middleware already protects this route — but guard here too so errors
   // return { success: false } instead of throwing and making result undefined
@@ -136,9 +149,9 @@ export async function getData() {
 
     const processedEmployees: Employee[] = employees.map(e => ({
       ...e,
-      birthDate: e.birthDate ? new Date(e.birthDate) : undefined,
-      startDate: e.startDate ? new Date(e.startDate) : undefined,
-      lastPromotionDate: e.lastPromotionDate ? new Date(e.lastPromotionDate) : undefined,
+      birthDate: e.birthDate ? parseLocalDate(e.birthDate) : undefined,
+      startDate: e.startDate ? parseLocalDate(e.startDate) : undefined,
+      lastPromotionDate: e.lastPromotionDate ? parseLocalDate(e.lastPromotionDate) : undefined,
       visibility: safeParseJSON(e.visibility, {
         schedule: true,
         onDuty: true,
@@ -152,7 +165,7 @@ export async function getData() {
 
     const processedShifts: Shift[] = shifts.map(s => ({
       ...s,
-      date: new Date(s.date),
+      date: parseLocalDate(s.date),
       isDayOff: s.isDayOff === 1,
       isHolidayOff: s.isHolidayOff === 1,
       isUnpaidBreak: s.isUnpaidBreak === 1,
@@ -160,13 +173,13 @@ export async function getData() {
     
     const processedLeave: Leave[] = leave.map((l: any) => ({
       ...l,
-      startDate: new Date(l.startDate),
-      endDate: new Date(l.endDate),
+      startDate: parseLocalDate(l.startDate),
+      endDate: parseLocalDate(l.endDate),
       isAllDay: l.isAllDay === 1,
       requestedAt: l.requestedAt ? new Date(l.requestedAt) : undefined,
       managedAt: l.managedAt ? new Date(l.managedAt) : undefined,
-      originalShiftDate: l.originalShiftDate ? new Date(l.originalShiftDate) : undefined,
-      dateFiled: l.dateFiled ? new Date(l.dateFiled) : new Date(),
+      originalShiftDate: l.originalShiftDate ? parseLocalDate(l.originalShiftDate) : undefined,
+      dateFiled: l.dateFiled ? parseLocalDate(l.dateFiled) : new Date(),
       isAvlClaimed: l.isAvlClaimed === 1,
       // pdfDataUri not loaded here — fetched lazily via getLeaveWithPdf() when needed
       // hasPdf flag lets UI show View/Download/Send buttons without loading the actual PDF
@@ -175,12 +188,12 @@ export async function getData() {
     
     const processedNotes: Note[] = notes.map(n => ({
       ...n,
-      date: new Date(n.date),
+      date: parseLocalDate(n.date),
     }));
 
     const processedHolidays: Holiday[] = holidays.map(h => ({
       ...h,
-      date: new Date(h.date),
+      date: parseLocalDate(h.date),
       groupName: h.groupName ?? null,
     }));
 
@@ -204,7 +217,7 @@ export async function getData() {
 
     const processedTardyRecords: TardyRecord[] = tardyRecords.map(t => ({
         ...t,
-        date: new Date(t.date),
+        date: parseLocalDate(t.date),
     }));
 
     const processedPreferredAvl: PreferredAvl[] = preferredAvl.map(p => ({
@@ -341,11 +354,11 @@ export async function saveAllData({
                 firstName: e.firstName, lastName: e.lastName, middleInitial: e.middleInitial || null,
                 email: e.email, phone: e.phone || null, password: e.password || null,
                 position: e.position || null, role: e.role, group: e.group || null,
-                birthDate: e.birthDate ? new Date(e.birthDate).toISOString().split('T')[0] : null,
-                startDate: e.startDate ? new Date(e.startDate).toISOString().split('T')[0] : null,
+                birthDate: e.birthDate ? toLocalDateString(new Date(e.birthDate)) : null,
+                startDate: e.startDate ? toLocalDateString(new Date(e.startDate)) : null,
                 loadAllocation: e.loadAllocation || 0,
                 visibility: e.visibility ? JSON.stringify(e.visibility) : null,
-                lastPromotionDate: e.lastPromotionDate ? new Date(e.lastPromotionDate).toISOString().split('T')[0] : null,
+                lastPromotionDate: e.lastPromotionDate ? toLocalDateString(new Date(e.lastPromotionDate)) : null,
                 reportsTo: e.reportsTo || null, gender: e.gender || null,
                 employeeClassification: e.employeeClassification || null,
                 personnelNumber: e.personnelNumber || null,

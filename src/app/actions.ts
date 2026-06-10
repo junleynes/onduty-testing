@@ -22,6 +22,14 @@ import {
 
 import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
+/** Parses a YYYY-MM-DD string as local midnight to avoid UTC shift (UTC+8 Philippines). */
+function parseLocalDate(dateStr: string | null | undefined): Date {
+  if (!dateStr) return new Date();
+  if (dateStr.includes('T') || dateStr.includes(' ')) return new Date(dateStr);
+  return new Date(dateStr + 'T00:00:00');
+}
+
+
 /**
  * pdf-lib's updateFieldAppearances() silently skips multiline text fields (Ff bit 13 = 0x1000).
  * This leaves their /AP appearance stream stale — so PDF viewers render the old /AP (wrong data)
@@ -221,7 +229,7 @@ export async function getPublicData(): Promise<{
         const publishedShifts = allShifts
             .map(s => ({
                 ...s,
-                date: new Date(s.date),
+                date: parseLocalDate(s.date),
                 isDayOff: s.isDayOff === 1,
                 isHolidayOff: s.isHolidayOff === 1,
                 isUnpaidBreak: s.isUnpaidBreak === 1,
@@ -477,7 +485,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // Compute dates display
         const startDateStr = formatComponentDate(leaveRequest.startDate);
         const endDateStr = formatComponentDate(leaveRequest.endDate);
-        const datesDisplay = isSameDay(new Date(leaveRequest.startDate), new Date(leaveRequest.endDate))
+        const datesDisplay = isSameDay(parseLocalDate(leaveRequest.startDate), parseLocalDate(leaveRequest.endDate))
             ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
         // Compute total days
@@ -488,8 +496,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         } else if (leaveRequest.durationCategory === 'half') {
             leaveTotalDays = '0.5';
         } else {
-            const start = new Date(leaveRequest.startDate);
-            const end   = new Date(leaveRequest.endDate);
+            const start = parseLocalDate(leaveRequest.startDate);
+            const end   = parseLocalDate(leaveRequest.endDate);
             leaveTotalDays = String(Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         }
 

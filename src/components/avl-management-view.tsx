@@ -53,12 +53,19 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
   const [isPlotDialogOpen, setIsPlotDialogOpen] = useState(false);
   const [editingCell, setEditingCell] = useState<{ employeeId: string; month: number } | null>(null);
   const [tempPlottedDays, setTempPlottedDays] = useState<PreferredAvlDay[]>([]);
-  const [preventConflicts, setPreventConflicts] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const isManager = currentUser.role === 'manager' || currentUser.role === 'admin';
   const lockKey = `${currentUser.group}-${selectedYear}`;
+  const conflictKey = `preventConflicts-${currentUser.group}`;
   const isLocked = !!avlLocks[lockKey];
+  const preventConflicts = !!avlLocks[conflictKey];
+  const setPreventConflicts = (val: boolean | ((prev: boolean) => boolean)) => {
+    setAvlLocks(prev => {
+      const next = typeof val === 'function' ? val(!!prev[conflictKey]) : val;
+      return { ...prev, [conflictKey]: next };
+    });
+  };
 
   const groupEmployees = useMemo(() => 
     employees

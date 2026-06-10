@@ -128,6 +128,7 @@ export type Holiday = {
     id: string;
     date: Date;
     title: string;
+    groupName?: string | null;
 };
 
 export type Task = {

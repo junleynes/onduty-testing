@@ -357,6 +357,14 @@ function AppContent() {
     return leave;
   }, [leave, approvedLeave, currentUser]);
 
+  // Only show holidays relevant to the current user's group (or unscoped nulls)
+  const holidaysForView = useMemo(() => {
+    if (!currentUser) return holidays;
+    return holidays.filter(h =>
+      h.groupName === null || h.groupName === undefined || h.groupName === currentUser.group
+    );
+  }, [holidays, currentUser]);
+
 
   const handleNavigate = (view: NavItem) => {
     setActiveView(view);
@@ -527,6 +535,7 @@ function AppContent() {
       const holidaysWithIds: Holiday[] = newHolidays.map((holiday) => ({
         ...holiday,
         id: uuidv4(),
+        groupName: currentUser?.group ?? null,
       } as Holiday));
 
       setHolidays(prev => [...prev, ...holidaysWithIds]);
@@ -713,7 +722,7 @@ function AppContent() {
             setLeave={setLeave}
             notes={notes}
             setNotes={setNotes}
-            holidays={holidays}
+            holidays={holidaysForView}
             setHolidays={setHolidays}
             tasks={tasks}
             setTasks={setTasks}
@@ -747,7 +756,7 @@ function AppContent() {
         return <CelebrationsView employees={employees} />;
       case 'holidays':
         return <HolidaysView 
-                  holidays={holidays} 
+                  holidays={holidaysForView} 
                   isManager={currentUser.role === 'manager' || currentUser.role === 'admin'}
                   onManageHolidays={() => setIsHolidayEditorOpen(true)}
                 />;
@@ -802,7 +811,7 @@ function AppContent() {
                     employees={employees} 
                     shifts={shifts} 
                     leave={leave} 
-                    holidays={holidays} 
+                    holidays={holidaysForView} 
                     currentUser={currentUser} 
                     tardyRecords={tardyRecords}
                     setTardyRecords={setTardyRecords}
@@ -928,6 +937,7 @@ function AppContent() {
         holidays={holidays}
         setHolidays={setHolidays}
         onImport={() => setIsHolidayImporterOpen(true)}
+        currentUser={currentUser}
     />
     <HolidayImporter
         isOpen={isHolidayImporterOpen}

@@ -95,8 +95,10 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE TABLE IF NOT EXISTS holidays (
     id TEXT PRIMARY KEY,
-    date TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL
+    date TEXT NOT NULL,
+    title TEXT NOT NULL,
+    groupName TEXT,
+    UNIQUE(date, groupName)
 );
 
 CREATE TABLE IF NOT EXISTS tasks (

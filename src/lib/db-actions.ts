@@ -181,6 +181,7 @@ export async function getData() {
     const processedHolidays: Holiday[] = holidays.map(h => ({
       ...h,
       date: new Date(h.date),
+      groupName: h.groupName ?? null,
     }));
 
     const processedTasks: Task[] = tasks.map(t => ({
@@ -447,8 +448,8 @@ export async function saveAllData({
         if (holidaysToDelete.length > 0) {
             db.prepare(`DELETE FROM holidays WHERE id IN (${holidaysToDelete.map(() => '?').join(',')})`).run(...holidaysToDelete);
         }
-        const holidayStmt = db.prepare('INSERT OR REPLACE INTO holidays (id, date, title) VALUES (?, ?, ?)');
-        holidays.forEach(h => holidayStmt.run(h.id, toLocalDateString(h.date), h.title));
+        const holidayStmt = db.prepare('INSERT OR REPLACE INTO holidays (id, date, title, groupName) VALUES (?, ?, ?, ?)');
+        holidays.forEach(h => holidayStmt.run(h.id, toLocalDateString(h.date), h.title, (h as any).groupName ?? null));
 
         // ── Tasks: upsert ─────────────────────────────────────────────────────
         const dbTaskIds = new Set(db.prepare('SELECT id FROM tasks').all().map((r: any) => r.id));

@@ -11,7 +11,7 @@ import { Loader2, Trash2, Download, Upload } from 'lucide-react';
 import { Separator } from './ui/separator';
 import { format } from 'date-fns';
 
-type PurgeableData = 'users' | 'shiftTemplates' | 'holidays' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'shifts';
+type PurgeableData = 'users' | 'shiftTemplates' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'shifts';
 
 type DangerZoneViewProps = {
     onPurgeData: (dataType: PurgeableData) => void;
@@ -83,7 +83,6 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
         { type: 'shifts', title: 'Clear All Schedule', description: 'This will permanently delete all scheduled shifts for all employees across all dates. Shift templates are not affected.', buttonText: 'Clear Schedule', friendlyName: 'scheduled shifts' },
         { type: 'users', title: 'Delete All Users', description: 'This will permanently delete all users except for the Super Admin, along with their associated shifts, leave, and tasks.', buttonText: 'Delete Users', friendlyName: 'users' },
         { type: 'shiftTemplates', title: 'Delete All Shift Templates', description: 'This will permanently delete all saved shift templates.', buttonText: 'Delete Shift Templates', friendlyName: 'shift templates' },
-        { type: 'holidays', title: 'Delete All Holidays', description: 'This will permanently delete all holidays from the schedule.', buttonText: 'Delete Holidays', friendlyName: 'holidays' },
         { type: 'reportTemplates', title: 'Delete All Report Templates', description: 'This will permanently delete all uploaded Excel templates for reports.', buttonText: 'Delete Report Templates', friendlyName: 'report templates' },
         { type: 'tasks', title: 'Delete All Tasks', description: 'This will permanently delete all personal, global, and shift-specific tasks.', buttonText: 'Delete Tasks', friendlyName: 'tasks' },
         { type: 'mobileLoad', title: 'Reset All Mobile Load Data', description: 'This will delete all historical mobile load balance records and reset every user\'s Load Allocation to zero.', buttonText: 'Reset Mobile Load', friendlyName: 'mobile load data' },

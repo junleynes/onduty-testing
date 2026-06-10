@@ -245,7 +245,7 @@ function initializeDatabase() {
         if (managerRow) {
             const views: string[] = JSON.parse(managerRow.allowed_views);
             let changed = false;
-            for (const v of ['avl-management', 'work-extension']) {
+            for (const v of ['avl-management', 'work-extensions']) {
                 if (!views.includes(v)) { views.push(v); changed = true; }
             }
             if (changed) {

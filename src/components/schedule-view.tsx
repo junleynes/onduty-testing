@@ -591,9 +591,27 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
             ))}
             {/* Normal mode: add button on empty cell */}
             {itemsForDay.length === 0 && !isReadOnly && !isSelectMode && (
-                <Button variant="ghost" className="absolute inset-0 w-full h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity" onClick={() => handleEmptyCellClick(employee.id === 'unassigned' ? null : employee.id, day)}>
-                    <PlusCircle className="h-5 w-5 text-muted-foreground" />
-                </Button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="absolute inset-0 w-full h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                            <PlusCircle className="h-5 w-5 text-muted-foreground" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="center" side="bottom" className="w-48">
+                        <DropdownMenuItem onClick={() => handleEmptyCellClick(employee.id === 'unassigned' ? null : employee.id, day)}>
+                            <Clock className="mr-2 h-4 w-4" />
+                            Add New Shift
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                            if (employee.id === 'unassigned') return;
+                            setEditingLeave({ employeeId: employee.id, type: 'VL', isAllDay: true, startDate: day, endDate: day });
+                            setIsLeaveEditorOpen(true);
+                        }}>
+                            <Palmtree className="mr-2 h-4 w-4" />
+                            Add New Time Off
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             )}
             {/* Select mode: paste button when clipboard has data and cell not selected */}
             {!isReadOnly && isSelectMode && hasClipboard && !isSelected && (
@@ -1119,28 +1137,24 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         const headerRow = worksheet.getRow(currentRow);
                         headerRow.getCell(1).value = 'Employee';
                         headerRow.getCell(1).style = headerStyle;
-                        headerRow.getCell(2).value = 'Department';
-                        headerRow.getCell(2).style = headerStyle;
                         days.forEach((day, idx) => {
-                            const cell = headerRow.getCell(idx + 3);
+                            const cell = headerRow.getCell(idx + 2);
                             cell.value = format(day, 'EEE\nMM/dd');
                             cell.style = headerStyle;
                         });
                         headerRow.height = 30;
                         currentRow++;
 
-                        // Employee rows
-                        orderedEmployees.forEach(emp => {
+                        // Employee rows — skip Unassigned Shifts
+                        orderedEmployees.filter(emp => emp.id !== 'unassigned').forEach(emp => {
                             const row = worksheet.getRow(currentRow);
-                            row.getCell(1).value = getFullName(emp) || 'Unassigned';
+                            row.getCell(1).value = getFullName(emp) || emp.firstName;
                             row.getCell(1).style = nameStyle;
-                            row.getCell(2).value = (emp as any).department || (emp as any).group || '';
-                            row.getCell(2).style = { ...nameStyle, font: { ...nameStyle.font, bold: false } };
                             row.height = 18;
 
                             days.forEach((day, idx) => {
                                 const shiftOnDay = shifts.find(s =>
-                                    (s.employeeId === emp.id || (emp.id === 'unassigned' && !s.employeeId)) &&
+                                    s.employeeId === emp.id &&
                                     isSameDay(new Date(s.date), day)
                                 );
                                 const leaveOnDay = leave.find(l => {
@@ -1153,18 +1167,25 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                                 let cellColor = '';
                                 if (leaveOnDay) {
                                     cellValue = leaveOnDay.type;
-                                    cellColor = (leaveOnDay.color || '#f59e0b').replace('#', 'FF');
+                                    // Use actual leave color, ensure ARGB format
+                                    const rawColor = (leaveOnDay.color || '#f59e0b').replace('#', '');
+                                    cellColor = rawColor.length === 6 ? 'FF' + rawColor : rawColor;
                                 } else if (shiftOnDay) {
                                     if (shiftOnDay.isDayOff) { cellValue = 'OFF'; cellColor = 'FFE2E8F0'; }
                                     else if (shiftOnDay.isHolidayOff) { cellValue = 'HOL'; cellColor = 'FFFDE68A'; }
-                                    else { cellValue = `${shiftOnDay.startTime}-${shiftOnDay.endTime}`; cellColor = (shiftOnDay.color || '').replace('#', 'FF') || 'FFDBEAFE'; }
+                                    else {
+                                        cellValue = `${shiftOnDay.startTime}-${shiftOnDay.endTime}`;
+                                        // Use actual shift color from grid
+                                        const rawColor = (shiftOnDay.color || '#DBEAFE').replace('#', '');
+                                        cellColor = rawColor.length === 6 ? 'FF' + rawColor : rawColor;
+                                    }
                                 }
 
-                                const cell = row.getCell(idx + 3);
+                                const cell = row.getCell(idx + 2);
                                 cell.value = cellValue;
                                 cell.style = {
                                     alignment: { vertical: 'middle', horizontal: 'center' },
-                                    fill: cellColor ? { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor.startsWith('FF') ? cellColor : 'FF' + cellColor } } : undefined,
+                                    fill: cellColor ? { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor } } : undefined,
                                     border: {
                                         top: { style: 'hair', color: { argb: 'FFCBD5E1' } },
                                         bottom: { style: 'hair', color: { argb: 'FFCBD5E1' } },
@@ -1178,15 +1199,14 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
 
                         // Separator row
                         const sepRow = worksheet.getRow(currentRow);
-                        for (let c = 1; c <= days.length + 2; c++) sepRow.getCell(c).style = separatorStyle;
+                        for (let c = 1; c <= days.length + 1; c++) sepRow.getCell(c).style = separatorStyle;
                         sepRow.height = 6;
                         currentRow++;
                     }
 
                     // Column widths
                     worksheet.getColumn(1).width = 24;
-                    worksheet.getColumn(2).width = 18; // Department
-                    for (let c = 3; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 2 : 21); c++) {
+                    for (let c = 2; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 1 : 20); c++) {
                         worksheet.getColumn(c).width = 13;
                     }
 

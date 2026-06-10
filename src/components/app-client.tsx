@@ -946,6 +946,7 @@ function AppContent() {
         setGroups={setGroups}
         employees={employees}
         shiftTemplates={shiftTemplates}
+        smtpSettings={smtpSettings}
     />
     <MemberImporter
         isOpen={isImporterOpen}

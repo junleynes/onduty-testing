@@ -26,6 +26,8 @@ import { getInitials, getFullName, getBackgroundColor } from '@/lib/utils';
 import Image from 'next/image';
 import { Checkbox } from './ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
+import type { SmtpSettings } from '@/types';
+import { Shuffle, Mail } from 'lucide-react';
 
 const employeeSchema = z.object({
   id: z.string().optional(),
@@ -87,9 +89,10 @@ type TeamEditorProps = {
   setGroups: React.Dispatch<React.SetStateAction<string[]>>;
   employees: Employee[];
   shiftTemplates: ShiftTemplate[];
+  smtpSettings?: SmtpSettings;
 };
 
-export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordResetMode = false, context = 'manager', groups, setGroups, employees, shiftTemplates }: TeamEditorProps) {
+export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordResetMode = false, context = 'manager', groups, setGroups, employees, shiftTemplates, smtpSettings }: TeamEditorProps) {
     const { toast } = useToast();
     const [positions] = useState(() => [...new Set(employees.map(e => e.position).filter(Boolean))]);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -196,6 +199,24 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   const [pwValue, setPwValue]       = useState('');
   const [pwConfirm, setPwConfirm]   = useState('');
   const [pwError, setPwError]       = useState('');
+  const [sendEmailAfterReset, setSendEmailAfterReset] = useState(false);
+
+  const generateRandomPassword = () => {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const special = '!@#$%^&*';
+    const all = upper + lower + digits + special;
+    let pwd = upper[Math.floor(Math.random() * upper.length)]
+            + lower[Math.floor(Math.random() * lower.length)]
+            + digits[Math.floor(Math.random() * digits.length)]
+            + special[Math.floor(Math.random() * special.length)];
+    for (let i = 4; i < 12; i++) pwd += all[Math.floor(Math.random() * all.length)];
+    pwd = pwd.split('').sort(() => 0.5 - Math.random()).join('');
+    setPwValue(pwd);
+    setPwConfirm(pwd);
+    setPwError('');
+  };
 
   // Handle password reset separately — bypasses full schema validation which
   // requires firstName/lastName/email that may be missing from currentUser state
@@ -210,8 +231,22 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
         const { updatePassword } = await import('@/app/employee-actions');
         const result = await updatePassword(employee.id, pwValue);
         if (result.success) {
+            // Optionally email the new password
+            if (sendEmailAfterReset && smtpSettings && employee.email) {
+                try {
+                    const { sendEmail } = await import('@/app/actions');
+                    await sendEmail({
+                        to: employee.email,
+                        subject: 'Your OnDuty Password Has Been Reset',
+                        html: `<p>Hello ${employee.firstName},</p><p>Your OnDuty password has been reset by an administrator.</p><p><strong>New Password:</strong> ${pwValue}</p><p>Please log in and change your password as soon as possible.</p>`,
+                    }, smtpSettings);
+                } catch {
+                    toast({ variant: 'destructive', title: 'Email Failed', description: 'Password was updated but the notification email could not be sent.' });
+                }
+            }
             setPwValue('');
             setPwConfirm('');
+            setSendEmailAfterReset(false);
             setIsOpen(false);
             toast({ title: 'Password Updated', description: 'The password has been changed successfully.' });
         } else {
@@ -263,23 +298,30 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
             {isPasswordResetMode ? (
                 <div className="space-y-3 py-2">
                     <div className="space-y-1">
-                        <label className="text-sm font-medium">New Password</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="text-sm font-medium">New Password</label>
+                            <Button type="button" variant="outline" size="sm" onClick={generateRandomPassword} disabled={isSaving} className="h-7 text-xs gap-1.5">
+                                <Shuffle className="h-3 w-3" /> Generate Random
+                            </Button>
+                        </div>
                         <Input
-                            type="password"
+                            type="text"
                             value={pwValue}
                             onChange={e => { setPwValue(e.target.value); setPwError(''); }}
                             placeholder="New password"
                             disabled={isSaving}
+                            className="font-mono"
                         />
                     </div>
                     <div className="space-y-1">
                         <label className="text-sm font-medium">Confirm Password</label>
                         <Input
-                            type="password"
+                            type="text"
                             value={pwConfirm}
                             onChange={e => { setPwConfirm(e.target.value); setPwError(''); }}
                             placeholder="Confirm new password"
                             disabled={isSaving}
+                            className="font-mono"
                         />
                     </div>
                     {/* Strength indicator */}
@@ -303,6 +345,20 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                     <span>{pwConfirm && pwValue === pwConfirm ? '✓' : '○'}</span>Passwords match
                                 </li>
                             </ul>
+                        </div>
+                    )}
+                    {smtpSettings?.host && employee?.email && (
+                        <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
+                            <Checkbox
+                                id="send-email-reset"
+                                checked={sendEmailAfterReset}
+                                onCheckedChange={(v) => setSendEmailAfterReset(!!v)}
+                                disabled={isSaving}
+                            />
+                            <label htmlFor="send-email-reset" className="text-sm cursor-pointer flex items-center gap-1.5">
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                Email new password to <span className="font-medium">{employee.email}</span>
+                            </label>
                         </div>
                     )}
                     {pwError && <p className="text-sm text-destructive">{pwError}</p>}

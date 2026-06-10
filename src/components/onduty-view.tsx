@@ -116,13 +116,12 @@ export default function OndutyView({ employees, shifts, currentUser }: OndutyVie
                             </Avatar>
                             <div>
                             <p className="font-bold text-lg">{getFullName(employee)}</p>
-                            <p className="text-muted-foreground">{employee.position}</p>
                             </div>
                         </div>
                         <div className="space-y-2 text-sm">
                             <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-muted-foreground" /> 
-                            <span>{shift.startTime} - {shift.endTime} ({shift.label})</span>
+                            <span>{shift.startTime} - {shift.endTime}</span>
                             </div>
                             <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4 text-muted-foreground" /> 

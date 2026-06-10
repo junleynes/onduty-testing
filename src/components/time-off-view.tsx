@@ -224,6 +224,30 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       if (currentUser.signature) {
         saveLeaveSignatures(newRequest.id, currentUser.signature, undefined).catch(() => {});
       }
+
+      // Notify superior via email if configured
+      if (smtpSettings?.host && currentUser.reportsTo) {
+        const superior = employees.find(e => e.id === currentUser.reportsTo);
+        if (superior?.email) {
+          const empName = `${currentUser.firstName} ${currentUser.lastName}`;
+          const reqType = newRequest.type;
+          const startStr = newRequest.startDate ? new Date(newRequest.startDate).toLocaleDateString() : '';
+          const endStr = newRequest.endDate ? new Date(newRequest.endDate).toLocaleDateString() : '';
+          const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
+          sendEmail({
+            to: superior.email,
+            subject: `[OnDuty] New ${reqType} Request from ${empName}`,
+            html: `<p>Hi ${superior.firstName},</p>
+<p><strong>${empName}</strong> has submitted a new <strong>${reqType}</strong> request requiring your attention.</p>
+<ul>
+  <li><strong>Date(s):</strong> ${dateRange}</li>
+  ${newRequest.reason ? `<li><strong>Reason:</strong> ${newRequest.reason}</li>` : ''}
+</ul>
+<p>Please log in to OnDuty to review and approve or reject this request.</p>`,
+          }, smtpSettings).catch(() => {});
+        }
+      }
+
       toast({ title: 'Request Submitted' });
     }
     setIsRequestDialogOpen(false);

@@ -22,9 +22,19 @@ function safeParseJSON(jsonString: string | null | undefined, defaultValue: any)
  * Using toISOString().split('T')[0] incorrectly converts to UTC, which shifts
  * the date back by one day for timezones east of UTC (e.g. UTC+8 Philippines).
  * This function always uses the local calendar date as the user intended.
+ *
+ * IMPORTANT: Date objects that cross the Next.js server-action boundary are
+ * serialized to ISO strings (e.g. "2026-06-09T16:00:00.000Z") by JSON.stringify.
+ * On a UTC server, calling getDate() on that string would yield the UTC date (9),
+ * not the client's local date (10). To avoid this, app-client.tsx pre-formats all
+ * schedule dates to plain "YYYY-MM-DD" strings before calling saveAllData, and this
+ * function passes them through untouched.
  */
 function toLocalDateString(date: Date | string | undefined | null): string {
   if (!date) return '';
+  // Already a plain YYYY-MM-DD string — pass through without any Date construction
+  // so the server timezone never corrupts it.
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) return date.trim();
   const d = date instanceof Date ? date : new Date(date);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

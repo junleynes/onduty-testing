@@ -105,7 +105,26 @@ function AppContent() {
   // Save all data to the database whenever there's a change
   useEffect(() => {
     if (!initialDataLoaded || isLoading) return;
-    
+
+    /**
+     * Format any Date or date-like value to a plain "YYYY-MM-DD" string using the
+     * BROWSER's local timezone (date-fns `format` uses local time).
+     *
+     * Why this is necessary:
+     * Next.js server actions serialize arguments via JSON.stringify before the RPC
+     * call. A JS Date at local midnight in UTC+8 (e.g. June 10 00:00 UTC+8) becomes
+     * "2026-06-09T16:00:00.000Z" in the payload. The server (running UTC) then calls
+     * getDate() on that string and gets 9 — one day behind. Pre-formatting to a plain
+     * "YYYY-MM-DD" string here means the server receives "2026-06-10" and never needs
+     * to parse a time component at all, so the server timezone is irrelevant.
+     */
+    const toDateStr = (d: Date | string | undefined | null): string => {
+      if (!d) return '';
+      if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.trim())) return d.trim();
+      const dt = d instanceof Date ? d : new Date(d);
+      return format(dt, 'yyyy-MM-dd');
+    };
+
     const dataToSave = {
         employees: employees.map(e => ({
             ...e,
@@ -114,7 +133,12 @@ function AppContent() {
             avatar: undefined,
             signature: undefined,
         })),
-        shifts,
+        // Pre-format date to plain YYYY-MM-DD using the browser's local timezone so
+        // the UTC server never misinterprets a time-bearing ISO string.
+        shifts: shifts.map(s => ({
+            ...s,
+            date: toDateStr(s.date),
+        })),
         // Strip all binary fields from leave records — these are written directly
         // to DB by their respective actions and must not bloat the save payload
         leave: leave.map(l => ({
@@ -122,9 +146,13 @@ function AppContent() {
             pdfDataUri: undefined,
             employeeSignature: undefined,
             managerSignature: undefined,
+            startDate:         toDateStr(l.startDate),
+            endDate:           toDateStr(l.endDate),
+            dateFiled:         toDateStr(l.dateFiled),
+            originalShiftDate: l.originalShiftDate ? toDateStr(l.originalShiftDate) : undefined,
         })),
-        notes,
-        holidays,
+        notes:    notes.map(n => ({ ...n, date: toDateStr(n.date) })),
+        holidays: holidays.map(h => ({ ...h, date: toDateStr(h.date) })),
         tasks,
         allowances: allowances.map(a => ({
             ...a,

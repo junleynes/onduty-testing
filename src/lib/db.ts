@@ -236,13 +236,16 @@ function initializeDatabase() {
         console.error("Migration warning (leave_types nullable groupName):", e.message);
     }
 
+    // Add groupName to holidays (group-scoped holidays)
+    runMigration("ALTER TABLE holidays ADD COLUMN groupName TEXT;", "Added 'groupName' to 'holidays'");
+
     // Patch manager permissions: add avl-management and work-extension if missing
     try {
         const managerRow = db.prepare("SELECT allowed_views FROM permissions WHERE role = 'manager'").get() as { allowed_views: string } | undefined;
         if (managerRow) {
             const views: string[] = JSON.parse(managerRow.allowed_views);
             let changed = false;
-            for (const v of ['avl-management', 'work-extension']) {
+            for (const v of ['avl-management', 'work-extensions']) {
                 if (!views.includes(v)) { views.push(v); changed = true; }
             }
             if (changed) {

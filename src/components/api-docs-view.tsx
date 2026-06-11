@@ -1,21 +1,51 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Copy, Check, Terminal, Lock, Download, Upload, FileSpreadsheet, BarChart3, BookOpen, RefreshCw } from 'lucide-react';
-import { getApiKey, regenerateApiKey } from '@/app/actions';
+import { Copy, Check, Terminal, Lock, Download, Upload, FileSpreadsheet, BarChart3, BookOpen, Plus, Trash2, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { getApiKeys, createApiKey, deleteApiKey } from '@/app/actions';
+import type { ApiKeyRecord } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
+
+// ── Clipboard helper (works on http + https) ──────────────────────────────────
+async function copyToClipboard(text: string): Promise<boolean> {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        // Fallback for non-HTTPS (e.g. local network IP access)
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
+}
 
 // ── Small code block component ────────────────────────────────────────────────
 function CodeBlock({ children, language = 'bash' }: { children: string; language?: string }) {
+    const { toast } = useToast();
     const [copied, setCopied] = useState(false);
-    const copy = () => {
-        navigator.clipboard.writeText(children.trim());
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    const copy = async () => {
+        const ok = await copyToClipboard(children.trim());
+        if (ok) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } else {
+            toast({ variant: 'destructive', title: 'Copy failed', description: 'Please select and copy the text manually.' });
+        }
     };
     return (
         <div className="relative group rounded-md border bg-muted/60 text-sm overflow-x-auto">
@@ -117,45 +147,107 @@ function Endpoint({
     );
 }
 
+// ── Single API key row ────────────────────────────────────────────────────────
+function ApiKeyRow({ record, onDelete }: { record: ApiKeyRecord; onDelete: (id: string) => void }) {
+    const { toast } = useToast();
+    const [visible, setVisible] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
+    const masked = record.key_value.slice(0, 8) + '•'.repeat(Math.max(0, record.key_value.length - 12)) + record.key_value.slice(-4);
+
+    const handleCopy = async () => {
+        const ok = await copyToClipboard(record.key_value);
+        if (ok) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } else {
+            toast({ variant: 'destructive', title: 'Copy failed', description: 'Please select and copy the key manually.' });
+        }
+    };
+
+    const handleDelete = async () => {
+        setDeleting(true);
+        const result = await deleteApiKey(record.id);
+        if (result.success) {
+            onDelete(record.id);
+            toast({ title: 'Key Deleted', description: `"${record.name}" has been revoked.` });
+        } else {
+            toast({ variant: 'destructive', title: 'Failed', description: result.error });
+            setDeleting(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col gap-2 p-3 border rounded-lg">
+            <div className="flex items-center justify-between gap-2">
+                <div>
+                    <p className="text-sm font-medium">{record.name}</p>
+                    <p className="text-xs text-muted-foreground">Created {new Date(record.created_at).toLocaleDateString()}</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={handleDelete} disabled={deleting} title="Revoke key">
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </Button>
+            </div>
+            <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-xs bg-muted px-3 py-1.5 rounded border overflow-x-auto">
+                    {visible ? record.key_value : masked}
+                </code>
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setVisible(v => !v)} title={visible ? 'Hide' : 'Reveal'}>
+                    {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={handleCopy} title="Copy to clipboard">
+                    {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ApiDocsView() {
     const { toast } = useToast();
-    const [apiKey, setApiKey] = useState<string | null>(null);
+    const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
     const [loading, setLoading] = useState(true);
-    const [regenerating, setRegenerating] = useState(false);
-    const [keyVisible, setKeyVisible] = useState(false);
-    const [copied, setCopied] = useState(false);
+    const [newKeyName, setNewKeyName] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [newlyCreated, setNewlyCreated] = useState<ApiKeyRecord | null>(null);
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-onduty.com';
+    // Use the first key value in examples, if any
+    const exampleKey = keys[0]?.key_value ?? 'YOUR_API_KEY';
 
-    useEffect(() => {
-        getApiKey().then(r => {
-            if (r.success) setApiKey(r.key ?? null);
-            setLoading(false);
-        });
+    const load = useCallback(async () => {
+        setLoading(true);
+        const result = await getApiKeys();
+        if (result.success) setKeys(result.keys ?? []);
+        setLoading(false);
     }, []);
 
-    const handleRegenerate = async () => {
-        setRegenerating(true);
-        const result = await regenerateApiKey();
-        if (result.success) {
-            setApiKey(result.key ?? null);
-            setKeyVisible(true);
-            toast({ title: 'API Key Regenerated', description: 'Your old key is now invalid. Update any integrations.' });
+    useEffect(() => { load(); }, [load]);
+
+    const handleCreate = async () => {
+        if (!newKeyName.trim()) {
+            toast({ variant: 'destructive', title: 'Name required', description: 'Enter a name for this API key before generating.' });
+            return;
+        }
+        setCreating(true);
+        const result = await createApiKey(newKeyName.trim());
+        if (result.success && result.key) {
+            setKeys(prev => [...prev, result.key!]);
+            setNewlyCreated(result.key!);
+            setNewKeyName('');
+            toast({ title: 'API Key Created', description: `Key "${result.key.name}" is ready. Copy it now — it won't be shown again.` });
         } else {
             toast({ variant: 'destructive', title: 'Failed', description: result.error });
         }
-        setRegenerating(false);
+        setCreating(false);
     };
 
-    const copyKey = () => {
-        if (!apiKey) return;
-        navigator.clipboard.writeText(apiKey);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    const handleDelete = (id: string) => {
+        setKeys(prev => prev.filter(k => k.id !== id));
+        if (newlyCreated?.id === id) setNewlyCreated(null);
     };
-
-    const maskedKey = apiKey ? apiKey.slice(0, 8) + '•'.repeat(Math.max(0, apiKey.length - 12)) + apiKey.slice(-4) : '';
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -163,40 +255,57 @@ export default function ApiDocsView() {
             <div className="flex items-center gap-3">
                 <BookOpen className="h-6 w-6 text-primary" />
                 <div>
-                    <h1 className="text-2xl font-bold">API Documentation</h1>
-                    <p className="text-sm text-muted-foreground">Integrate OnDuty data with external systems using these REST endpoints.</p>
+                    <h1 className="text-2xl font-bold">API &amp; Integrations</h1>
+                    <p className="text-sm text-muted-foreground">Manage API keys and integrate OnDuty data with external systems.</p>
                 </div>
             </div>
 
             {/* API Key Management */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Lock className="h-4 w-4" /> API Key</CardTitle>
-                    <CardDescription>All API endpoints require this key. Pass it as <code>Authorization: Bearer &lt;key&gt;</code> or <code>x-api-key</code> header.</CardDescription>
+                    <CardTitle className="flex items-center gap-2"><Lock className="h-4 w-4" /> API Keys</CardTitle>
+                    <CardDescription>
+                        All API endpoints require a valid key. Pass it as <code className="text-xs bg-muted px-1 py-0.5 rounded">Authorization: Bearer &lt;key&gt;</code> or <code className="text-xs bg-muted px-1 py-0.5 rounded">x-api-key</code> header.
+                        Multiple keys can be active simultaneously — each integration should have its own key.
+                    </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-4">
                     {loading ? (
-                        <p className="text-sm text-muted-foreground">Loading…</p>
-                    ) : apiKey ? (
-                        <div className="flex items-center gap-2">
-                            <code className="flex-1 font-mono text-sm bg-muted px-3 py-2 rounded-md border overflow-x-auto">
-                                {keyVisible ? apiKey : maskedKey}
-                            </code>
-                            <Button variant="outline" size="sm" onClick={() => setKeyVisible(v => !v)}>
-                                {keyVisible ? 'Hide' : 'Show'}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={copyKey}>
-                                {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                            </Button>
-                        </div>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</p>
+                    ) : keys.length === 0 ? (
+                        <p className="text-sm text-amber-600 dark:text-amber-400">No API keys yet. Generate one below to enable the API.</p>
                     ) : (
-                        <p className="text-sm text-amber-600 dark:text-amber-400">No API key configured. Generate one below to enable the API.</p>
+                        <div className="space-y-2">
+                            {keys.map(k => (
+                                <ApiKeyRow key={k.id} record={k} onDelete={handleDelete} />
+                            ))}
+                        </div>
                     )}
-                    <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={regenerating}>
-                        <RefreshCw className={`mr-2 h-3.5 w-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-                        {apiKey ? 'Regenerate Key' : 'Generate Key'}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">Regenerating invalidates the current key immediately. All integrations using the old key must be updated.</p>
+
+                    {/* New key form */}
+                    <div className="pt-2 border-t space-y-3">
+                        <p className="text-sm font-medium">Generate a new key</p>
+                        <div className="flex gap-2">
+                            <div className="flex-1 space-y-1">
+                                <Label htmlFor="newKeyName" className="text-xs text-muted-foreground">Key name (e.g. "Power Automate", "External Dashboard")</Label>
+                                <Input
+                                    id="newKeyName"
+                                    placeholder="My Integration"
+                                    value={newKeyName}
+                                    onChange={e => setNewKeyName(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                                    maxLength={80}
+                                />
+                            </div>
+                            <div className="flex items-end">
+                                <Button onClick={handleCreate} disabled={creating}>
+                                    {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                                    Generate
+                                </Button>
+                            </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Copy the key immediately after generating — it will be masked afterwards. Deleting a key immediately revokes access for any integration using it.</p>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -215,7 +324,7 @@ export default function ApiDocsView() {
             <div>
                 <div className="flex items-center gap-2 mb-3">
                     <Download className="h-4 w-4 text-primary" />
-                    <h2 className="text-lg font-semibold">Backup & Restore</h2>
+                    <h2 className="text-lg font-semibold">Backup &amp; Restore</h2>
                 </div>
                 <div className="space-y-3">
                     <Endpoint
@@ -223,7 +332,7 @@ export default function ApiDocsView() {
                         path="/api/backup"
                         summary="Download full backup (DB + uploads)"
                         description="Returns a .zip archive containing the SQLite database (local.db) and the entire uploads/ folder (avatars, signatures, PDFs, templates). Compatible with the Restore endpoint and the in-app Restore function."
-                        exampleCurl={`curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
+                        exampleCurl={`curl -H "Authorization: Bearer ${exampleKey}" \\
   ${origin}/api/backup \\
   -o onduty-backup.zip`}
                     />
@@ -237,7 +346,7 @@ export default function ApiDocsView() {
                         ]}
                         responseExample={`{ "success": true, "message": "Restore complete. Server is restarting." }`}
                         exampleCurl={`curl -X POST \\
-  -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
+  -H "Authorization: Bearer ${exampleKey}" \\
   -F "file=@onduty-backup.zip" \\
   ${origin}/api/restore`}
                     />
@@ -269,7 +378,7 @@ export default function ApiDocsView() {
   "errors": []
 }`}
                         exampleCurl={`curl -X POST \\
-  -H "x-api-key: ${apiKey ?? 'YOUR_API_KEY'}" \\
+  -H "x-api-key: ${exampleKey}" \\
   -H "Content-Type: text/csv" \\
   --data-binary @schedule.csv \\
   ${origin}/api/import-schedule`}
@@ -318,11 +427,11 @@ export default function ApiDocsView() {
   ]
 }`}
                         exampleCurl={`# JSON
-curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
+curl -H "Authorization: Bearer ${exampleKey}" \\
   "${origin}/api/reports/work-schedule?from=2026-06-01&to=2026-06-30&group=Administration"
 
 # CSV download
-curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
+curl -H "Authorization: Bearer ${exampleKey}" \\
   "${origin}/api/reports/work-schedule?from=2026-06-01&to=2026-06-30&format=csv" \\
   -o work-schedule.csv`}
                     />
@@ -361,11 +470,11 @@ curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
   ]
 }`}
                         exampleCurl={`# JSON
-curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
+curl -H "Authorization: Bearer ${exampleKey}" \\
   "${origin}/api/reports/attendance-sheet?from=2026-06-02&to=2026-06-08"
 
 # CSV download
-curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
+curl -H "Authorization: Bearer ${exampleKey}" \\
   "${origin}/api/reports/attendance-sheet?from=2026-06-02&to=2026-06-08&format=csv" \\
   -o attendance.csv`}
                     />
@@ -394,7 +503,6 @@ curl -H "Authorization: Bearer ${apiKey ?? 'YOUR_API_KEY'}" \\
                                 {[
                                     ['401', 'Unauthorized — missing or invalid API key', '{ "success": false, "error": "Unauthorized." }'],
                                     ['400', 'Bad request — missing or invalid parameters', '{ "success": false, "error": "Missing required query parameters: from, to." }'],
-                                    ['503', 'API not configured — no API key has been set up', '{ "success": false, "error": "API key not configured." }'],
                                     ['500', 'Internal server error', '{ "success": false, "error": "..." }'],
                                 ].map(([status, meaning, example], i) => (
                                     <tr key={status} className={i % 2 === 0 ? '' : 'bg-muted/20'}>

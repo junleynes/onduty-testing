@@ -55,8 +55,8 @@ export async function GET(req: NextRequest) {
 
     // Auth
     const key = apiKey(req);
-    const stored = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
-    if (!stored?.value || key !== stored.value) {
+    const { isValidApiKey } = await import('@/lib/api-auth');
+    if (!isValidApiKey(key)) {
         return NextResponse.json({ success: false, error: 'Unauthorized. Pass your API key via Authorization: Bearer <key> or x-api-key header.' }, { status: 401 });
     }
 

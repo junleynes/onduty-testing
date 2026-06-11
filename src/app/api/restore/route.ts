@@ -23,10 +23,9 @@ export async function POST(req: NextRequest) {
     const db = getDb();
 
     // Auth check
-    const authHeader = req.headers.get('authorization') ?? '';
-    const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : req.headers.get('x-api-key');
-    const storedRow = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
-    if (!storedRow?.value || apiKey !== storedRow.value) {
+    const { extractApiKey, isValidApiKey } = await import('@/lib/api-auth');
+    const apiKey = extractApiKey(req);
+    if (!isValidApiKey(apiKey)) {
         return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
 

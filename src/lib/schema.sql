@@ -244,6 +244,14 @@ INSERT INTO permissions (role, allowed_views) VALUES
 ('member',  '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-wfh","avl-management","work-extensions"]')
 ON CONFLICT(role) DO NOTHING;
 
+-- Named API keys for external integrations
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    key_value TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- External leave recipients (Company/Division admins outside the team)
 CREATE TABLE IF NOT EXISTS leave_recipients (
     id TEXT PRIMARY KEY,

@@ -1082,3 +1082,87 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
         return { success: false, error: (error as Error).message };
     }
 }
+
+// ── API Key Management ────────────────────────────────────────────────────────
+
+export type ApiKeyRecord = {
+    id: string;
+    name: string;
+    key_value: string;
+    created_at: string;
+};
+
+export async function getApiKeys(): Promise<{ success: boolean; keys?: ApiKeyRecord[]; error?: string }> {
+    try {
+        await requireAuth();
+        const db = getDb();
+        // Ensure table exists (migration safety)
+        db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            key_value TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        const keys = db.prepare('SELECT * FROM api_keys ORDER BY created_at ASC').all() as ApiKeyRecord[];
+        return { success: true, keys };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function createApiKey(name: string): Promise<{ success: boolean; key?: ApiKeyRecord; error?: string }> {
+    try {
+        await requireAuth();
+        if (!name?.trim()) return { success: false, error: 'Name is required.' };
+        const db = getDb();
+        db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            key_value TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        const id = crypto.randomUUID();
+        const key_value = 'od_' + crypto.randomBytes(32).toString('hex');
+        const created_at = new Date().toISOString();
+        db.prepare('INSERT INTO api_keys (id, name, key_value, created_at) VALUES (?, ?, ?, ?)').run(id, name.trim(), key_value, created_at);
+        return { success: true, key: { id, name: name.trim(), key_value, created_at } };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function deleteApiKey(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAuth();
+        const db = getDb();
+        db.prepare('DELETE FROM api_keys WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// Legacy single-key shims (used by smtp-settings-view — kept for backward compat
+// but the view will be updated to remove them)
+export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
+    try {
+        await requireAuth();
+        const db = getDb();
+        const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
+        return { success: true, key: row?.value ?? undefined };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function regenerateApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
+    try {
+        await requireAuth();
+        const db = getDb();
+        const newKey = 'od_' + crypto.randomBytes(32).toString('hex');
+        db.prepare("INSERT INTO key_value_store (key, value) VALUES ('import_api_key', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(newKey);
+        return { success: true, key: newKey };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

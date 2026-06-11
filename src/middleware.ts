@@ -11,6 +11,9 @@ export default auth((req) => {
 
     // API import route uses its own API key auth
     if (pathname.startsWith('/api/import-schedule')) return NextResponse.next();
+    if (pathname.startsWith('/api/backup'))          return NextResponse.next();
+    if (pathname.startsWith('/api/restore'))         return NextResponse.next();
+    if (pathname.startsWith('/api/reports'))         return NextResponse.next();
 
     // Not authenticated — redirect to login
     if (!req.auth) {

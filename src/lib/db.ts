@@ -239,6 +239,25 @@ function initializeDatabase() {
     // Add groupName to holidays (group-scoped holidays)
     runMigration("ALTER TABLE holidays ADD COLUMN groupName TEXT;", "Added 'groupName' to 'holidays'");
 
+    // Audit logs table
+    runMigration(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            actor_id    TEXT,
+            actor_name  TEXT,
+            action      TEXT NOT NULL,
+            target_type TEXT,
+            target_id   TEXT,
+            target_name TEXT,
+            detail      TEXT,
+            ip          TEXT
+        );
+    `, "Created 'audit_logs' table");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_logs(ts DESC);`,         "idx_audit_ts");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_audit_actor  ON audit_logs(actor_id);`,         "idx_audit_actor");
+    runMigration(`CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);`,           "idx_audit_action");
+
     // Patch manager permissions: add avl-management and work-extension if missing
     try {
         const managerRow = db.prepare("SELECT allowed_views FROM permissions WHERE role = 'manager'").get() as { allowed_views: string } | undefined;

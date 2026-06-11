@@ -40,21 +40,21 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
         startBackupTransition(async () => {
             const result = await backupDatabase();
             if (!result.success || !result.data) {
-                toast({ variant: 'destructive', title: 'Backup Failed', description: result.error || 'Could not read database.' });
+                toast({ variant: 'destructive', title: 'Backup Failed', description: result.error || 'Could not create backup.' });
                 return;
             }
             // Convert base64 → Blob and trigger download
             const binary = atob(result.data);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const blob = new Blob([bytes], { type: 'application/octet-stream' });
+            const blob = new Blob([bytes], { type: 'application/zip' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `onduty-backup-${format(new Date(), 'yyyy-MM-dd-HHmm')}.db`;
+            a.download = result.filename ?? `onduty-backup-${format(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
             a.click();
             URL.revokeObjectURL(url);
-            toast({ title: 'Backup Downloaded', description: 'Database backup saved to your device.' });
+            toast({ title: 'Backup Downloaded', description: 'Database + uploads backup saved to your device.' });
         });
     };
 
@@ -102,7 +102,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
                     <div className="flex items-center justify-between rounded-lg border p-4">
                         <div>
                             <h4 className="font-semibold">Backup Database</h4>
-                            <p className="text-sm text-muted-foreground">Download the current database as a <code>.db</code> file.</p>
+                            <p className="text-sm text-muted-foreground">Download a full backup as a <code>.zip</code> file containing the database and all uploaded files (avatars, signatures, PDFs, templates).</p>
                         </div>
                         <Button variant="outline" onClick={handleBackup} disabled={isBackingUp} className="w-48 shrink-0">
                             {isBackingUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
@@ -112,7 +112,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
                     <div className="flex items-center justify-between rounded-lg border p-4">
                         <div>
                             <h4 className="font-semibold">Restore Database</h4>
-                            <p className="text-sm text-muted-foreground">Replace the current database with a backup file. The page will reload automatically.</p>
+                            <p className="text-sm text-muted-foreground">Replace the current database with a backup file (<code>.zip</code> or legacy <code>.db</code>). The page will reload automatically.</p>
                         </div>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -132,7 +132,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
-                        <input ref={restoreInputRef} type="file" accept=".db" className="hidden" onChange={handleRestoreFile} />
+                        <input ref={restoreInputRef} type="file" accept=".zip,.db" className="hidden" onChange={handleRestoreFile} />
                     </div>
                 </CardContent>
             </Card>

@@ -191,6 +191,14 @@ export async function updatePassword(employeeId: string, newPassword: string): P
         const result = db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashed, employeeId);
 
         if (result.changes === 0) return { success: false, error: 'Employee not found.' };
+
+        // Audit log
+        try {
+            const { logAudit } = await import('@/app/actions');
+            const target = db.prepare('SELECT firstName, lastName FROM employees WHERE id = ?').get(employeeId) as any;
+            await logAudit({ action: 'password.admin_reset', targetType: 'employee', targetId: employeeId, targetName: target ? `${target.firstName} ${target.lastName}` : employeeId, detail: 'Admin reset password for employee' });
+        } catch { /* never block */ }
+
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };

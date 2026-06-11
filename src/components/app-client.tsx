@@ -23,6 +23,8 @@ import ScheduleView from '@/components/schedule-view';
 import MyScheduleView from '@/components/my-schedule-view';
 import TeamView from '@/components/team-view';
 import AdminPanel from '@/components/admin-panel';
+import ApiDocsView from '@/components/api-docs-view';
+import AuditLogsView from '@/components/audit-logs-view';
 import TemplatesView from '@/components/templates-view';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { TeamEditor } from '@/components/team-editor';
@@ -887,6 +889,10 @@ function AppContent() {
         return <SmtpSettingsView settings={smtpSettings} onSave={setSmtpSettings} />;
       case 'danger-zone':
         return <DangerZoneView onPurgeData={handlePurgeData} />;
+      case 'api-docs':
+        return <ApiDocsView />;
+      case 'audit-logs':
+        return <AuditLogsView />;
       default:
         return (
             <Card>

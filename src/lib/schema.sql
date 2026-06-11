@@ -244,14 +244,6 @@ INSERT INTO permissions (role, allowed_views) VALUES
 ('member',  '["dashboard","my-schedule","my-tasks","schedule","onduty","time-off","allowance","task-manager","team","org-chart","celebrations","holidays","faq","reports","report-wfh","avl-management","work-extensions"]')
 ON CONFLICT(role) DO NOTHING;
 
--- Named API keys for external integrations
-CREATE TABLE IF NOT EXISTS api_keys (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    key_value TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 -- External leave recipients (Company/Division admins outside the team)
 CREATE TABLE IF NOT EXISTS leave_recipients (
     id TEXT PRIMARY KEY,
@@ -259,4 +251,24 @@ CREATE TABLE IF NOT EXISTS leave_recipients (
     email TEXT NOT NULL UNIQUE,
     role TEXT DEFAULT 'Division Admin',
     isDefault INTEGER DEFAULT 0
+);
+
+-- Automated report schedules
+CREATE TABLE IF NOT EXISTS report_schedules (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    report_type TEXT NOT NULL,   -- 'workSchedule'|'attendance'|'userSummary'|'tardy'|'wfh'|'workExtension'
+    frequency TEXT NOT NULL,     -- 'daily'|'weekly'|'monthly'|'once'
+    day_of_week INTEGER,         -- 0=Sun..6=Sat (weekly)
+    day_of_month INTEGER,        -- 1-28 (monthly)
+    scheduled_date TEXT,         -- ISO date string (once)
+    recipient_emails TEXT NOT NULL,  -- JSON array of email strings
+    subject_template TEXT NOT NULL,
+    body_template TEXT NOT NULL,
+    date_range_type TEXT NOT NULL,  -- 'current-week'|'current-month'|'previous-week'|'previous-month'|'semi-monthly'
+    group_filter TEXT,           -- null = all groups, else specific group
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_sent_at TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1
 );

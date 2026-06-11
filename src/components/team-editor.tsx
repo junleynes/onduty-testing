@@ -27,7 +27,7 @@ import Image from 'next/image';
 import { Checkbox } from './ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import type { SmtpSettings } from '@/types';
-import { Shuffle, Mail } from 'lucide-react';
+import { Shuffle, Mail , Eye, EyeOff } from 'lucide-react';
 
 const employeeSchema = z.object({
   id: z.string().optional(),
@@ -200,6 +200,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
   const [pwConfirm, setPwConfirm]   = useState('');
   const [pwError, setPwError]       = useState('');
   const [sendEmailAfterReset, setSendEmailAfterReset] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const generateRandomPassword = () => {
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -238,7 +239,7 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                     await sendEmail({
                         to: employee.email,
                         subject: 'Your OnDuty Password Has Been Reset',
-                        html: `<p>Hello ${employee.firstName},</p><p>Your OnDuty password has been reset by an administrator.</p><p><strong>New Password:</strong> ${pwValue}</p><p>Please log in and change your password as soon as possible.</p>`,
+                        htmlBody: `<p>Hello ${employee.firstName},</p><p>Your OnDuty password has been reset by an administrator.</p><p><strong>New Password:</strong> ${pwValue}</p><p>Please log in and change your password as soon as possible.</p>`,
                     }, smtpSettings);
                 } catch {
                     toast({ variant: 'destructive', title: 'Email Failed', description: 'Password was updated but the notification email could not be sent.' });
@@ -304,25 +305,35 @@ export function TeamEditor({ isOpen, setIsOpen, employee, onSave, isPasswordRese
                                 <Shuffle className="h-3 w-3" /> Generate Random
                             </Button>
                         </div>
-                        <Input
-                            type="text"
-                            value={pwValue}
-                            onChange={e => { setPwValue(e.target.value); setPwError(''); }}
-                            placeholder="New password"
-                            disabled={isSaving}
-                            className="font-mono"
-                        />
+                        <div className="relative">
+                            <Input
+                                type={showPassword ? 'text' : 'password'}
+                                value={pwValue}
+                                onChange={e => { setPwValue(e.target.value); setPwError(''); }}
+                                placeholder="New password"
+                                disabled={isSaving}
+                                className="font-mono pr-10"
+                            />
+                            <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                        </div>
                     </div>
                     <div className="space-y-1">
                         <label className="text-sm font-medium">Confirm Password</label>
-                        <Input
-                            type="text"
-                            value={pwConfirm}
-                            onChange={e => { setPwConfirm(e.target.value); setPwError(''); }}
-                            placeholder="Confirm new password"
-                            disabled={isSaving}
-                            className="font-mono"
-                        />
+                        <div className="relative">
+                            <Input
+                                type={showPassword ? 'text' : 'password'}
+                                value={pwConfirm}
+                                onChange={e => { setPwConfirm(e.target.value); setPwError(''); }}
+                                placeholder="Confirm new password"
+                                disabled={isSaving}
+                                className="font-mono pr-10"
+                            />
+                            <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                        </div>
                     </div>
                     {/* Strength indicator */}
                     {pwValue && (

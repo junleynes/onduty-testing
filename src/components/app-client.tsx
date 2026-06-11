@@ -851,6 +851,7 @@ function AppContent() {
                     leaveTypes={leaveTypes}
                     permissions={permissions}
                     smtpSettings={smtpSettings}
+                    groups={groups}
                   />;
       case 'admin':
         return (

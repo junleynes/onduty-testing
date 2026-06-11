@@ -1139,7 +1139,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         headerRow.getCell(1).style = headerStyle;
                         days.forEach((day, idx) => {
                             const cell = headerRow.getCell(idx + 2);
-                            cell.value = format(day, 'EEE\nMM/dd');
+                            cell.value = format(day, 'MM/dd/yyyy');
                             cell.style = headerStyle;
                         });
                         headerRow.height = 30;
@@ -1167,16 +1167,21 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                                 let cellColor = '';
                                 if (leaveOnDay) {
                                     cellValue = leaveOnDay.type;
-                                    // Use actual leave color, ensure ARGB format
+                                    // Use actual leave type color
                                     const rawColor = (leaveOnDay.color || '#f59e0b').replace('#', '');
                                     cellColor = rawColor.length === 6 ? 'FF' + rawColor : rawColor;
                                 } else if (shiftOnDay) {
                                     if (shiftOnDay.isDayOff) { cellValue = 'OFF'; cellColor = 'FFE2E8F0'; }
                                     else if (shiftOnDay.isHolidayOff) { cellValue = 'HOL'; cellColor = 'FFFDE68A'; }
                                     else {
-                                        cellValue = `${shiftOnDay.startTime}-${shiftOnDay.endTime}`;
-                                        // Use actual shift color from grid
-                                        const rawColor = (shiftOnDay.color || '#DBEAFE').replace('#', '');
+                                        cellValue = shiftOnDay.label || `${shiftOnDay.startTime}-${shiftOnDay.endTime}`;
+                                        // Prefer shift.color, fall back to matching template color
+                                        let gridColor = shiftOnDay.color;
+                                        if (!gridColor && shiftOnDay.label) {
+                                            const tpl = shiftTemplates.find(t => t.label === shiftOnDay.label || t.name === shiftOnDay.label);
+                                            gridColor = tpl?.color;
+                                        }
+                                        const rawColor = (gridColor || '#DBEAFE').replace('#', '');
                                         cellColor = rawColor.length === 6 ? 'FF' + rawColor : rawColor;
                                     }
                                 }

@@ -1083,85 +1083,108 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
     }
 }
 
-// ── API Key Management ────────────────────────────────────────────────────────
+// ── Report Automation Schedules ───────────────────────────────────────────────
 
-export type ApiKeyRecord = {
+export type ReportSchedule = {
     id: string;
     name: string;
-    key_value: string;
+    report_type: string;
+    frequency: string;
+    day_of_week: number | null;
+    day_of_month: number | null;
+    scheduled_date: string | null;
+    recipient_emails: string;   // JSON array
+    subject_template: string;
+    body_template: string;
+    date_range_type: string;
+    group_filter: string | null;
+    created_by: string;
     created_at: string;
+    last_sent_at: string | null;
+    is_active: number;
 };
 
-export async function getApiKeys(): Promise<{ success: boolean; keys?: ApiKeyRecord[]; error?: string }> {
+export async function getReportSchedules(): Promise<{ success: boolean; schedules?: ReportSchedule[]; error?: string }> {
     try {
-        await requireAuth();
+        await requireAdmin();
         const db = getDb();
-        // Ensure table exists (migration safety)
-        db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
+        db.exec(`CREATE TABLE IF NOT EXISTS report_schedules (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            key_value TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            report_type TEXT NOT NULL,
+            frequency TEXT NOT NULL,
+            day_of_week INTEGER,
+            day_of_month INTEGER,
+            scheduled_date TEXT,
+            recipient_emails TEXT NOT NULL,
+            subject_template TEXT NOT NULL,
+            body_template TEXT NOT NULL,
+            date_range_type TEXT NOT NULL,
+            group_filter TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_sent_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
         )`);
-        const keys = db.prepare('SELECT * FROM api_keys ORDER BY created_at ASC').all() as ApiKeyRecord[];
-        return { success: true, keys };
+        const schedules = db.prepare('SELECT * FROM report_schedules ORDER BY created_at DESC').all() as ReportSchedule[];
+        return { success: true, schedules };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
 }
 
-export async function createApiKey(name: string): Promise<{ success: boolean; key?: ApiKeyRecord; error?: string }> {
+export async function saveReportSchedule(data: Omit<ReportSchedule, 'id' | 'created_at' | 'last_sent_at'>): Promise<{ success: boolean; id?: string; error?: string }> {
     try {
-        await requireAuth();
-        if (!name?.trim()) return { success: false, error: 'Name is required.' };
+        await requireAdmin();
         const db = getDb();
-        db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
+        db.exec(`CREATE TABLE IF NOT EXISTS report_schedules (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            key_value TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            report_type TEXT NOT NULL,
+            frequency TEXT NOT NULL,
+            day_of_week INTEGER,
+            day_of_month INTEGER,
+            scheduled_date TEXT,
+            recipient_emails TEXT NOT NULL,
+            subject_template TEXT NOT NULL,
+            body_template TEXT NOT NULL,
+            date_range_type TEXT NOT NULL,
+            group_filter TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_sent_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
         )`);
         const id = crypto.randomUUID();
-        const key_value = 'od_' + crypto.randomBytes(32).toString('hex');
-        const created_at = new Date().toISOString();
-        db.prepare('INSERT INTO api_keys (id, name, key_value, created_at) VALUES (?, ?, ?, ?)').run(id, name.trim(), key_value, created_at);
-        return { success: true, key: { id, name: name.trim(), key_value, created_at } };
+        db.prepare(`INSERT INTO report_schedules
+            (id, name, report_type, frequency, day_of_week, day_of_month, scheduled_date, recipient_emails, subject_template, body_template, date_range_type, group_filter, created_by, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null, data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails, data.subject_template, data.body_template, data.date_range_type, data.group_filter ?? null, data.created_by, data.is_active);
+        return { success: true, id };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
 }
 
-export async function deleteApiKey(id: string): Promise<{ success: boolean; error?: string }> {
+export async function updateReportSchedule(id: string, data: Partial<Pick<ReportSchedule, 'name' | 'is_active' | 'recipient_emails' | 'subject_template' | 'body_template' | 'frequency' | 'day_of_week' | 'day_of_month' | 'scheduled_date' | 'date_range_type' | 'group_filter' | 'report_type'>>): Promise<{ success: boolean; error?: string }> {
     try {
-        await requireAuth();
+        await requireAdmin();
         const db = getDb();
-        db.prepare('DELETE FROM api_keys WHERE id = ?').run(id);
+        const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
+        const values = [...Object.values(data), id];
+        db.prepare(`UPDATE report_schedules SET ${fields} WHERE id = ?`).run(...values);
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
 }
 
-// Legacy single-key shims (used by smtp-settings-view — kept for backward compat
-// but the view will be updated to remove them)
-export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
+export async function deleteReportSchedule(id: string): Promise<{ success: boolean; error?: string }> {
     try {
-        await requireAuth();
+        await requireAdmin();
         const db = getDb();
-        const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
-        return { success: true, key: row?.value ?? undefined };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
-}
-
-export async function regenerateApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
-    try {
-        await requireAuth();
-        const db = getDb();
-        const newKey = 'od_' + crypto.randomBytes(32).toString('hex');
-        db.prepare("INSERT INTO key_value_store (key, value) VALUES ('import_api_key', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(newKey);
-        return { success: true, key: newKey };
+        db.prepare('DELETE FROM report_schedules WHERE id = ?').run(id);
+        return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }

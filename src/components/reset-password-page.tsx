@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { LayoutGrid, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { LayoutGrid, AlertTriangle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { verifyPasswordResetToken, resetPasswordWithToken } from '@/app/actions';
 import Link from 'next/link';
 import { validatePassword, passwordStrength, PASSWORD_RULES } from '@/lib/password-rules';
@@ -24,6 +24,7 @@ function ResetPasswordContent() {
     const [verificationState, setVerificationState] = useState<'verifying' | 'valid' | 'invalid'>('verifying');
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     
     const token = searchParams.get('token');
 
@@ -109,13 +110,19 @@ function ResetPasswordContent() {
                 <CardContent className="grid gap-4">
                     <div className="grid gap-2">
                         <Label htmlFor="password">New Password</Label>
-                        <Input
-                            id="password"
-                            type="password"
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                        />
+                        <div className="relative">
+                            <Input
+                                id="password"
+                                type={showPassword ? 'text' : 'password'}
+                                required
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="pr-10"
+                            />
+                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                        </div>
                     </div>
                     {password && (
                         <div className="space-y-1.5">
@@ -138,13 +145,19 @@ function ResetPasswordContent() {
                     )}
                      <div className="grid gap-2">
                         <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                        <Input
-                            id="confirmPassword"
-                            type="password"
-                            required
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                        />
+                        <div className="relative">
+                            <Input
+                                id="confirmPassword"
+                                type={showPassword ? 'text' : 'password'}
+                                required
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                className="pr-10"
+                            />
+                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                        </div>
                         {confirmPassword && (
                             <p className={`text-xs ${password === confirmPassword ? 'text-green-600' : 'text-destructive'}`}>
                                 {password === confirmPassword ? '✓ Passwords match' : '○ Passwords do not match'}

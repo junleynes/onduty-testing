@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useRef, useTransition } from 'react';
+import React, { useRef, useTransition, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,11 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
     const [isBackingUp, startBackupTransition] = useTransition();
     const [isRestoring, startRestoreTransition] = useTransition();
     const restoreInputRef = useRef<HTMLInputElement>(null);
+    const [lastBackupAt, setLastBackupAt] = useState<Date | null>(() => {
+        if (typeof window === 'undefined') return null;
+        const stored = localStorage.getItem('onduty_last_backup');
+        return stored ? new Date(stored) : null;
+    });
 
     const handlePurge = (dataType: PurgeableData, friendlyName: string) => {
         startPurgeTransition(async () => {
@@ -40,7 +45,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
         startBackupTransition(async () => {
             const result = await backupDatabase();
             if (!result.success || !result.data) {
-                toast({ variant: 'destructive', title: 'Backup Failed', description: result.error || 'Could not create backup.' });
+                toast({ variant: 'destructive', title: 'Backup Failed', description: result.error || 'Could not read database.' });
                 return;
             }
             // Convert base64 → Blob and trigger download
@@ -54,6 +59,9 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
             a.download = result.filename ?? `onduty-backup-${format(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
             a.click();
             URL.revokeObjectURL(url);
+            const now = new Date();
+            setLastBackupAt(now);
+            localStorage.setItem('onduty_last_backup', now.toISOString());
             toast({ title: 'Backup Downloaded', description: 'Database + uploads backup saved to your device.' });
         });
     };
@@ -96,13 +104,22 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
             <Card>
                 <CardHeader>
                     <CardTitle>Backup & Restore</CardTitle>
-                    <CardDescription>Download a full copy of the database or restore from a previous backup file.</CardDescription>
+                    <CardDescription>Download a full backup (.zip) containing the database and all uploaded files, or restore from a previous backup.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex items-center justify-between rounded-lg border p-4">
                         <div>
                             <h4 className="font-semibold">Backup Database</h4>
-                            <p className="text-sm text-muted-foreground">Download a full backup as a <code>.zip</code> file containing the database and all uploaded files (avatars, signatures, PDFs, templates).</p>
+                            <p className="text-sm text-muted-foreground">Downloads a <code>.zip</code> with <code>local.db</code> + all uploads (avatars, signatures, PDFs, templates).</p>
+                            {lastBackupAt ? (
+                                <p className="text-xs text-green-600 dark:text-green-400 mt-1.5 font-medium">
+                                    ✓ Last backup: {format(lastBackupAt, 'MMM d, yyyy h:mm a')}
+                                </p>
+                            ) : (
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 font-medium">
+                                    ⚠ No backup has been taken on this device yet.
+                                </p>
+                            )}
                         </div>
                         <Button variant="outline" onClick={handleBackup} disabled={isBackingUp} className="w-48 shrink-0">
                             {isBackingUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
@@ -112,7 +129,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
                     <div className="flex items-center justify-between rounded-lg border p-4">
                         <div>
                             <h4 className="font-semibold">Restore Database</h4>
-                            <p className="text-sm text-muted-foreground">Replace the current database with a backup file (<code>.zip</code> or legacy <code>.db</code>). The page will reload automatically.</p>
+                            <p className="text-sm text-muted-foreground">Replace with a <code>.zip</code> backup (or legacy <code>.db</code>). Restores both the database and uploaded files. The page reloads automatically.</p>
                         </div>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>

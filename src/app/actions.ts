@@ -311,7 +311,6 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
             default:
                 return { success: false, error: 'Invalid data type specified for purging.' };
         }
-        await logAudit({ action: 'purge', targetType: 'data', targetName: dataType, detail: `Purged all ${dataType}` });
         return { success: true };
     } catch (error) {
         console.error(`Failed to purge ${dataType}:`, error);
@@ -829,9 +828,6 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
         db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashedPassword, tokenRecord.employeeId);
         db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
 
-        const emp = db.prepare('SELECT firstName, lastName FROM employees WHERE id = ?').get(tokenRecord.employeeId) as any;
-        await logAudit({ action: 'password.reset_token', actorId: tokenRecord.employeeId, actorName: emp ? `${emp.firstName} ${emp.lastName}` : undefined, detail: 'Password reset via email token' });
-
         return { success: true };
     } catch(error) {
          console.error('Password reset failed:', error);
@@ -914,6 +910,7 @@ export type LeaveRecipient = {
 };
 
 export async function getLeaveRecipients(): Promise<{ success: boolean; recipients?: LeaveRecipient[]; error?: string }> {
+    try { await requireAuth(); } catch (e) { return { success: false, error: (e as Error).message }; }
     try {
         const db = getDb();
         const rows = db.prepare('SELECT * FROM leave_recipients ORDER BY isDefault DESC, name ASC').all() as any[];
@@ -977,45 +974,16 @@ export async function getEmployeeBinary(employeeId: string): Promise<{ success: 
     }
 }
 
-export async function backupDatabase(): Promise<{ success: boolean; data?: string; filename?: string; error?: string }> {
+export async function backupDatabase(): Promise<{ success: boolean; data?: string; error?: string }> {
     try {
         await requireAdmin();
         const dbPath = path.join(process.cwd(), 'local.db');
-        const uploadsDir = path.join(process.cwd(), 'uploads');
         const db = getDb();
+        // Checkpoint WAL so the backup file is complete
         db.pragma('wal_checkpoint(FULL)');
-
-        // Build an in-memory zip containing local.db + entire uploads/ folder
-        const AdmZip = (await import('adm-zip')).default;
-        const zip = new AdmZip();
-
-        // Add the database file
-        zip.addLocalFile(dbPath, '', 'local.db');
-
-        // Add uploads directory recursively
-        if (fs.existsSync(uploadsDir)) {
-            const addDir = (dir: string, zipPath: string) => {
-                const entries = fs.readdirSync(dir, { withFileTypes: true });
-                for (const entry of entries) {
-                    const fullPath = path.join(dir, entry.name);
-                    const entryZipPath = zipPath ? `${zipPath}/${entry.name}` : entry.name;
-                    if (entry.isDirectory()) {
-                        addDir(fullPath, entryZipPath);
-                    } else {
-                        zip.addLocalFile(fullPath, zipPath, entry.name);
-                    }
-                }
-            };
-            addDir(uploadsDir, 'uploads');
-        }
-
-        const buffer = zip.toBuffer();
+        const buffer = fs.readFileSync(dbPath);
         const base64 = buffer.toString('base64');
-        const { format } = await import('date-fns');
-        const filename = `onduty-backup-${format(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
-
-        await logAudit({ action: 'backup.create', detail: 'Full backup (DB + uploads) downloaded' });
-        return { success: true, data: base64, filename };
+        return { success: true, data: base64 };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
@@ -1025,142 +993,91 @@ export async function restoreDatabase(base64Data: string): Promise<{ success: bo
     try {
         await requireAdmin();
         const dbPath = path.join(process.cwd(), 'local.db');
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-
-        const AdmZip = (await import('adm-zip')).default;
-
-        // Detect whether this is a zip (new format) or raw .db (legacy format)
+        // Close the current DB connection before overwriting the file
+        const { dbInstance } = await import('@/lib/db');
+        if (dbInstance) dbInstance.close();
         const buffer = Buffer.from(base64Data, 'base64');
-        const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B; // PK magic
-
-        if (isZip) {
-            const zip = new AdmZip(buffer);
-            const entries = zip.getEntries();
-
-            // Close DB before overwriting
-            const { dbInstance } = await import('@/lib/db');
-            if (dbInstance) dbInstance.close();
-
-            for (const entry of entries) {
-                if (entry.isDirectory) continue;
-                const entryName = entry.entryName; // e.g. "local.db" or "uploads/avatars/abc.png"
-                if (entryName === 'local.db') {
-                    fs.writeFileSync(dbPath, entry.getData());
-                } else if (entryName.startsWith('uploads/')) {
-                    const destPath = path.join(process.cwd(), entryName);
-                    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-                    fs.writeFileSync(destPath, entry.getData());
-                }
-            }
-        } else {
-            // Legacy .db restore
-            const { dbInstance } = await import('@/lib/db');
-            if (dbInstance) dbInstance.close();
-            fs.writeFileSync(dbPath, buffer);
-        }
-
+        fs.writeFileSync(dbPath, buffer);
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
 }
 
-// ── Audit Logging ─────────────────────────────────────────────────────────────
+// ── Persistent Notifications ──────────────────────────────────────────────────
 
-export type AuditLogEntry = {
-    id: number;
+export type DbNotification = {
+    id: string;
+    employee_id: string;
+    message: string;
+    is_read: boolean;
+    link: string | null;
     ts: string;
-    actor_id: string | null;
-    actor_name: string | null;
-    action: string;
-    target_type: string | null;
-    target_id: string | null;
-    target_name: string | null;
-    detail: string | null;
-    ip: string | null;
 };
 
-type LogAuditParams = {
-    action: string;
-    actorId?: string;
-    actorName?: string;
-    targetType?: string;
-    targetId?: string;
-    targetName?: string;
-    detail?: string;
-    ip?: string;
-};
+export async function getNotifications(): Promise<{ success: boolean; data?: DbNotification[]; error?: string }> {
+    try {
+        await requireAuth();
+        const { auth } = await import('@/auth');
+        const session = await auth();
+        if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
+        const db = getDb();
+        const rows = db.prepare(
+            "SELECT * FROM notifications WHERE employee_id = ? ORDER BY ts DESC LIMIT 100"
+        ).all(session.user.id) as any[];
+        const data: DbNotification[] = rows.map(r => ({ ...r, is_read: !!r.is_read }));
+        return { success: true, data };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
 
-export async function logAudit(params: LogAuditParams): Promise<void> {
+export async function addDbNotification(params: {
+    employeeId: string;
+    message: string;
+    link?: string;
+}): Promise<{ success: boolean; error?: string }> {
     try {
         const db = getDb();
-        // Try to get actor from session if not provided
-        let actorId = params.actorId;
-        let actorName = params.actorName;
-        if (!actorId) {
-            try {
-                const { auth } = await import('@/auth');
-                const session = await auth();
-                if (session?.user?.email) {
-                    const emp = db.prepare('SELECT id, firstName, lastName FROM employees WHERE email = ?').get(session.user.email) as any;
-                    if (emp) { actorId = emp.id; actorName = `${emp.firstName} ${emp.lastName}`; }
-                }
-            } catch { /* session not available in all contexts */ }
+        const { v4: uuidv4 } = await import('uuid');
+        db.prepare(
+            "INSERT INTO notifications (id, employee_id, message, link) VALUES (?, ?, ?, ?)"
+        ).run(uuidv4(), params.employeeId, params.message, params.link ?? null);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function markNotificationsRead(ids?: string[]): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAuth();
+        const { auth } = await import('@/auth');
+        const session = await auth();
+        if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
+        const db = getDb();
+        if (ids && ids.length > 0) {
+            db.prepare(
+                `UPDATE notifications SET is_read = 1 WHERE employee_id = ? AND id IN (${ids.map(() => '?').join(',')})`
+            ).run(session.user.id, ...ids);
+        } else {
+            db.prepare("UPDATE notifications SET is_read = 1 WHERE employee_id = ?").run(session.user.id);
         }
-        db.prepare(`
-            INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail, ip)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-            actorId ?? null, actorName ?? null,
-            params.action,
-            params.targetType ?? null, params.targetId ?? null, params.targetName ?? null,
-            params.detail ?? null, params.ip ?? null
-        );
-    } catch { /* never throw from audit logging */ }
-}
-
-export async function getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; actorId?: string }): Promise<{ success: boolean; data?: AuditLogEntry[]; total?: number; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        const limit = opts?.limit ?? 100;
-        const offset = opts?.offset ?? 0;
-
-        let where = 'WHERE 1=1';
-        const args: any[] = [];
-        if (opts?.action) { where += ' AND action LIKE ?'; args.push(`%${opts.action}%`); }
-        if (opts?.actorId) { where += ' AND actor_id = ?'; args.push(opts.actorId); }
-
-        const total = (db.prepare(`SELECT COUNT(*) as c FROM audit_logs ${where}`).get(...args) as any).c;
-        const data = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...args, limit, offset) as AuditLogEntry[];
-
-        return { success: true, data, total };
+        return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
 }
 
-// ── API Key Management ────────────────────────────────────────────────────────
-
-export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
+export async function deleteNotification(id: string): Promise<{ success: boolean; error?: string }> {
     try {
-        await requireAdmin();
+        await requireAuth();
+        const { auth } = await import('@/auth');
+        const session = await auth();
+        if (!session?.user?.id) return { success: false, error: 'Not authenticated' };
         const db = getDb();
-        const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
-        return { success: true, key: row?.value ?? null };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
-}
-
-export async function regenerateApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        const newKey = crypto.randomBytes(32).toString('hex');
-        db.prepare("INSERT INTO key_value_store (key, value) VALUES ('import_api_key', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(newKey);
-        await logAudit({ action: 'api_key.regenerated', detail: 'API key was regenerated' });
-        return { success: true, key: newKey };
+        db.prepare("DELETE FROM notifications WHERE id = ? AND employee_id = ?").run(id, session.user.id);
+        return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }

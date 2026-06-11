@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useEffect, useState, useTransition } from 'react';
+import React, { useEffect, useState, useTransition, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -15,8 +15,8 @@ import { Checkbox } from './ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
-import { sendEmail } from '@/app/actions';
-import { Loader2, Mail, Key } from 'lucide-react';
+import { sendEmail, getApiKey, regenerateApiKey } from '@/app/actions';
+import { Loader2, Mail, Key, Eye, EyeOff, RefreshCw, Copy, Check } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
 
@@ -48,10 +48,44 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
   const { toast } = useToast();
   const [isSending, startSendTransition] = useTransition();
   const [testEmail, setTestEmail] = useState('');
-  const [apiKey, setApiKey] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('import_api_key') || '';
-    return '';
-  });
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyLoading, setApiKeyLoading] = useState(true);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  const fetchApiKey = useCallback(async () => {
+    setApiKeyLoading(true);
+    const result = await getApiKey();
+    if (result.success) setApiKey(result.key ?? null);
+    setApiKeyLoading(false);
+  }, []);
+
+  useEffect(() => { fetchApiKey(); }, [fetchApiKey]);
+
+  const handleRegenerateApiKey = async () => {
+    setIsRegenerating(true);
+    const result = await regenerateApiKey();
+    if (result.success) {
+      setApiKey(result.key ?? null);
+      setApiKeyVisible(true);
+      toast({ title: 'API Key Regenerated', description: 'Your old key is now invalid. Update any integrations using it.' });
+    } else {
+      toast({ variant: 'destructive', title: 'Failed', description: result.error });
+    }
+    setIsRegenerating(false);
+  };
+
+  const handleCopyApiKey = () => {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
+  };
+
+  const maskedKey = apiKey
+    ? apiKey.slice(0, 8) + '•'.repeat(Math.max(0, apiKey.length - 12)) + apiKey.slice(-4)
+    : '';
   
   const form = useForm<z.infer<typeof smtpSchema>>({
     resolver: zodResolver(smtpSchema),
@@ -255,32 +289,40 @@ export default function SmtpSettingsView({ settings, onSave }: SmtpSettingsViewP
 
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" />Import API Key</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" />API Key</CardTitle>
         <CardDescription>
-          Set the secret API key required by the <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/import-schedule</code> endpoint for external integrations.
+          Used to authenticate calls to <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/import-schedule</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/backup</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/restore</code>, and <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/reports/*</code>.
+          The key is stored securely in the database — never in the browser.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-2">
-          <Label htmlFor="importApiKey">Secret API Key</Label>
-          <Input
-            id="importApiKey"
-            type="text"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="Enter secret token..."
-            className="font-mono"
-          />
-        </div>
+      <CardContent className="space-y-4">
+        {apiKeyLoading ? (
+          <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</p>
+        ) : apiKey ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 font-mono text-sm bg-muted px-3 py-2 rounded-md border overflow-x-auto">
+                {apiKeyVisible ? apiKey : maskedKey}
+              </code>
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setApiKeyVisible(v => !v)} title={apiKeyVisible ? 'Hide' : 'Show'}>
+                {apiKeyVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={handleCopyApiKey} title="Copy to clipboard">
+                {apiKeyCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Pass this key as <code className="bg-muted px-1 rounded">Authorization: Bearer &lt;key&gt;</code> or <code className="bg-muted px-1 rounded">x-api-key</code> header on all API requests.</p>
+          </div>
+        ) : (
+          <p className="text-sm text-amber-600 dark:text-amber-400">No API key configured yet. Generate one below to enable the API.</p>
+        )}
       </CardContent>
-      <CardFooter>
-        <Button onClick={() => {
-          if (!apiKey.trim()) return;
-          localStorage.setItem('import_api_key', apiKey.trim());
-          toast({ title: 'API Key Saved' });
-        }}>
-          <Key className="h-4 w-4 mr-2" />Save API Key
+      <CardFooter className="gap-2">
+        <Button variant="outline" onClick={handleRegenerateApiKey} disabled={isRegenerating}>
+          {isRegenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+          {apiKey ? 'Regenerate Key' : 'Generate Key'}
         </Button>
+        {apiKey && <p className="text-xs text-muted-foreground">Regenerating immediately invalidates the current key.</p>}
       </CardFooter>
     </Card>
     </>

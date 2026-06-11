@@ -43,7 +43,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     const db   = getDb();
                     const user = db.prepare('SELECT * FROM employees WHERE email = ?').get(email) as any;
 
-                    if (!user) { trackFailed(email); return null; }
+                    if (!user) {
+                        trackFailed(email);
+                        // Audit: unknown email
+                        try {
+                            db.prepare(`INSERT INTO audit_logs (action, detail) VALUES ('login.failed', ?)`).run(`Failed login attempt for unknown email: ${email}`);
+                        } catch { /* */ }
+                        return null;
+                    }
 
                     // Password check — auto-upgrade plaintext to bcrypt
                     let isMatch = false;
@@ -57,9 +64,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         }
                     }
 
-                    if (!isMatch) { trackFailed(email); return null; }
+                    if (!isMatch) {
+                        trackFailed(email);
+                        try {
+                            db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, detail) VALUES (?, ?, 'login.failed', ?)`).run(user.id, `${user.firstName} ${user.lastName}`, `Wrong password for ${email}`);
+                        } catch { /* */ }
+                        return null;
+                    }
 
                     clearAttempts(email);
+
+                    // Audit: successful login
+                    try {
+                        const db2 = getDb();
+                        db2.prepare(`
+                            INSERT INTO audit_logs (actor_id, actor_name, action, detail)
+                            VALUES (?, ?, 'login.success', ?)
+                        `).run(user.id, `${user.firstName} ${user.lastName}`, `Login from ${user.email}`);
+                    } catch { /* never block login */ }
 
                     return {
                         id:             user.id,

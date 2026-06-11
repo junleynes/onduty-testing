@@ -8,7 +8,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn, getFullName } from '@/lib/utils';
-import { Save, Lock, Unlock, Trash2, Download, Upload, AlertTriangle } from 'lucide-react';
+import { Lock, Unlock, Trash2, Download, Upload, AlertTriangle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -454,11 +454,7 @@ export default function AvlManagementView({ currentUser, employees, setEmployees
                 ))}
               </SelectContent>
            </Select>
-           {isManager && (
-             <Button onClick={() => toast({ title: "Preferences Saved Successfully" })}>
-                <Save className="h-4 w-4 mr-2" /> Save All
-             </Button>
-           )}
+
         </div>
       </div>
 

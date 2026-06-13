@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, format as fmtDate, addDays } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,41 @@ import { Plus, Trash2, CalendarClock, Loader2, Mail, Clock } from 'lucide-react'
 import { getReportSchedules, saveReportSchedule, updateReportSchedule, deleteReportSchedule } from '@/app/actions';
 import type { ReportSchedule } from '@/app/actions';
 import type { Employee } from '@/types';
+
+// Resolves a date_range_type string into actual { from, to } dates based on today
+function resolveScheduleDateRange(type: string): { from: Date; to: Date } | null {
+    const today = new Date();
+    switch (type) {
+        case 'current-week': {
+            const from = startOfWeek(today, { weekStartsOn: 1 });
+            const to   = endOfWeek(today,   { weekStartsOn: 1 });
+            return { from, to };
+        }
+        case 'previous-week': {
+            const prev = subWeeks(today, 1);
+            const from = startOfWeek(prev, { weekStartsOn: 1 });
+            const to   = endOfWeek(prev,   { weekStartsOn: 1 });
+            return { from, to };
+        }
+        case 'current-month': {
+            return { from: startOfMonth(today), to: endOfMonth(today) };
+        }
+        case 'previous-month': {
+            const prev = subMonths(today, 1);
+            return { from: startOfMonth(prev), to: endOfMonth(prev) };
+        }
+        case 'semi-monthly': {
+            const day = today.getDate();
+            if (day <= 15) {
+                return { from: startOfMonth(today), to: new Date(today.getFullYear(), today.getMonth(), 15) };
+            } else {
+                return { from: new Date(today.getFullYear(), today.getMonth(), 16), to: endOfMonth(today) };
+            }
+        }
+        default: return null;
+    }
+}
+
 
 const REPORT_TYPES = [
     { value: 'workSchedule',   label: 'Regular Work Schedule' },
@@ -192,6 +228,11 @@ export function ReportScheduleManager({ isOpen, setIsOpen, currentUser, groups }
                                                 <Mail className="h-3 w-3 text-muted-foreground" />
                                                 {emails.map(e => <span key={e} className="text-xs bg-muted px-1.5 py-0.5 rounded">{e}</span>)}
                                             </div>
+                                            {(() => {
+                                                const r = resolveScheduleDateRange(s.date_range_type);
+                                                if (r) return <p className="text-xs text-muted-foreground">Report data: <span className="font-medium">{fmtDate(r.from, 'MMM d')} – {fmtDate(r.to, 'MMM d, yyyy')}</span></p>;
+                                                return null;
+                                            })()}
                                             {s.last_sent_at && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Clock className="h-3 w-3" />Last sent {new Date(s.last_sent_at).toLocaleDateString()}</p>}
                                         </div>
                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive shrink-0" disabled={deletingId === s.id} onClick={() => handleDelete(s.id)}>
@@ -272,6 +313,11 @@ export function ReportScheduleManager({ isOpen, setIsOpen, currentUser, groups }
                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>{DATE_RANGE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                                         </Select>
+                                        {(() => {
+                                            const r = resolveScheduleDateRange(form.date_range_type);
+                                            if (!r) return null;
+                                            return <p className="text-xs text-muted-foreground mt-1">If sent today: <span className="font-medium text-foreground">{fmtDate(r.from, 'MMM d')} – {fmtDate(r.to, 'MMM d, yyyy')}</span></p>;
+                                        })()}
                                     </div>
 
                                     <div className="space-y-1 sm:col-span-2">

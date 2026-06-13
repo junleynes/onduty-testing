@@ -311,6 +311,7 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
             default:
                 return { success: false, error: 'Invalid data type specified for purging.' };
         }
+        await writeAuditLog({ action: `purge.${dataType}`, detail: `Purged: ${dataType}` });
         return { success: true };
     } catch (error) {
         console.error(`Failed to purge ${dataType}:`, error);
@@ -828,6 +829,7 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
         db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashedPassword, tokenRecord.employeeId);
         db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
 
+        await writeAuditLog({ action: 'password.reset_via_token' });
         return { success: true };
     } catch(error) {
          console.error('Password reset failed:', error);
@@ -983,6 +985,7 @@ export async function backupDatabase(): Promise<{ success: boolean; data?: strin
         db.pragma('wal_checkpoint(FULL)');
         const buffer = fs.readFileSync(dbPath);
         const base64 = buffer.toString('base64');
+        await writeAuditLog({ action: 'backup.download' });
         return { success: true, data: base64 };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -998,6 +1001,7 @@ export async function restoreDatabase(base64Data: string): Promise<{ success: bo
         if (dbInstance) dbInstance.close();
         const buffer = Buffer.from(base64Data, 'base64');
         fs.writeFileSync(dbPath, buffer);
+        await writeAuditLog({ action: 'restore.completed' });
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -1083,109 +1087,66 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
     }
 }
 
-// ── Report Automation Schedules ───────────────────────────────────────────────
+// ── Audit Logs ────────────────────────────────────────────────────────────────
 
-export type ReportSchedule = {
-    id: string;
-    name: string;
-    report_type: string;
-    frequency: string;
-    day_of_week: number | null;
-    day_of_month: number | null;
-    scheduled_date: string | null;
-    recipient_emails: string;   // JSON array
-    subject_template: string;
-    body_template: string;
-    date_range_type: string;
-    group_filter: string | null;
-    created_by: string;
-    created_at: string;
-    last_sent_at: string | null;
-    is_active: number;
+export type AuditLogEntry = {
+    id: number;
+    ts: string;
+    actor_id: string | null;
+    actor_name: string | null;
+    action: string;
+    target_type: string | null;
+    target_id: string | null;
+    target_name: string | null;
+    detail: string | null;
+    ip: string | null;
 };
 
-export async function getReportSchedules(): Promise<{ success: boolean; schedules?: ReportSchedule[]; error?: string }> {
+export async function getAuditLogs(opts?: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+}): Promise<{ success: boolean; data?: AuditLogEntry[]; total?: number; error?: string }> {
     try {
         await requireAdmin();
         const db = getDb();
-        db.exec(`CREATE TABLE IF NOT EXISTS report_schedules (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            report_type TEXT NOT NULL,
-            frequency TEXT NOT NULL,
-            day_of_week INTEGER,
-            day_of_month INTEGER,
-            scheduled_date TEXT,
-            recipient_emails TEXT NOT NULL,
-            subject_template TEXT NOT NULL,
-            body_template TEXT NOT NULL,
-            date_range_type TEXT NOT NULL,
-            group_filter TEXT,
-            created_by TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            last_sent_at TEXT,
-            is_active INTEGER NOT NULL DEFAULT 1
-        )`);
-        const schedules = db.prepare('SELECT * FROM report_schedules ORDER BY created_at DESC').all() as ReportSchedule[];
-        return { success: true, schedules };
+        const limit  = opts?.limit  ?? 50;
+        const offset = opts?.offset ?? 0;
+        const action = opts?.action?.trim();
+
+        let where = '';
+        const params: (string | number)[] = [];
+        if (action) {
+            where = 'WHERE action LIKE ?';
+            params.push(`%${action}%`);
+        }
+
+        const total = (db.prepare(`SELECT COUNT(*) AS n FROM audit_logs ${where}`).get(...params) as { n: number }).n;
+        const data  = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as AuditLogEntry[];
+
+        return { success: true, data, total };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
 }
 
-export async function saveReportSchedule(data: Omit<ReportSchedule, 'id' | 'created_at' | 'last_sent_at'>): Promise<{ success: boolean; id?: string; error?: string }> {
+export async function writeAuditLog(entry: {
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    targetName?: string;
+    detail?: string;
+}): Promise<void> {
     try {
-        await requireAdmin();
+        const { auth } = await import('@/auth');
+        const session = await auth();
         const db = getDb();
-        db.exec(`CREATE TABLE IF NOT EXISTS report_schedules (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            report_type TEXT NOT NULL,
-            frequency TEXT NOT NULL,
-            day_of_week INTEGER,
-            day_of_month INTEGER,
-            scheduled_date TEXT,
-            recipient_emails TEXT NOT NULL,
-            subject_template TEXT NOT NULL,
-            body_template TEXT NOT NULL,
-            date_range_type TEXT NOT NULL,
-            group_filter TEXT,
-            created_by TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            last_sent_at TEXT,
-            is_active INTEGER NOT NULL DEFAULT 1
-        )`);
-        const id = crypto.randomUUID();
-        db.prepare(`INSERT INTO report_schedules
-            (id, name, report_type, frequency, day_of_week, day_of_month, scheduled_date, recipient_emails, subject_template, body_template, date_range_type, group_filter, created_by, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null, data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails, data.subject_template, data.body_template, data.date_range_type, data.group_filter ?? null, data.created_by, data.is_active);
-        return { success: true, id };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
-}
-
-export async function updateReportSchedule(id: string, data: Partial<Pick<ReportSchedule, 'name' | 'is_active' | 'recipient_emails' | 'subject_template' | 'body_template' | 'frequency' | 'day_of_week' | 'day_of_month' | 'scheduled_date' | 'date_range_type' | 'group_filter' | 'report_type'>>): Promise<{ success: boolean; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
-        const values = [...Object.values(data), id];
-        db.prepare(`UPDATE report_schedules SET ${fields} WHERE id = ?`).run(...values);
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
-}
-
-export async function deleteReportSchedule(id: string): Promise<{ success: boolean; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        db.prepare('DELETE FROM report_schedules WHERE id = ?').run(id);
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
+        const actorId   = session?.user?.id   ?? null;
+        const actorName = session?.user?.name  ?? null;
+        db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(actorId, actorName, entry.action, entry.targetType ?? null, entry.targetId ?? null, entry.targetName ?? null, entry.detail ?? null);
+    } catch (_) {
+        // Never throw from audit write — don't break the primary operation
     }
 }

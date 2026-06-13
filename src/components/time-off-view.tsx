@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaveTypeOption } from './leave-type-editor';
-import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures, getLeaveRecipients, addDbNotification } from '@/app/actions';
+import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures, getLeaveRecipients, addDbNotification, writeAuditLog } from '@/app/actions';
 import type { LeaveRecipient } from '@/app/actions';
 import { LeaveRecipientsManager } from './leave-recipients-manager';
 import type { SmtpSettings } from '@/types';
@@ -225,6 +225,29 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         saveLeaveSignatures(newRequest.id, currentUser.signature, undefined).catch(() => {});
       }
       toast({ title: 'Request Submitted' });
+
+      // Notify the employee's direct manager/superior by email
+      if (smtpSettings?.host) {
+        const superior = employees.find(e =>
+          (e.role === 'manager' || e.role === 'admin') &&
+          e.group === currentUser.group &&
+          e.id !== currentUser.id
+        );
+        if (superior?.email) {
+          const startStr = newRequest.startDate ? format(new Date(newRequest.startDate), 'MMM d, yyyy') : '';
+          const endStr   = newRequest.endDate   ? format(new Date(newRequest.endDate),   'MMM d, yyyy') : '';
+          const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
+          sendEmail({
+            to: superior.email,
+            subject: `[OnDuty] New ${newRequest.type} request from ${getFullName(currentUser)}`,
+            htmlBody: `<p>Hi ${superior.firstName},</p>
+<p><strong>${getFullName(currentUser)}</strong> has filed a new <strong>${newRequest.type}</strong> request.</p>
+<p><strong>Dates:</strong> ${dateRange}</p>
+${newRequest.reason ? `<p><strong>Reason:</strong> ${newRequest.reason}</p>` : ''}
+<p>Please log in to OnDuty to review and approve or reject the request.</p>`,
+          }, smtpSettings).catch(() => {});
+        }
+      }
     }
     setIsRequestDialogOpen(false);
     setIsOffsetDialogOpen(false);
@@ -298,6 +321,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
 
     if (newStatus === 'approved' && finalUpdatedRequest && finalUpdatedRequest.status === 'approved') {
         toast({ title: "Request Approved & Generating PDF...", description: "Please wait a moment." });
+        writeAuditLog({ action: 'leave.approved', targetType: 'leave', targetId: requestId, targetName: `${finalUpdatedRequest.type} request`, detail: `Approved by ${getFullName(currentUser)}` }).catch(() => {});
         
         const generatorAction = finalUpdatedRequest.type === 'Offset' ? generateOffsetPdf : generateLeavePdf;
         
@@ -323,6 +347,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         }
     } else {
         toast({ title: `Request ${newStatus}` });
+        writeAuditLog({ action: `leave.${newStatus}`, targetType: 'leave', targetId: requestId, targetName: `${finalUpdatedRequest?.type} request`, detail: `${newStatus} by ${getFullName(currentUser)}` }).catch(() => {});
     }
 
     // Notify the requester via email + in-app notification if configured
@@ -337,7 +362,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             sendEmail({
                 to: requester.email,
                 subject: `[OnDuty] Your ${finalUpdatedRequest.type} request has been ${newStatus}`,
-                html: `<p>Hi ${requester.firstName},</p>
+                htmlBody: `<p>Hi ${requester.firstName},</p>
 <p>Your <strong>${finalUpdatedRequest.type}</strong> request for <strong>${dateRange}</strong> has been <strong>${statusLabel}</strong> by ${managerName}.</p>
 ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpdatedRequest.reason}</p>` : ''}
 <p>Please log in to OnDuty for more details.</p>`,

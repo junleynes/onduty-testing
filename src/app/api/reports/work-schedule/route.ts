@@ -45,38 +45,29 @@ import { eachDayOfInterval, format, parseISO, isWithinInterval, startOfDay } fro
  *     "https://your-onduty.com/api/reports/work-schedule?from=2026-06-01&to=2026-06-30&group=Administration"
  */
 
-function apiKey(req: NextRequest): string | null {
-    const auth = req.headers.get('authorization') ?? '';
-    return auth.startsWith('Bearer ') ? auth.slice(7) : req.headers.get('x-api-key');
-}
 
 export async function GET(req: NextRequest) {
     const db = getDb();
 
     // Auth
-    const key = apiKey(req);
-    const { isValidApiKey } = await import('@/lib/api-auth');
-    if (!isValidApiKey(key)) {
+    const { extractApiKey, isValidApiKey, validateDateRange } = await import('@/lib/api-auth');
+    if (!isValidApiKey(extractApiKey(req))) {
         return NextResponse.json({ success: false, error: 'Unauthorized. Pass your API key via Authorization: Bearer <key> or x-api-key header.' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
-    const fromStr = searchParams.get('from');
-    const toStr   = searchParams.get('to');
+    let fromStr = searchParams.get('from');
+    let toStr   = searchParams.get('to');
     const group   = searchParams.get('group');
     const fmt     = searchParams.get('format') ?? 'json';
 
-    if (!fromStr || !toStr) {
-        return NextResponse.json({ success: false, error: 'Missing required query parameters: from, to (ISO date strings, e.g. 2026-06-01).' }, { status: 400 });
-    }
-
-    let fromDate: Date, toDate: Date;
-    try {
-        fromDate = parseISO(fromStr);
-        toDate   = parseISO(toStr);
-    } catch {
-        return NextResponse.json({ success: false, error: 'Invalid date format. Use ISO 8601, e.g. 2026-06-01.' }, { status: 400 });
-    }
+    const rangeCheck = validateDateRange(fromStr, toStr, 366);
+    if (!rangeCheck.ok) return NextResponse.json({ success: false, error: rangeCheck.error }, { status: 400 });
+    const { from: validFrom, to: validTo } = rangeCheck;
+    const fromDate = parseISO(validFrom);
+    const toDate   = parseISO(validTo);
+    fromStr = validFrom;
+    toStr   = validTo;
 
     try {
         // Load employees

@@ -1,31 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { extractApiKey, isValidApiKey } from '@/lib/api-auth';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * GET /api/backup
- *
- * Downloads a full backup zip (database + uploads folder).
- *
- * Authentication: Bearer token using the import_api_key stored in key_value_store.
- *
- * Response: application/zip stream with Content-Disposition: attachment
- *
- * Example:
- *   curl -H "Authorization: Bearer YOUR_API_KEY" https://your-onduty.com/api/backup -o backup.zip
- */
 export async function GET(req: NextRequest) {
-    const db = getDb();
-
-    // Auth check
-    const { extractApiKey, isValidApiKey } = await import('@/lib/api-auth');
-    const apiKey = extractApiKey(req);
-    if (!isValidApiKey(apiKey)) {
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    if (!isValidApiKey(extractApiKey(req))) {
         return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
 
     try {
+        const db = getDb();
         const dbPath = path.join(process.cwd(), 'local.db');
         const uploadsDir = path.join(process.cwd(), 'uploads');
 
@@ -37,14 +23,10 @@ export async function GET(req: NextRequest) {
 
         if (fs.existsSync(uploadsDir)) {
             const addDir = (dir: string, zipPath: string) => {
-                const entries = fs.readdirSync(dir, { withFileTypes: true });
-                for (const entry of entries) {
-                    const fullPath = path.join(dir, entry.name);
-                    if (entry.isDirectory()) {
-                        addDir(fullPath, zipPath ? `${zipPath}/${entry.name}` : entry.name);
-                    } else {
-                        zip.addLocalFile(fullPath, zipPath, entry.name);
-                    }
+                for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                    const full = path.join(dir, entry.name);
+                    if (entry.isDirectory()) addDir(full, zipPath ? `${zipPath}/${entry.name}` : entry.name);
+                    else zip.addLocalFile(full, zipPath, entry.name);
                 }
             };
             addDir(uploadsDir, 'uploads');
@@ -53,12 +35,6 @@ export async function GET(req: NextRequest) {
         const buffer = zip.toBuffer();
         const { format } = await import('date-fns');
         const filename = `onduty-backup-${format(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
-
-        // Audit
-        try {
-            const { logAudit } = await import('@/app/actions');
-            await logAudit({ action: 'backup.api_download', detail: 'Backup downloaded via API', ip: req.headers.get('x-forwarded-for') ?? undefined });
-        } catch { /* */ }
 
         return new NextResponse(buffer, {
             status: 200,

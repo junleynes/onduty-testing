@@ -48,6 +48,7 @@ import type { LeaveTypeOption } from '@/components/leave-type-editor';
 import type { NavItemKey } from '@/types';
 import { PermissionsEditor } from '@/components/permissions-editor';
 import DangerZoneView from '@/components/danger-zone-view';
+import BackupRestoreView from '@/components/backup-restore-view';
 import DashboardView from '@/components/dashboard-view';
 import FaqView from '@/components/faq-view';
 import WorkExtensionsView from '@/components/work-extensions-view';
@@ -851,7 +852,6 @@ function AppContent() {
                     leaveTypes={leaveTypes}
                     permissions={permissions}
                     smtpSettings={smtpSettings}
-                    groups={groups}
                   />;
       case 'admin':
         return (
@@ -888,6 +888,8 @@ function AppContent() {
         return <PermissionsEditor permissions={permissions} setPermissions={setPermissions} />;
       case 'smtp-settings':
         return <SmtpSettingsView settings={smtpSettings} onSave={setSmtpSettings} />;
+      case 'backup-restore':
+        return <BackupRestoreView />;
       case 'danger-zone':
         return <DangerZoneView onPurgeData={handlePurgeData} />;
       case 'api-docs':

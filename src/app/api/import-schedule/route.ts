@@ -20,14 +20,22 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   
   // 1. Security Check
-  const apiKey = req.headers.get('x-api-key');
-  const { isValidApiKey } = await import('@/lib/api-auth');
-  if (!isValidApiKey(apiKey)) {
+  const { extractApiKey, isValidApiKey } = await import('@/lib/api-auth');
+  if (!isValidApiKey(extractApiKey(req))) {
     return NextResponse.json({ success: false, error: 'Unauthorized. Invalid or missing API Key.' }, { status: 401 });
+  }
+
+  // 2. Size guard — reject oversized payloads before reading them
+  const contentLength = Number(req.headers.get('content-length') ?? '0');
+  if (contentLength > 5 * 1024 * 1024) {
+    return NextResponse.json({ success: false, error: 'Payload too large. Maximum CSV size is 5 MB.' }, { status: 413 });
   }
 
   try {
     const csvText = await req.text();
+    if (csvText.length > 5 * 1024 * 1024) {
+      return NextResponse.json({ success: false, error: 'Payload too large. Maximum CSV size is 5 MB.' }, { status: 413 });
+    }
     if (!csvText) {
       return NextResponse.json({ success: false, error: 'Empty request body.' }, { status: 400 });
     }
@@ -84,7 +92,7 @@ export async function POST(req: NextRequest) {
 
         if (dates.length === 0) continue;
 
-        for (let r = 1; rowIndex < block.length; r++) {
+        for (let r = 1; r < block.length; r++) {
           const row = block[r];
           const employeeName = row[0]?.trim();
           if (!employeeName) continue;

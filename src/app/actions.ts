@@ -311,7 +311,6 @@ export async function purgeData(dataType: 'users' | 'shiftTemplates' | 'holidays
             default:
                 return { success: false, error: 'Invalid data type specified for purging.' };
         }
-        await writeAuditLog({ action: `purge.${dataType}`, detail: `Purged: ${dataType}` });
         return { success: true };
     } catch (error) {
         console.error(`Failed to purge ${dataType}:`, error);
@@ -829,7 +828,6 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
         db.prepare('UPDATE employees SET password = ? WHERE id = ?').run(hashedPassword, tokenRecord.employeeId);
         db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
 
-        await writeAuditLog({ action: 'password.reset_via_token' });
         return { success: true };
     } catch(error) {
          console.error('Password reset failed:', error);
@@ -976,17 +974,45 @@ export async function getEmployeeBinary(employeeId: string): Promise<{ success: 
     }
 }
 
-export async function backupDatabase(): Promise<{ success: boolean; data?: string; error?: string }> {
+export async function backupDatabase(): Promise<{ success: boolean; data?: string; filename?: string; error?: string }> {
     try {
         await requireAdmin();
-        const dbPath = path.join(process.cwd(), 'local.db');
+        const dbPath     = path.join(process.cwd(), 'local.db');
+        const uploadsDir = path.join(process.cwd(), 'uploads');
         const db = getDb();
-        // Checkpoint WAL so the backup file is complete
+
+        // Flush WAL so the file on disk is complete
         db.pragma('wal_checkpoint(FULL)');
-        const buffer = fs.readFileSync(dbPath);
-        const base64 = buffer.toString('base64');
-        await writeAuditLog({ action: 'backup.download' });
-        return { success: true, data: base64 };
+
+        // Build a real zip in memory
+        const AdmZip = (await import('adm-zip')).default;
+        const zip = new AdmZip();
+
+        // Add the database file
+        zip.addLocalFile(dbPath, '', 'local.db');
+
+        // Add the uploads folder recursively
+        if (fs.existsSync(uploadsDir)) {
+            const addDir = (dir: string, zipPath: string) => {
+                for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                    const fullPath = path.join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        addDir(fullPath, zipPath ? `${zipPath}/${entry.name}` : entry.name);
+                    } else {
+                        zip.addLocalFile(fullPath, zipPath, entry.name);
+                    }
+                }
+            };
+            addDir(uploadsDir, 'uploads');
+        }
+
+        // toBuffer() returns a proper ZIP binary — base64 encode for transport
+        const zipBuffer = zip.toBuffer();
+        const base64    = zipBuffer.toString('base64');
+        const { format: fmtDate } = await import('date-fns');
+        const filename  = `onduty-backup-${fmtDate(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
+
+        return { success: true, data: base64, filename };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
@@ -995,13 +1021,40 @@ export async function backupDatabase(): Promise<{ success: boolean; data?: strin
 export async function restoreDatabase(base64Data: string): Promise<{ success: boolean; error?: string }> {
     try {
         await requireAdmin();
-        const dbPath = path.join(process.cwd(), 'local.db');
-        // Close the current DB connection before overwriting the file
-        const { dbInstance } = await import('@/lib/db');
-        if (dbInstance) dbInstance.close();
-        const buffer = Buffer.from(base64Data, 'base64');
-        fs.writeFileSync(dbPath, buffer);
-        await writeAuditLog({ action: 'restore.completed' });
+        const dbPath     = path.join(process.cwd(), 'local.db');
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+        const buffer     = Buffer.from(base64Data, 'base64');
+
+        // Close DB connection before overwriting
+        const dbModule = await import('@/lib/db');
+        if ((dbModule as any).dbInstance?.open) (dbModule as any).dbInstance.close();
+        (dbModule as any).dbInstance = null;
+
+        // Detect ZIP by magic bytes PK (0x50 0x4B)
+        const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
+
+        if (isZip) {
+            const AdmZip = (await import('adm-zip')).default;
+            const zip    = new AdmZip(buffer);
+
+            const dbEntry = zip.getEntry('local.db');
+            if (!dbEntry) return { success: false, error: 'No local.db found inside the zip.' };
+            fs.writeFileSync(dbPath, dbEntry.getData());
+
+            // Restore uploads — reject path traversal
+            for (const entry of zip.getEntries()) {
+                if (entry.isDirectory || !entry.entryName.startsWith('uploads/')) continue;
+                const rel = entry.entryName.slice('uploads/'.length);
+                if (!rel || rel.includes('..') || path.isAbsolute(rel)) continue;
+                const dest = path.join(uploadsDir, rel);
+                fs.mkdirSync(path.dirname(dest), { recursive: true });
+                fs.writeFileSync(dest, entry.getData());
+            }
+        } else {
+            // Legacy: bare .db file
+            fs.writeFileSync(dbPath, buffer);
+        }
+
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -1084,69 +1137,5 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
-    }
-}
-
-// ── Audit Logs ────────────────────────────────────────────────────────────────
-
-export type AuditLogEntry = {
-    id: number;
-    ts: string;
-    actor_id: string | null;
-    actor_name: string | null;
-    action: string;
-    target_type: string | null;
-    target_id: string | null;
-    target_name: string | null;
-    detail: string | null;
-    ip: string | null;
-};
-
-export async function getAuditLogs(opts?: {
-    limit?: number;
-    offset?: number;
-    action?: string;
-}): Promise<{ success: boolean; data?: AuditLogEntry[]; total?: number; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        const limit  = opts?.limit  ?? 50;
-        const offset = opts?.offset ?? 0;
-        const action = opts?.action?.trim();
-
-        let where = '';
-        const params: (string | number)[] = [];
-        if (action) {
-            where = 'WHERE action LIKE ?';
-            params.push(`%${action}%`);
-        }
-
-        const total = (db.prepare(`SELECT COUNT(*) AS n FROM audit_logs ${where}`).get(...params) as { n: number }).n;
-        const data  = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as AuditLogEntry[];
-
-        return { success: true, data, total };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
-}
-
-export async function writeAuditLog(entry: {
-    action: string;
-    targetType?: string;
-    targetId?: string;
-    targetName?: string;
-    detail?: string;
-}): Promise<void> {
-    try {
-        const { auth } = await import('@/auth');
-        const session = await auth();
-        const db = getDb();
-        const actorId   = session?.user?.id   ?? null;
-        const actorName = session?.user?.name  ?? null;
-        db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .run(actorId, actorName, entry.action, entry.targetType ?? null, entry.targetId ?? null, entry.targetName ?? null, entry.detail ?? null);
-    } catch (_) {
-        // Never throw from audit write — don't break the primary operation
     }
 }

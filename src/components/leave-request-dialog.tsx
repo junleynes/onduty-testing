@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -22,7 +22,8 @@ import { Input } from './ui/input';
 import type { LeaveTypeOption } from './leave-type-editor';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, ChevronDown } from 'lucide-react';
+import { Checkbox } from './ui/checkbox';
 import { cn } from '@/lib/utils';
 import { format, differenceInCalendarDays, isSameDay } from 'date-fns';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
@@ -64,16 +65,28 @@ const requestSchema = z.object({
 });
 
 
+const REASON_TEMPLATES = [
+  'I will attend to a personal matter.',
+  'I will attend a family event.',
+  'I am not feeling well.',
+  'I have a medical appointment.',
+  'I need to attend to an urgent family concern.',
+  'I will be travelling out of town.',
+  'I have a prior personal commitment.',
+  'I need to process government documents.',
+];
+
 type LeaveRequestDialogProps = {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   request: Partial<Leave> | null;
-  onSave: (request: Partial<Leave>) => void;
+  onSave: (request: Partial<Leave>, notifySuperior: boolean) => void;
   leaveTypes: LeaveTypeOption[];
   currentUser: Employee;
 };
 
 export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTypes, currentUser }: LeaveRequestDialogProps) {
+  const [notifySuperior, setNotifySuperior] = useState(true);
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
     defaultValues: {
@@ -148,7 +161,7 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
                 isAllDay: values.durationCategory === 'whole',
                 startDate: date,
                 endDate: date,
-            });
+            }, notifySuperior);
         });
     } else {
         const finalValues: Partial<Leave> = {
@@ -157,7 +170,7 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
             startDate: values.selectionMode === 'range' ? values.dateRange?.from : values.singleDate,
             endDate: values.selectionMode === 'range' ? values.dateRange?.to || values.dateRange?.from : values.singleDate,
         };
-        onSave(finalValues);
+        onSave(finalValues, notifySuperior);
     }
   };
 
@@ -384,19 +397,49 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
                 </div>
             )}
            
-             <FormField
-              control={form.control}
-              name="reason"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reason/Remarks</FormLabel>
-                   <FormControl>
-                    <Textarea {...field} placeholder="Please provide a brief reason for your request..." />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+             <FormItem>
+                <FormLabel>Reason/Remarks</FormLabel>
+                <div className="space-y-2">
+                  {/* Template picker */}
+                  <select
+                    className="w-full text-sm border rounded-md px-3 py-2 bg-background text-muted-foreground"
+                    value=""
+                    onChange={e => {
+                      if (e.target.value) form.setValue('reason', e.target.value);
+                      e.target.value = '';
+                    }}
+                  >
+                    <option value="">— Use a template reason —</option>
+                    {REASON_TEMPLATES.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <FormField
+                    control={form.control}
+                    name="reason"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Textarea {...field} placeholder="Write your reason here, or choose a template above..." rows={3} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </FormItem>
+
+              {/* Notify superior option */}
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id="notifySuperiorLeave"
+                  checked={notifySuperior}
+                  onCheckedChange={v => setNotifySuperior(!!v)}
+                />
+                <label htmlFor="notifySuperiorLeave" className="text-sm text-muted-foreground cursor-pointer select-none">
+                  Notify my superior/manager by email after submitting
+                </label>
+              </div>
 
             {durationCategory !== 'minutes' && totalDays > 0 && (
                 <div className="p-3 bg-muted rounded-md text-sm font-medium flex justify-between items-center">

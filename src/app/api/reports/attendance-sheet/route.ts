@@ -53,29 +53,38 @@ import { eachDayOfInterval, format, parseISO, isWithinInterval, startOfDay } fro
  *     "https://your-onduty.com/api/reports/attendance-sheet?from=2026-06-02&to=2026-06-08&group=Administration"
  */
 
+function getApiKey(req: NextRequest): string | null {
+    const auth = req.headers.get('authorization') ?? '';
+    return auth.startsWith('Bearer ') ? auth.slice(7) : req.headers.get('x-api-key');
+}
 
 export async function GET(req: NextRequest) {
     const db = getDb();
 
     // Auth
-    const { extractApiKey, isValidApiKey, validateDateRange } = await import('@/lib/api-auth');
-    if (!isValidApiKey(extractApiKey(req))) {
+    const key = getApiKey(req);
+    const stored = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
+    if (!stored?.value || key !== stored.value) {
         return NextResponse.json({ success: false, error: 'Unauthorized. Pass your API key via Authorization: Bearer <key> or x-api-key header.' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
-    let fromStr = searchParams.get('from');
-    let toStr   = searchParams.get('to');
+    const fromStr = searchParams.get('from');
+    const toStr   = searchParams.get('to');
     const group   = searchParams.get('group');
     const fmt     = searchParams.get('format') ?? 'json';
 
-    const rangeCheck = validateDateRange(fromStr, toStr, 366);
-    if (!rangeCheck.ok) return NextResponse.json({ success: false, error: rangeCheck.error }, { status: 400 });
-    const { from: validFrom, to: validTo } = rangeCheck;
-    const fromDate = parseISO(validFrom);
-    const toDate   = parseISO(validTo);
-    fromStr = validFrom;
-    toStr   = validTo;
+    if (!fromStr || !toStr) {
+        return NextResponse.json({ success: false, error: 'Missing required query parameters: from, to (ISO date strings, e.g. 2026-06-02).' }, { status: 400 });
+    }
+
+    let fromDate: Date, toDate: Date;
+    try {
+        fromDate = parseISO(fromStr);
+        toDate   = parseISO(toStr);
+    } catch {
+        return NextResponse.json({ success: false, error: 'Invalid date format. Use ISO 8601, e.g. 2026-06-02.' }, { status: 400 });
+    }
 
     try {
         const empQuery = group
@@ -117,8 +126,14 @@ export async function GET(req: NextRequest) {
 
                 let code = 'OFF';
                 if (leave_) {
+                    // Approved leave always takes priority
                     code = leave_.type.toUpperCase();
-                } else if (shift && !shift.isDayOff && !shift.isHolidayOff) {
+                } else if (shift?.isDayOff) {
+                    // Explicit day-off shift wins over holiday — if manager already
+                    // marked the day OFF, keep it OFF even on a holiday
+                    code = 'OFF';
+                } else if (shift && !shift.isHolidayOff) {
+                    // Regular working shift
                     const shiftLabel = (shift.label ?? '').toUpperCase();
                     if (shiftLabel === 'WFH' || shiftLabel === 'WORK FROM HOME') {
                         code = 'WFH';
@@ -128,9 +143,8 @@ export async function GET(req: NextRequest) {
                         code = 'SKE';
                     }
                 } else if (holiday || shift?.isHolidayOff) {
+                    // Holiday (from holidays table or isHolidayOff flag)
                     code = 'HOL OFF';
-                } else if (shift?.isDayOff) {
-                    code = 'OFF';
                 }
 
                 schedule[label] = code;

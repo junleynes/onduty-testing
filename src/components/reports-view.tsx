@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo, useTransition } from 'react';
 import type { Employee, Shift, Leave, Holiday, TardyRecord, RolePermissions, SmtpSettings, NavItemKey } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
-import { Download, Upload, Calendar as CalendarIcon, Eye, Settings, Send, Loader2 , CalendarClock } from 'lucide-react';
+import { Download, Upload, Calendar as CalendarIcon, Eye, Settings, Send, Loader2 } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -28,7 +28,6 @@ import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { OvertimeTemplateUploader } from './overtime-template-uploader';
 import { sendEmail, saveTemplate } from '@/app/actions';
-import { ReportScheduleManager } from './report-schedule-manager';
 import { Textarea } from './ui/textarea';
 
 const tryParseExcelNumber = (val: any) => {
@@ -56,7 +55,6 @@ type ReportsViewProps = {
     leaveTypes: LeaveTypeOption[];
     permissions: RolePermissions;
     smtpSettings: SmtpSettings;
-    groups: string[];
 }
 
 type ReportType = 'workSchedule' | 'attendance' | 'userSummary' | 'tardy' | 'wfh' | 'workExtension' | 'overtime';
@@ -114,7 +112,7 @@ type OvertimeRowData = {
 
 const ALL_CLASSIFICATIONS = ['Rank-and-File', 'Confidential', 'Managerial'];
 
-export default function ReportsView({ employees, shifts, leave, holidays, currentUser, tardyRecords, setTardyRecords, templates, setTemplates, shiftTemplates, leaveTypes, permissions, smtpSettings, groups }: ReportsViewProps) {
+export default function ReportsView({ employees, shifts, leave, holidays, currentUser, tardyRecords, setTardyRecords, templates, setTemplates, shiftTemplates, leaveTypes, permissions, smtpSettings }: ReportsViewProps) {
     const { toast } = useToast();
     const [selectedReportType, setSelectedReportType] = useState<ReportType>('workSchedule');
     
@@ -146,7 +144,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
     const [isOvertimeSettingsOpen, setIsOvertimeSettingsOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
-    const [isScheduleManagerOpen, setIsScheduleManagerOpen] = useState(false);
     
     const [previewData, setPreviewData] = useState<ReportData | null>(null);
     const [reportGenerator, setReportGenerator] = useState<(() => Promise<void>) | null>(null);
@@ -475,10 +472,13 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                 const dayData = findDataForDay(day, employee);
                 let scheduleCode = '';
 
-                // Hierarchy: Leave (includes VL, SL, SL-D, OFFSET) > Working Shifts (SKE, SKE-10, WFH) > Holidays > OFF
+                // Hierarchy: Leave > OFF (explicit) > Working Shifts > Holiday > default OFF
+                // Note: isDayOff beats holiday — if a shift is already marked OFF, keep it OFF
                 if (dayData.leave) {
                     scheduleCode = dayData.leave.type.toUpperCase();
-                } else if (dayData.shift && !dayData.shift.isDayOff && !dayData.shift.isHolidayOff) {
+                } else if (dayData.shift?.isDayOff) {
+                    scheduleCode = 'OFF';
+                } else if (dayData.shift && !dayData.shift.isHolidayOff) {
                     const label = dayData.shift.label?.toUpperCase() || '';
                     if (label === 'WFH' || label === 'WORK FROM HOME') {
                         scheduleCode = 'WFH';
@@ -1895,20 +1895,10 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
         <>
             <Card>
                 <CardHeader>
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div>
-                            <CardTitle>Generate Reports</CardTitle>
-                            <CardDescription className="mt-1">
-                                Create and download reports based on your schedule data. Select a report type to begin.
-                            </CardDescription>
-                        </div>
-                        {(currentUser.role === 'admin' || currentUser.role === 'manager') && (
-                            <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={() => setIsScheduleManagerOpen(true)}>
-                                <CalendarClock className="h-4 w-4" />
-                                Automate Schedule
-                            </Button>
-                        )}
-                    </div>
+                    <CardTitle>Generate Reports</CardTitle>
+                    <CardDescription>
+                        Create and download reports based on your schedule data. Select a report type to begin.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {availableReports.length > 0 ? (
@@ -2047,12 +2037,6 @@ export default function ReportsView({ employees, shifts, leave, holidays, curren
                     fileName={`${reportTitle}.xlsx`}
                 />
             )}
-        <ReportScheduleManager
-                isOpen={isScheduleManagerOpen}
-                setIsOpen={setIsScheduleManagerOpen}
-                currentUser={currentUser}
-                groups={groups}
-            />
         </>
     );
 }

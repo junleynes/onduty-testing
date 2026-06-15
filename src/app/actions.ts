@@ -974,45 +974,16 @@ export async function getEmployeeBinary(employeeId: string): Promise<{ success: 
     }
 }
 
-export async function backupDatabase(): Promise<{ success: boolean; data?: string; filename?: string; error?: string }> {
+export async function backupDatabase(): Promise<{ success: boolean; data?: string; error?: string }> {
     try {
         await requireAdmin();
-        const dbPath     = path.join(process.cwd(), 'local.db');
-        const uploadsDir = path.join(process.cwd(), 'uploads');
+        const dbPath = path.join(process.cwd(), 'local.db');
         const db = getDb();
-
-        // Flush WAL so the file on disk is complete
+        // Checkpoint WAL so the backup file is complete
         db.pragma('wal_checkpoint(FULL)');
-
-        // Build a real zip in memory
-        const AdmZip = (await import('adm-zip')).default;
-        const zip = new AdmZip();
-
-        // Add the database file
-        zip.addLocalFile(dbPath, '', 'local.db');
-
-        // Add the uploads folder recursively
-        if (fs.existsSync(uploadsDir)) {
-            const addDir = (dir: string, zipPath: string) => {
-                for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                    const fullPath = path.join(dir, entry.name);
-                    if (entry.isDirectory()) {
-                        addDir(fullPath, zipPath ? `${zipPath}/${entry.name}` : entry.name);
-                    } else {
-                        zip.addLocalFile(fullPath, zipPath, entry.name);
-                    }
-                }
-            };
-            addDir(uploadsDir, 'uploads');
-        }
-
-        // toBuffer() returns a proper ZIP binary — base64 encode for transport
-        const zipBuffer = zip.toBuffer();
-        const base64    = zipBuffer.toString('base64');
-        const { format: fmtDate } = await import('date-fns');
-        const filename  = `onduty-backup-${fmtDate(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
-
-        return { success: true, data: base64, filename };
+        const buffer = fs.readFileSync(dbPath);
+        const base64 = buffer.toString('base64');
+        return { success: true, data: base64 };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
@@ -1021,40 +992,12 @@ export async function backupDatabase(): Promise<{ success: boolean; data?: strin
 export async function restoreDatabase(base64Data: string): Promise<{ success: boolean; error?: string }> {
     try {
         await requireAdmin();
-        const dbPath     = path.join(process.cwd(), 'local.db');
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-        const buffer     = Buffer.from(base64Data, 'base64');
-
-        // Close DB connection before overwriting
-        const dbModule = await import('@/lib/db');
-        if ((dbModule as any).dbInstance?.open) (dbModule as any).dbInstance.close();
-        (dbModule as any).dbInstance = null;
-
-        // Detect ZIP by magic bytes PK (0x50 0x4B)
-        const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
-
-        if (isZip) {
-            const AdmZip = (await import('adm-zip')).default;
-            const zip    = new AdmZip(buffer);
-
-            const dbEntry = zip.getEntry('local.db');
-            if (!dbEntry) return { success: false, error: 'No local.db found inside the zip.' };
-            fs.writeFileSync(dbPath, dbEntry.getData());
-
-            // Restore uploads — reject path traversal
-            for (const entry of zip.getEntries()) {
-                if (entry.isDirectory || !entry.entryName.startsWith('uploads/')) continue;
-                const rel = entry.entryName.slice('uploads/'.length);
-                if (!rel || rel.includes('..') || path.isAbsolute(rel)) continue;
-                const dest = path.join(uploadsDir, rel);
-                fs.mkdirSync(path.dirname(dest), { recursive: true });
-                fs.writeFileSync(dest, entry.getData());
-            }
-        } else {
-            // Legacy: bare .db file
-            fs.writeFileSync(dbPath, buffer);
-        }
-
+        const dbPath = path.join(process.cwd(), 'local.db');
+        // Close the current DB connection before overwriting the file
+        const { dbInstance } = await import('@/lib/db');
+        if (dbInstance) dbInstance.close();
+        const buffer = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(dbPath, buffer);
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -1135,6 +1078,231 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
         const db = getDb();
         db.prepare("DELETE FROM notifications WHERE id = ? AND employee_id = ?").run(id, session.user.id);
         return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+export type AuditLogEntry = {
+    id: number;
+    ts: string;
+    actor_id: string | null;
+    actor_name: string | null;
+    action: string;
+    target_type: string | null;
+    target_id: string | null;
+    target_name: string | null;
+    detail: string | null;
+    ip: string | null;
+};
+
+export async function getAuditLogs(opts?: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+}): Promise<{ success: boolean; data?: AuditLogEntry[]; total?: number; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        const limit  = opts?.limit  ?? 50;
+        const offset = opts?.offset ?? 0;
+        const action = opts?.action?.trim();
+        let where = '';
+        const params: (string | number)[] = [];
+        if (action) { where = 'WHERE action LIKE ?'; params.push(`%${action}%`); }
+        const total = (db.prepare(`SELECT COUNT(*) AS n FROM audit_logs ${where}`).get(...params) as { n: number }).n;
+        const data  = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as AuditLogEntry[];
+        return { success: true, data, total };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function writeAuditLog(entry: {
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    targetName?: string;
+    detail?: string;
+}): Promise<void> {
+    try {
+        const { auth } = await import('@/auth');
+        const session  = await auth();
+        const db       = getDb();
+        db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(session?.user?.id ?? null, session?.user?.name ?? null,
+               entry.action, entry.targetType ?? null, entry.targetId ?? null,
+               entry.targetName ?? null, entry.detail ?? null);
+    } catch (_) { /* never throw from audit write */ }
+}
+
+// ── Named API Keys ────────────────────────────────────────────────────────────
+
+export type ApiKeyRecord = {
+    id: string;
+    name: string;
+    key_value: string;
+    created_at: string;
+};
+
+function ensureApiKeysTable(db: ReturnType<typeof getDb>) {
+    db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        key_value TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+}
+
+export async function getApiKeys(): Promise<{ success: boolean; keys?: ApiKeyRecord[]; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        ensureApiKeysTable(db);
+        const keys = db.prepare('SELECT * FROM api_keys ORDER BY created_at ASC').all() as ApiKeyRecord[];
+        return { success: true, keys };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function createApiKey(name: string): Promise<{ success: boolean; key?: ApiKeyRecord; error?: string }> {
+    try {
+        await requireAdmin();
+        if (!name?.trim()) return { success: false, error: 'Name is required.' };
+        const db = getDb();
+        ensureApiKeysTable(db);
+        const id         = crypto.randomUUID();
+        const key_value  = 'od_' + crypto.randomBytes(32).toString('hex');
+        const created_at = new Date().toISOString();
+        db.prepare('INSERT INTO api_keys (id, name, key_value, created_at) VALUES (?, ?, ?, ?)').run(id, name.trim(), key_value, created_at);
+        return { success: true, key: { id, name: name.trim(), key_value, created_at } };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function deleteApiKey(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        db.prepare('DELETE FROM api_keys WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// ── Report Automation Schedules ───────────────────────────────────────────────
+
+export type ReportSchedule = {
+    id: string;
+    name: string;
+    report_type: string;
+    frequency: string;
+    day_of_week: number | null;
+    day_of_month: number | null;
+    scheduled_date: string | null;
+    recipient_emails: string;
+    subject_template: string;
+    body_template: string;
+    date_range_type: string;
+    group_filter: string | null;
+    created_by: string;
+    created_at: string;
+    last_sent_at: string | null;
+    is_active: number;
+};
+
+function ensureReportSchedulesTable(db: ReturnType<typeof getDb>) {
+    db.exec(`CREATE TABLE IF NOT EXISTS report_schedules (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, report_type TEXT NOT NULL,
+        frequency TEXT NOT NULL, day_of_week INTEGER, day_of_month INTEGER,
+        scheduled_date TEXT, recipient_emails TEXT NOT NULL,
+        subject_template TEXT NOT NULL, body_template TEXT NOT NULL,
+        date_range_type TEXT NOT NULL, group_filter TEXT, created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), last_sent_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1
+    )`);
+}
+
+export async function getReportSchedules(): Promise<{ success: boolean; schedules?: ReportSchedule[]; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        ensureReportSchedulesTable(db);
+        const schedules = db.prepare('SELECT * FROM report_schedules ORDER BY created_at DESC').all() as ReportSchedule[];
+        return { success: true, schedules };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function saveReportSchedule(data: Omit<ReportSchedule, 'id' | 'created_at' | 'last_sent_at'>): Promise<{ success: boolean; id?: string; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        ensureReportSchedulesTable(db);
+        const id = crypto.randomUUID();
+        db.prepare(`INSERT INTO report_schedules
+            (id,name,report_type,frequency,day_of_week,day_of_month,scheduled_date,recipient_emails,subject_template,body_template,date_range_type,group_filter,created_by,is_active)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null,
+               data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails,
+               data.subject_template, data.body_template, data.date_range_type,
+               data.group_filter ?? null, data.created_by, data.is_active);
+        return { success: true, id };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function updateReportSchedule(id: string, data: Partial<Pick<ReportSchedule, 'name' | 'is_active' | 'recipient_emails' | 'subject_template' | 'body_template' | 'frequency' | 'day_of_week' | 'day_of_month' | 'scheduled_date' | 'date_range_type' | 'group_filter' | 'report_type'>>): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAdmin();
+        const db     = getDb();
+        const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
+        const values = [...Object.values(data), id];
+        db.prepare(`UPDATE report_schedules SET ${fields} WHERE id = ?`).run(...values);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function deleteReportSchedule(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        db.prepare('DELETE FROM report_schedules WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// Legacy single-key shims (backward compat)
+export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
+    try {
+        await requireAdmin();
+        const db  = getDb();
+        const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
+        return { success: true, key: row?.value ?? undefined };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function regenerateApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
+    try {
+        await requireAdmin();
+        const db     = getDb();
+        const newKey = 'od_' + crypto.randomBytes(32).toString('hex');
+        db.prepare("INSERT INTO key_value_store (key, value) VALUES ('import_api_key', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(newKey);
+        return { success: true, key: newKey };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }

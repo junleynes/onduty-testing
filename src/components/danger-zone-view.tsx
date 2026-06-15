@@ -1,15 +1,12 @@
-
 'use client';
 
-import React, { useRef, useTransition, useState } from 'react';
+import React, { useTransition } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-import { purgeData, backupDatabase, restoreDatabase } from '@/app/actions';
-import { Loader2, Trash2, Download, Upload } from 'lucide-react';
-import { Separator } from './ui/separator';
-import { format } from 'date-fns';
+import { purgeData } from '@/app/actions';
+import { Loader2, Trash2 } from 'lucide-react';
 
 type PurgeableData = 'users' | 'shiftTemplates' | 'reportTemplates' | 'tasks' | 'mobileLoad' | 'leaveTypes' | 'groups' | 'shifts';
 
@@ -20,14 +17,6 @@ type DangerZoneViewProps = {
 export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
     const { toast } = useToast();
     const [isPurging, startPurgeTransition] = useTransition();
-    const [isBackingUp, startBackupTransition] = useTransition();
-    const [isRestoring, startRestoreTransition] = useTransition();
-    const restoreInputRef = useRef<HTMLInputElement>(null);
-    const [lastBackupAt, setLastBackupAt] = useState<Date | null>(() => {
-        if (typeof window === 'undefined') return null;
-        const stored = localStorage.getItem('onduty_last_backup');
-        return stored ? new Date(stored) : null;
-    });
 
     const handlePurge = (dataType: PurgeableData, friendlyName: string) => {
         startPurgeTransition(async () => {
@@ -41,123 +30,19 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
         });
     };
 
-    const handleBackup = () => {
-        startBackupTransition(async () => {
-            const result = await backupDatabase();
-            if (!result.success || !result.data) {
-                toast({ variant: 'destructive', title: 'Backup Failed', description: result.error || 'Could not read database.' });
-                return;
-            }
-            // Decode base64 → Uint8Array → Blob (preserves binary integrity)
-            const chars    = atob(result.data);
-            const bytes    = new Uint8Array(chars.length);
-            for (let i = 0; i < chars.length; i++) bytes[i] = chars.charCodeAt(i);
-            const blob     = new Blob([bytes], { type: 'application/zip' });
-            const url      = URL.createObjectURL(blob);
-            const filename = result.filename ?? `onduty-backup-${format(new Date(), 'yyyy-MM-dd-HHmm')}.zip`;
-            const a        = document.createElement('a');
-            a.href         = url;
-            a.download     = filename;
-            document.body.appendChild(a);  // required in Firefox
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            const now = new Date();
-            setLastBackupAt(now);
-            localStorage.setItem('onduty_last_backup', now.toISOString());
-            toast({ title: 'Backup Downloaded', description: filename });
-        });
-    };
-
-    const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        // Reset input so the same file can be re-selected if needed
-        e.target.value = '';
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            startRestoreTransition(async () => {
-                const result = await restoreDatabase(base64);
-                if (result.success) {
-                    toast({ title: 'Restore Successful', description: 'Database restored. The page will reload now.' });
-                    setTimeout(() => window.location.reload(), 1500);
-                } else {
-                    toast({ variant: 'destructive', title: 'Restore Failed', description: result.error || 'Could not restore database.' });
-                }
-            });
-        };
-        reader.readAsDataURL(file);
-    };
-
-    const purgeItems: { type: PurgeableData; title: string; description: string, buttonText: string, friendlyName: string }[] = [
-        { type: 'shifts', title: 'Clear All Schedule', description: 'This will permanently delete all scheduled shifts for all employees across all dates. Shift templates are not affected.', buttonText: 'Clear Schedule', friendlyName: 'scheduled shifts' },
-        { type: 'users', title: 'Delete All Users', description: 'This will permanently delete all users except for the Super Admin, along with their associated shifts, leave, and tasks.', buttonText: 'Delete Users', friendlyName: 'users' },
-        { type: 'shiftTemplates', title: 'Delete All Shift Templates', description: 'This will permanently delete all saved shift templates.', buttonText: 'Delete Shift Templates', friendlyName: 'shift templates' },
-        { type: 'reportTemplates', title: 'Delete All Report Templates', description: 'This will permanently delete all uploaded Excel templates for reports.', buttonText: 'Delete Report Templates', friendlyName: 'report templates' },
-        { type: 'tasks', title: 'Delete All Tasks', description: 'This will permanently delete all personal, global, and shift-specific tasks.', buttonText: 'Delete Tasks', friendlyName: 'tasks' },
-        { type: 'mobileLoad', title: 'Reset All Mobile Load Data', description: 'This will delete all historical mobile load balance records and reset every user\'s Load Allocation to zero.', buttonText: 'Reset Mobile Load', friendlyName: 'mobile load data' },
-        { type: 'leaveTypes', title: 'Delete All Leave Types', description: 'This will permanently delete all leave types.', buttonText: 'Delete Leave Types', friendlyName: 'leave types' },
-        { type: 'groups', title: 'Delete All Groups', description: 'This will permanently delete all groups and unassign all users from their current group.', buttonText: 'Delete Groups', friendlyName: 'groups' },
+    const purgeItems: { type: PurgeableData; title: string; description: string; buttonText: string; friendlyName: string }[] = [
+        { type: 'shifts',          title: 'Clear All Schedule',          description: 'Permanently deletes all scheduled shifts for all employees across all dates. Shift templates are not affected.',                              buttonText: 'Clear Schedule',          friendlyName: 'scheduled shifts'  },
+        { type: 'users',           title: 'Delete All Users',            description: 'Permanently deletes all users except the Super Admin, along with their associated shifts, leave, and tasks.',                                   buttonText: 'Delete Users',            friendlyName: 'users'             },
+        { type: 'shiftTemplates',  title: 'Delete All Shift Templates',  description: 'Permanently deletes all saved shift templates.',                                                                                                  buttonText: 'Delete Shift Templates',  friendlyName: 'shift templates'   },
+        { type: 'reportTemplates', title: 'Delete All Report Templates', description: 'Permanently deletes all uploaded Excel templates for reports.',                                                                                   buttonText: 'Delete Report Templates', friendlyName: 'report templates'  },
+        { type: 'tasks',           title: 'Delete All Tasks',            description: 'Permanently deletes all personal, global, and shift-specific tasks.',                                                                             buttonText: 'Delete Tasks',            friendlyName: 'tasks'             },
+        { type: 'mobileLoad',      title: 'Reset All Mobile Load Data',  description: "Deletes all historical mobile load balance records and resets every user's Load Allocation to zero.",                                            buttonText: 'Reset Mobile Load',       friendlyName: 'mobile load data'  },
+        { type: 'leaveTypes',      title: 'Delete All Leave Types',      description: 'Permanently deletes all leave types.',                                                                                                            buttonText: 'Delete Leave Types',      friendlyName: 'leave types'       },
+        { type: 'groups',          title: 'Delete All Groups',           description: 'Permanently deletes all groups and unassigns all users from their current group.',                                                                buttonText: 'Delete Groups',           friendlyName: 'groups'            },
     ];
 
     return (
         <div className="max-w-2xl mx-auto space-y-6">
-            {/* Backup & Restore */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Backup & Restore</CardTitle>
-                    <CardDescription>Download a full backup (.zip) containing the database and all uploaded files, or restore from a previous backup.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between rounded-lg border p-4">
-                        <div>
-                            <h4 className="font-semibold">Backup Database</h4>
-                            <p className="text-sm text-muted-foreground">Downloads a <code>.zip</code> with <code>local.db</code> + all uploads (avatars, signatures, PDFs, templates).</p>
-                            {lastBackupAt ? (
-                                <p className="text-xs text-green-600 dark:text-green-400 mt-1.5 font-medium">
-                                    ✓ Last backup: {format(lastBackupAt, 'MMM d, yyyy h:mm a')}
-                                </p>
-                            ) : (
-                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 font-medium">
-                                    ⚠ No backup has been taken on this device yet.
-                                </p>
-                            )}
-                        </div>
-                        <Button variant="outline" onClick={handleBackup} disabled={isBackingUp} className="w-48 shrink-0">
-                            {isBackingUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                            Download Backup
-                        </Button>
-                    </div>
-                    <div className="flex items-center justify-between rounded-lg border p-4">
-                        <div>
-                            <h4 className="font-semibold">Restore Database</h4>
-                            <p className="text-sm text-muted-foreground">Replace with a <code>.zip</code> backup (or legacy <code>.db</code>). Restores both the database and uploaded files. The page reloads automatically.</p>
-                        </div>
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="outline" disabled={isRestoring} className="w-48 shrink-0">
-                                    {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                                    Restore Backup
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>Restore from backup?</AlertDialogTitle>
-                                    <AlertDialogDescription>This will overwrite all current data with the contents of the backup file. All unsaved changes will be lost. This action cannot be undone.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => restoreInputRef.current?.click()}>Yes, choose file</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                        <input ref={restoreInputRef} type="file" accept=".zip,.db" className="hidden" onChange={handleRestoreFile} />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Danger Zone */}
             <Card className="border-destructive">
                 <CardHeader>
                     <CardTitle className="text-destructive">Danger Zone</CardTitle>
@@ -167,7 +52,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
                     {purgeItems.map((item) => (
                         <React.Fragment key={item.type}>
                             <div className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
-                                <div>
+                                <div className="flex-1 mr-4">
                                     <h4 className="font-semibold">{item.title}</h4>
                                     <p className="text-sm text-muted-foreground">{item.description}</p>
                                 </div>

@@ -22,9 +22,13 @@ import {
 
 import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
-/** Parses a YYYY-MM-DD string as local midnight to avoid UTC shift (UTC+8 Philippines). */
-function parseLocalDate(dateStr: string | null | undefined): Date {
+/** Parses a date string OR Date object as local midnight to avoid UTC shift (UTC+8 Philippines). */
+function parseLocalDate(dateStr: string | Date | null | undefined): Date {
   if (!dateStr) return new Date();
+  // If already a Date object, return it directly
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? new Date() : dateStr;
+  // String path
+  if (typeof dateStr !== 'string') return new Date(dateStr as any);
   if (dateStr.includes('T') || dateStr.includes(' ')) return new Date(dateStr);
   return new Date(dateStr + 'T00:00:00');
 }
@@ -485,7 +489,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // Compute dates display
         const startDateStr = formatComponentDate(leaveRequest.startDate);
         const endDateStr = formatComponentDate(leaveRequest.endDate);
-        const datesDisplay = isSameDay(parseLocalDate(leaveRequest.startDate), parseLocalDate(leaveRequest.endDate))
+        const datesDisplay = isSameDay(parseLocalDate(leaveRequest.startDate as any), parseLocalDate(leaveRequest.endDate as any))
             ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
         // Compute total days
@@ -496,8 +500,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         } else if (leaveRequest.durationCategory === 'half') {
             leaveTotalDays = '0.5';
         } else {
-            const start = parseLocalDate(leaveRequest.startDate);
-            const end   = parseLocalDate(leaveRequest.endDate);
+            const start = parseLocalDate(leaveRequest.startDate as any);
+            const end   = parseLocalDate(leaveRequest.endDate as any);
             leaveTotalDays = String(Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         }
 
@@ -1086,224 +1090,122 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
 export type AuditLogEntry = {
-    id: number;
-    ts: string;
-    actor_id: string | null;
-    actor_name: string | null;
-    action: string;
-    target_type: string | null;
-    target_id: string | null;
-    target_name: string | null;
-    detail: string | null;
-    ip: string | null;
+    id: number; ts: string; actor_id: string | null; actor_name: string | null;
+    action: string; target_type: string | null; target_id: string | null;
+    target_name: string | null; detail: string | null; ip: string | null;
 };
 
-export async function getAuditLogs(opts?: {
-    limit?: number;
-    offset?: number;
-    action?: string;
-}): Promise<{ success: boolean; data?: AuditLogEntry[]; total?: number; error?: string }> {
+export async function getAuditLogs(opts?: { limit?: number; offset?: number; action?: string }): Promise<{ success: boolean; data?: AuditLogEntry[]; total?: number; error?: string }> {
     try {
         await requireAdmin();
         const db = getDb();
-        const limit  = opts?.limit  ?? 50;
-        const offset = opts?.offset ?? 0;
+        const limit = opts?.limit ?? 50; const offset = opts?.offset ?? 0;
         const action = opts?.action?.trim();
-        let where = '';
-        const params: (string | number)[] = [];
+        let where = ''; const params: (string | number)[] = [];
         if (action) { where = 'WHERE action LIKE ?'; params.push(`%${action}%`); }
         const total = (db.prepare(`SELECT COUNT(*) AS n FROM audit_logs ${where}`).get(...params) as { n: number }).n;
-        const data  = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as AuditLogEntry[];
+        const data = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as AuditLogEntry[];
         return { success: true, data, total };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    } catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
-export async function writeAuditLog(entry: {
-    action: string;
-    targetType?: string;
-    targetId?: string;
-    targetName?: string;
-    detail?: string;
-}): Promise<void> {
+export async function writeAuditLog(entry: { action: string; targetType?: string; targetId?: string; targetName?: string; detail?: string }): Promise<void> {
     try {
         const { auth } = await import('@/auth');
-        const session  = await auth();
-        const db       = getDb();
-        db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .run(session?.user?.id ?? null, session?.user?.name ?? null,
-               entry.action, entry.targetType ?? null, entry.targetId ?? null,
-               entry.targetName ?? null, entry.detail ?? null);
-    } catch (_) { /* never throw from audit write */ }
+        const session = await auth();
+        const db = getDb();
+        db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(session?.user?.id ?? null, session?.user?.name ?? null, entry.action, entry.targetType ?? null, entry.targetId ?? null, entry.targetName ?? null, entry.detail ?? null);
+    } catch (_) {}
 }
 
 // ── Named API Keys ────────────────────────────────────────────────────────────
 
-export type ApiKeyRecord = {
-    id: string;
-    name: string;
-    key_value: string;
-    created_at: string;
-};
+export type ApiKeyRecord = { id: string; name: string; key_value: string; created_at: string; };
 
 function ensureApiKeysTable(db: ReturnType<typeof getDb>) {
-    db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        key_value TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, key_value TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
 }
 
 export async function getApiKeys(): Promise<{ success: boolean; keys?: ApiKeyRecord[]; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        ensureApiKeysTable(db);
-        const keys = db.prepare('SELECT * FROM api_keys ORDER BY created_at ASC').all() as ApiKeyRecord[];
-        return { success: true, keys };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    try { await requireAdmin(); const db = getDb(); ensureApiKeysTable(db); return { success: true, keys: db.prepare('SELECT * FROM api_keys ORDER BY created_at ASC').all() as ApiKeyRecord[] }; }
+    catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 export async function createApiKey(name: string): Promise<{ success: boolean; key?: ApiKeyRecord; error?: string }> {
     try {
         await requireAdmin();
         if (!name?.trim()) return { success: false, error: 'Name is required.' };
-        const db = getDb();
-        ensureApiKeysTable(db);
-        const id         = crypto.randomUUID();
-        const key_value  = 'od_' + crypto.randomBytes(32).toString('hex');
-        const created_at = new Date().toISOString();
+        const db = getDb(); ensureApiKeysTable(db);
+        const id = crypto.randomUUID(); const key_value = 'od_' + crypto.randomBytes(32).toString('hex'); const created_at = new Date().toISOString();
         db.prepare('INSERT INTO api_keys (id, name, key_value, created_at) VALUES (?, ?, ?, ?)').run(id, name.trim(), key_value, created_at);
         return { success: true, key: { id, name: name.trim(), key_value, created_at } };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    } catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 export async function deleteApiKey(id: string): Promise<{ success: boolean; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        db.prepare('DELETE FROM api_keys WHERE id = ?').run(id);
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    try { await requireAdmin(); getDb().prepare('DELETE FROM api_keys WHERE id = ?').run(id); return { success: true }; }
+    catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
-// ── Report Automation Schedules ───────────────────────────────────────────────
+// ── Report Schedules ──────────────────────────────────────────────────────────
 
 export type ReportSchedule = {
-    id: string;
-    name: string;
-    report_type: string;
-    frequency: string;
-    day_of_week: number | null;
-    day_of_month: number | null;
-    scheduled_date: string | null;
-    recipient_emails: string;
-    subject_template: string;
-    body_template: string;
-    date_range_type: string;
-    group_filter: string | null;
-    created_by: string;
-    created_at: string;
-    last_sent_at: string | null;
-    is_active: number;
+    id: string; name: string; report_type: string; frequency: string;
+    day_of_week: number | null; day_of_month: number | null; scheduled_date: string | null;
+    recipient_emails: string; subject_template: string; body_template: string;
+    date_range_type: string; group_filter: string | null; created_by: string;
+    created_at: string; last_sent_at: string | null; is_active: number;
 };
 
 function ensureReportSchedulesTable(db: ReturnType<typeof getDb>) {
     db.exec(`CREATE TABLE IF NOT EXISTS report_schedules (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, report_type TEXT NOT NULL,
-        frequency TEXT NOT NULL, day_of_week INTEGER, day_of_month INTEGER,
-        scheduled_date TEXT, recipient_emails TEXT NOT NULL,
-        subject_template TEXT NOT NULL, body_template TEXT NOT NULL,
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, report_type TEXT NOT NULL, frequency TEXT NOT NULL,
+        day_of_week INTEGER, day_of_month INTEGER, scheduled_date TEXT,
+        recipient_emails TEXT NOT NULL, subject_template TEXT NOT NULL, body_template TEXT NOT NULL,
         date_range_type TEXT NOT NULL, group_filter TEXT, created_by TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')), last_sent_at TEXT,
-        is_active INTEGER NOT NULL DEFAULT 1
-    )`);
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), last_sent_at TEXT, is_active INTEGER NOT NULL DEFAULT 1)`);
 }
 
 export async function getReportSchedules(): Promise<{ success: boolean; schedules?: ReportSchedule[]; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        ensureReportSchedulesTable(db);
-        const schedules = db.prepare('SELECT * FROM report_schedules ORDER BY created_at DESC').all() as ReportSchedule[];
-        return { success: true, schedules };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    try { await requireAdmin(); const db = getDb(); ensureReportSchedulesTable(db); return { success: true, schedules: db.prepare('SELECT * FROM report_schedules ORDER BY created_at DESC').all() as ReportSchedule[] }; }
+    catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 export async function saveReportSchedule(data: Omit<ReportSchedule, 'id' | 'created_at' | 'last_sent_at'>): Promise<{ success: boolean; id?: string; error?: string }> {
     try {
-        await requireAdmin();
-        const db = getDb();
-        ensureReportSchedulesTable(db);
+        await requireAdmin(); const db = getDb(); ensureReportSchedulesTable(db);
         const id = crypto.randomUUID();
-        db.prepare(`INSERT INTO report_schedules
-            (id,name,report_type,frequency,day_of_week,day_of_month,scheduled_date,recipient_emails,subject_template,body_template,date_range_type,group_filter,created_by,is_active)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-          .run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null,
-               data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails,
-               data.subject_template, data.body_template, data.date_range_type,
-               data.group_filter ?? null, data.created_by, data.is_active);
+        db.prepare(`INSERT INTO report_schedules (id,name,report_type,frequency,day_of_week,day_of_month,scheduled_date,recipient_emails,subject_template,body_template,date_range_type,group_filter,created_by,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null, data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails, data.subject_template, data.body_template, data.date_range_type, data.group_filter ?? null, data.created_by, data.is_active);
         return { success: true, id };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    } catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 export async function updateReportSchedule(id: string, data: Partial<Pick<ReportSchedule, 'name' | 'is_active' | 'recipient_emails' | 'subject_template' | 'body_template' | 'frequency' | 'day_of_week' | 'day_of_month' | 'scheduled_date' | 'date_range_type' | 'group_filter' | 'report_type'>>): Promise<{ success: boolean; error?: string }> {
     try {
-        await requireAdmin();
-        const db     = getDb();
-        const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
-        const values = [...Object.values(data), id];
-        db.prepare(`UPDATE report_schedules SET ${fields} WHERE id = ?`).run(...values);
+        await requireAdmin(); const db = getDb();
+        db.prepare(`UPDATE report_schedules SET ${Object.keys(data).map(k => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(data), id);
         return { success: true };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    } catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 export async function deleteReportSchedule(id: string): Promise<{ success: boolean; error?: string }> {
-    try {
-        await requireAdmin();
-        const db = getDb();
-        db.prepare('DELETE FROM report_schedules WHERE id = ?').run(id);
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    try { await requireAdmin(); getDb().prepare('DELETE FROM report_schedules WHERE id = ?').run(id); return { success: true }; }
+    catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
-// Legacy single-key shims (backward compat)
+// Legacy single-key shims
 export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
-    try {
-        await requireAdmin();
-        const db  = getDb();
-        const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined;
-        return { success: true, key: row?.value ?? undefined };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    try { await requireAdmin(); const row = getDb().prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined; return { success: true, key: row?.value }; }
+    catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 export async function regenerateApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
     try {
-        await requireAdmin();
-        const db     = getDb();
+        await requireAdmin(); const db = getDb();
         const newKey = 'od_' + crypto.randomBytes(32).toString('hex');
         db.prepare("INSERT INTO key_value_store (key, value) VALUES ('import_api_key', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(newKey);
         return { success: true, key: newKey };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    } catch (error) { return { success: false, error: (error as Error).message }; }
 }

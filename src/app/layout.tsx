@@ -2,10 +2,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { SessionProvider } from 'next-auth/react';
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
-import { getMaintenanceMode } from '@/app/actions';
 
 export const metadata: Metadata = {
   title: 'OnDuty',
@@ -14,29 +10,7 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.ico' },
 };
 
-export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const headersList = await headers();
-  const pathname = headersList.get('x-invoke-path') || '';
-
-  // Skip maintenance check for the maintenance page itself, login, and API routes
-  const isExempt = pathname.startsWith('/maintenance') ||
-                   pathname.startsWith('/login') ||
-                   pathname.startsWith('/api/') ||
-                   pathname.startsWith('/forgot-password') ||
-                   pathname.startsWith('/reset-password');
-
-  if (!isExempt) {
-    const { enabled } = await getMaintenanceMode();
-    if (enabled) {
-      const session = await auth();
-      const role = (session?.user as any)?.role;
-      // Only admins can bypass maintenance mode
-      if (role !== 'admin' && role !== 'super_admin') {
-        redirect('/maintenance');
-      }
-    }
-  }
-
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

@@ -1,21 +1,89 @@
 import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+// ── Rate limiter (in-memory, resets on restart) ───────────────────────────────
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(req: NextRequest): string {
+    return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        ?? req.headers.get('x-real-ip')
+        ?? '127.0.0.1';
+}
+
+function isRateLimited(key: string, limit: number, windowMs: number): boolean {
+    const now = Date.now();
+    const entry = rateLimitMap.get(key);
+    if (!entry || now > entry.resetAt) {
+        rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+        return false;
+    }
+    entry.count++;
+    return entry.count > limit;
+}
+
+// ── Bot UA blocklist ──────────────────────────────────────────────────────────
+const BOT_UA = [/bot/i,/crawl/i,/spider/i,/scrape/i,/curl/i,/wget/i,
+    /python-requests/i,/axios/i,/go-http/i,/java\//i,/httpclient/i,
+    /libwww/i,/zgrab/i,/masscan/i,/nmap/i,/nuclei/i,/sqlmap/i,/nikto/i,
+    /dirbuster/i,/wfuzz/i];
+
+function looksLikeBot(req: NextRequest): boolean {
+    const ua = req.headers.get('user-agent') ?? '';
+    if (!ua) return true;
+    return BOT_UA.some(p => p.test(ua));
+}
+
+function hasApiKey(req: NextRequest): boolean {
+    const a = req.headers.get('authorization') ?? '';
+    return a.startsWith('Bearer ') || !!req.headers.get('x-api-key');
+}
 
 export default auth((req) => {
     const { pathname } = req.nextUrl;
+    const ip = getClientIp(req);
 
-    // Public routes — no auth required
-    const publicRoutes = ['/login', '/forgot-password', '/reset-password', '/api/auth'];
-    const isPublic = publicRoutes.some(r => pathname.startsWith(r));
-    if (isPublic) return NextResponse.next();
+    // 1. Block bots
+    if (looksLikeBot(req)) {
+        return new NextResponse('Forbidden', { status: 403 });
+    }
 
-    // API import route uses its own API key auth
-    if (pathname.startsWith('/api/import-schedule')) return NextResponse.next();
-    if (pathname.startsWith('/api/backup'))          return NextResponse.next();
-    if (pathname.startsWith('/api/restore'))         return NextResponse.next();
-    if (pathname.startsWith('/api/reports'))         return NextResponse.next();
+    // 2. Global rate limit: 120/60s
+    if (isRateLimited(ip, 120, 60_000)) {
+        return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
+    }
 
-    // Not authenticated — redirect to login
+    // 3. Maintenance page and public routes — always allow
+    const alwaysAllow = ['/maintenance', '/login', '/forgot-password', '/reset-password', '/api/auth'];
+    if (alwaysAllow.some(r => pathname.startsWith(r))) {
+        // Tighter rate limit on login: 10/60s
+        if (pathname.startsWith('/login') || pathname.startsWith('/api/auth/callback')) {
+            if (isRateLimited(`login:${ip}`, 10, 60_000)) {
+                return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
+            }
+        }
+        return NextResponse.next();
+    }
+
+    // 4. Maintenance mode check via response header set by the app
+    // The maintenance flag is checked in the page itself (app-level, not middleware)
+    // because middleware can't read SQLite. The /maintenance route handles the UI.
+
+    // 5. External API routes — require API key
+    const externalApis = ['/api/import-schedule', '/api/backup', '/api/restore', '/api/reports'];
+    if (externalApis.some(r => pathname.startsWith(r))) {
+        if (!hasApiKey(req)) {
+            return new NextResponse(JSON.stringify({ success: false, error: 'Missing API key.' }),
+                { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (isRateLimited(`api:${ip}`, 60, 60_000)) {
+            return new NextResponse(JSON.stringify({ success: false, error: 'Rate limit exceeded.' }),
+                { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '60' } });
+        }
+        return NextResponse.next();
+    }
+
+    // 6. Everything else — must be authenticated
     if (!req.auth) {
         const loginUrl = new URL('/login', req.url);
         loginUrl.searchParams.set('callbackUrl', pathname);

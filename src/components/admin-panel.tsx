@@ -10,11 +10,11 @@ import { getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu';
-import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download, ShieldCheck, ShieldOff, ShieldAlert } from 'lucide-react';
+import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download, ShieldCheck, ShieldOff, ShieldAlert, Construction, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from './ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-import { sendActivationLink } from '@/app/actions';
+import { sendActivationLink, getMaintenanceMode, setMaintenanceMode } from '@/app/actions';
 import { adminSetupTotp, adminDisableTotp, adminDisableAllTotp, getTotpStatusAll } from '@/app/totp-actions';
 import Papa from 'papaparse';
 import { saveAs } from 'file-saver';
@@ -51,12 +51,19 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
   const [isSending, startSendingTransition] = useTransition();
   const [totpStatuses, setTotpStatuses] = useState<Record<string, boolean>>({});
   const [totpDialog, setTotpDialog] = useState<{ open: boolean; secret?: string; qrDataUri?: string; userEmail?: string }>({ open: false });
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("We're performing scheduled maintenance. We'll be back shortly.");
+  const [isMaintenanceSaving, startMaintenanceTransition] = useTransition();
 
 
   // Load 2FA statuses on mount
   useEffect(() => {
     getTotpStatusAll().then(res => {
       if (res.success && res.statuses) setTotpStatuses(res.statuses);
+    });
+    getMaintenanceMode().then(r => {
+      setMaintenanceEnabled(r.enabled);
+      if (r.message) setMaintenanceMessage(r.message);
     });
   }, []);
 
@@ -370,5 +377,69 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
     </Dialog>
 
     </>
+
+      {/* Maintenance Mode */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Construction className="h-5 w-5 text-amber-500" />
+            Maintenance Mode
+          </CardTitle>
+          <CardDescription>
+            When enabled, only admins can access OnDuty. All other users see a maintenance notice.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <p className="font-medium">Maintenance Mode</p>
+              <p className="text-sm text-muted-foreground">
+                {maintenanceEnabled ? (
+                  <span className="text-amber-600 font-medium">⚠ Currently ON — site is restricted to admins only</span>
+                ) : (
+                  <span className="text-green-600 font-medium">✓ Currently OFF — site is accessible to all users</span>
+                )}
+              </p>
+            </div>
+            <Button
+              variant={maintenanceEnabled ? "destructive" : "outline"}
+              className="gap-2 min-w-[120px]"
+              disabled={isMaintenanceSaving}
+              onClick={() => {
+                startMaintenanceTransition(async () => {
+                  const newState = !maintenanceEnabled;
+                  const result = await setMaintenanceMode(newState, maintenanceMessage);
+                  if (result.success) {
+                    setMaintenanceEnabled(newState);
+                    toast({ title: newState ? 'Maintenance Mode ON' : 'Maintenance Mode OFF', description: newState ? 'Only admins can now access the site.' : 'Site is now accessible to all users.' });
+                  } else {
+                    toast({ variant: 'destructive', title: 'Failed', description: result.error });
+                  }
+                });
+              }}
+            >
+              {maintenanceEnabled ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+              {maintenanceEnabled ? 'Turn OFF' : 'Turn ON'}
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Maintenance Message</label>
+            <textarea
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none"
+              rows={3}
+              value={maintenanceMessage}
+              onChange={e => setMaintenanceMessage(e.target.value)}
+              placeholder="We're performing scheduled maintenance. We'll be back shortly."
+            />
+            <Button size="sm" variant="outline" disabled={isMaintenanceSaving} onClick={() => {
+              startMaintenanceTransition(async () => {
+                await setMaintenanceMode(maintenanceEnabled, maintenanceMessage);
+                toast({ title: 'Message Updated' });
+              });
+            }}>Save Message</Button>
+          </div>
+        </CardContent>
+      </Card>
+
   );
 }

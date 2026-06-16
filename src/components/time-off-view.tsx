@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useTransition , useRef } from 'react';
+import React, { useState, useMemo, useTransition } from 'react';
 import type { Leave, Employee, LeaveRequestStatus, Shift } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaveTypeOption } from './leave-type-editor';
-import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures, getLeaveRecipients, addDbNotification, writeAuditLog } from '@/app/actions';
+import { generateLeavePdf, generateOffsetPdf, sendEmail, savePdfDataUri, saveLeaveSignatures, getLeaveRecipients, addDbNotification } from '@/app/actions';
 import type { LeaveRecipient } from '@/app/actions';
 import { LeaveRecipientsManager } from './leave-recipients-manager';
 import type { SmtpSettings } from '@/types';
@@ -46,9 +46,6 @@ type SortDirection = 'asc' | 'desc';
 export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, setShifts, currentUser, employees, leaveTypes, smtpSettings }: TimeOffViewProps) {
   const { toast } = useToast();
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
-  const notifyEmployeeOnApprove = useRef(true);
-  const [pendingAction, setPendingAction] = useState<{ requestId: string; status: 'approved' | 'rejected' } | null>(null);
-  const [notifyEmployee, setNotifyEmployee] = useState(true);
   const [isOffsetDialogOpen, setIsOffsetDialogOpen] = useState(false);
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isPurging, startPurgeTransition] = useTransition();
@@ -202,7 +199,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     }
   }
 
-  const handleSaveRequest = (requestData: Partial<Leave>, notifySuperior: boolean) => {
+  const handleSaveRequest = (requestData: Partial<Leave>) => {
     if (editingRequest?.id) { 
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
@@ -223,40 +220,17 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         color: leaveTypeDetails?.color || '#6b7280',
       } as Leave;
       setLeaveRequests(prev => [newRequest, ...prev]);
+      // Save employee signature directly to DB — bypasses the save payload size limit
       if (currentUser.signature) {
         saveLeaveSignatures(newRequest.id, currentUser.signature, undefined).catch(() => {});
       }
       toast({ title: 'Request Submitted' });
-
-      // Email superior/manager if checkbox was checked and SMTP is configured
-      if (notifySuperior && smtpSettings?.host) {
-        const superior = employees.find(e =>
-          (e.role === 'manager' || e.role === 'admin') &&
-          e.group === currentUser.group &&
-          e.id !== currentUser.id &&
-          e.email
-        );
-        if (superior?.email) {
-          const startStr = newRequest.startDate ? format(new Date(newRequest.startDate), 'MMM d, yyyy') : '';
-          const endStr   = newRequest.endDate   ? format(new Date(newRequest.endDate),   'MMM d, yyyy') : '';
-          const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
-          sendEmail({
-            to: superior.email,
-            subject: `[OnDuty] New ${newRequest.type} request from ${getFullName(currentUser)}`,
-            htmlBody: `<p>Hi ${superior.firstName},</p>
-<p><strong>${getFullName(currentUser)}</strong> has filed a new <strong>${newRequest.type}</strong> request.</p>
-<p><strong>Dates:</strong> ${dateRange}</p>
-${newRequest.reason ? `<p><strong>Reason:</strong> ${newRequest.reason}</p>` : ''}
-<p>Please log in to OnDuty to review and approve or reject the request.</p>`,
-          }, smtpSettings).catch(() => {});
-        }
-      }
     }
     setIsRequestDialogOpen(false);
     setIsOffsetDialogOpen(false);
   };
   
-  const handleManageRequest = async (requestId: string, newStatus: LeaveRequestStatus, shouldNotifyEmployee = true) => {
+  const handleManageRequest = async (requestId: string, newStatus: LeaveRequestStatus) => {
     let finalUpdatedRequest: Leave | undefined;
 
     setLeaveRequests(prevLeaveRequests => {
@@ -360,16 +334,14 @@ ${newRequest.reason ? `<p><strong>Reason:</strong> ${newRequest.reason}</p>` : '
             const startStr = finalUpdatedRequest.startDate ? format(new Date(finalUpdatedRequest.startDate), 'MMM d, yyyy') : '';
             const endStr   = finalUpdatedRequest.endDate   ? format(new Date(finalUpdatedRequest.endDate),   'MMM d, yyyy') : '';
             const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
-            if (shouldNotifyEmployee) {
-              sendEmail({
+            sendEmail({
                 to: requester.email,
                 subject: `[OnDuty] Your ${finalUpdatedRequest.type} request has been ${newStatus}`,
-                htmlBody: `<p>Hi ${requester.firstName},</p>
+                html: `<p>Hi ${requester.firstName},</p>
 <p>Your <strong>${finalUpdatedRequest.type}</strong> request for <strong>${dateRange}</strong> has been <strong>${statusLabel}</strong> by ${managerName}.</p>
 ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpdatedRequest.reason}</p>` : ''}
 <p>Please log in to OnDuty for more details.</p>`,
-              }, smtpSettings).catch(() => {});
-            }
+            }, smtpSettings).catch(() => {});
         }
     }
     // In-app persistent notification for the requester regardless of SMTP
@@ -415,7 +387,24 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
         return;
       }
     }
-    window.open(pdfDataUri, '_blank');
+    // Convert data: URI -> Blob URL — browsers block window.open on data: URIs
+    try {
+      const base64 = pdfDataUri!.split('base64,')[1];
+      const bytes = Uint8Array.from(atob(base64), ch => ch.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      const win = window.open(blobUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+      if (!win) {
+        // Popup blocked — fall back to download
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `leave-form-${req.id}.pdf`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      }
+    } catch {
+      window.open(pdfDataUri!, '_blank');
+    }
   };
 
   const handleOpenEmailDialog = (leaveRequest: Leave) => {
@@ -456,8 +445,8 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
             if (req.status === 'pending') {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNotifyEmployee(true); setPendingAction({ requestId: req.id, status: 'approved' }); }}><Check className="h-4 w-4 mr-1" />Approve</Button>
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => { setNotifyEmployee(false); setPendingAction({ requestId: req.id, status: 'rejected' }); }}><X className="h-4 w-4 mr-1" />Reject</Button>
+                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4 mr-1" />Approve</Button>
+                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4 mr-1" />Reject</Button>
                     </div>
                 );
             }
@@ -553,8 +542,8 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
             if (req.status === 'pending') {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNotifyEmployee(true); setPendingAction({ requestId: req.id, status: 'approved' }); }} title="Approve"><Check className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => { setNotifyEmployee(false); setPendingAction({ requestId: req.id, status: 'rejected' }); }} title="Reject"><X className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')} title="Approve"><Check className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')} title="Reject"><X className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -812,48 +801,6 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
         allLeaveRequests={leaveRequests}
       />
 
-      {/* Approve / Reject confirmation dialog with optional email notification */}
-      <AlertDialog open={!!pendingAction} onOpenChange={open => { if (!open) setPendingAction(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingAction?.status === 'approved' ? 'Approve Request?' : 'Reject Request?'}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingAction?.status === 'approved'
-                ? 'This will approve the request and generate the PDF form.'
-                : 'This will reject the request.'}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {smtpSettings?.host && (
-            <div className="flex items-center gap-2 px-1 py-2">
-              <Checkbox
-                id="notifyEmployeeCheck"
-                checked={notifyEmployee}
-                onCheckedChange={v => setNotifyEmployee(!!v)}
-              />
-              <label htmlFor="notifyEmployeeCheck" className="text-sm cursor-pointer select-none">
-                Notify employee by email after {pendingAction?.status === 'approved' ? 'approving' : 'rejecting'}
-              </label>
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingAction(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className={pendingAction?.status === 'rejected' ? 'bg-destructive hover:bg-destructive/90' : ''}
-              onClick={() => {
-                if (pendingAction) {
-                  handleManageRequest(pendingAction.requestId, pendingAction.status, notifyEmployee);
-                  setPendingAction(null);
-                }
-              }}
-            >
-              {pendingAction?.status === 'approved' ? 'Yes, Approve' : 'Yes, Reject'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {emailingRequest && (
         <EmailDialog
             isOpen={isEmailDialogOpen}
@@ -1030,10 +977,11 @@ ${getFullName(currentUser)}`);
                             </Select>
                         ) : (
                             <p className="text-sm text-muted-foreground">
-                                No recipients configured.{' '}
+                                No saved recipients.{' '}
                                 <button className="underline text-primary" onClick={() => setIsManageOpen(true)}>
-                                    Add one now.
+                                    Add one
                                 </button>
+                                {''} or enter an email below manually.
                             </p>
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1059,7 +1007,7 @@ ${getFullName(currentUser)}`);
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSend} disabled={isSending || !to}>
+                    <Button onClick={handleSend} disabled={isSending}>
                         {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Send Email
                     </Button>

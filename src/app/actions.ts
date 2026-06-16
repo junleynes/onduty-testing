@@ -22,13 +22,9 @@ import {
 
 import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
-/** Parses a date string OR Date object as local midnight to avoid UTC shift (UTC+8 Philippines). */
-function parseLocalDate(dateStr: string | Date | null | undefined): Date {
+/** Parses a YYYY-MM-DD string as local midnight to avoid UTC shift (UTC+8 Philippines). */
+function parseLocalDate(dateStr: string | null | undefined): Date {
   if (!dateStr) return new Date();
-  // If already a Date object, return it directly
-  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? new Date() : dateStr;
-  // String path
-  if (typeof dateStr !== 'string') return new Date(dateStr as any);
   if (dateStr.includes('T') || dateStr.includes(' ')) return new Date(dateStr);
   return new Date(dateStr + 'T00:00:00');
 }
@@ -489,7 +485,7 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         // Compute dates display
         const startDateStr = formatComponentDate(leaveRequest.startDate);
         const endDateStr = formatComponentDate(leaveRequest.endDate);
-        const datesDisplay = isSameDay(parseLocalDate(leaveRequest.startDate as any), parseLocalDate(leaveRequest.endDate as any))
+        const datesDisplay = isSameDay(parseLocalDate(leaveRequest.startDate), parseLocalDate(leaveRequest.endDate))
             ? startDateStr : `${startDateStr} to ${endDateStr}`;
 
         // Compute total days
@@ -500,8 +496,8 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         } else if (leaveRequest.durationCategory === 'half') {
             leaveTotalDays = '0.5';
         } else {
-            const start = parseLocalDate(leaveRequest.startDate as any);
-            const end   = parseLocalDate(leaveRequest.endDate as any);
+            const start = parseLocalDate(leaveRequest.startDate);
+            const end   = parseLocalDate(leaveRequest.endDate);
             leaveTotalDays = String(Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         }
 
@@ -1087,6 +1083,36 @@ export async function deleteNotification(id: string): Promise<{ success: boolean
     }
 }
 
+// ── Maintenance Mode ──────────────────────────────────────────────────────────
+
+export async function getMaintenanceMode(): Promise<{ enabled: boolean; message: string }> {
+    try {
+        const db = getDb();
+        const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'maintenance_mode'").get() as { value: string } | undefined;
+        const msgRow = db.prepare("SELECT value FROM key_value_store WHERE key = 'maintenance_message'").get() as { value: string } | undefined;
+        return {
+            enabled: row?.value === '1',
+            message: msgRow?.value || "We're performing scheduled maintenance. We'll be back shortly.",
+        };
+    } catch {
+        return { enabled: false, message: '' };
+    }
+}
+
+export async function setMaintenanceMode(enabled: boolean, message?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAdmin();
+        const db = getDb();
+        db.prepare("INSERT INTO key_value_store (key, value) VALUES ('maintenance_mode', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(enabled ? '1' : '0');
+        if (message !== undefined) {
+            db.prepare("INSERT INTO key_value_store (key, value) VALUES ('maintenance_message', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(message);
+        }
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
 export type AuditLogEntry = {
@@ -1134,8 +1160,7 @@ export async function getApiKeys(): Promise<{ success: boolean; keys?: ApiKeyRec
 
 export async function createApiKey(name: string): Promise<{ success: boolean; key?: ApiKeyRecord; error?: string }> {
     try {
-        await requireAdmin();
-        if (!name?.trim()) return { success: false, error: 'Name is required.' };
+        await requireAdmin(); if (!name?.trim()) return { success: false, error: 'Name is required.' };
         const db = getDb(); ensureApiKeysTable(db);
         const id = crypto.randomUUID(); const key_value = 'od_' + crypto.randomBytes(32).toString('hex'); const created_at = new Date().toISOString();
         db.prepare('INSERT INTO api_keys (id, name, key_value, created_at) VALUES (?, ?, ?, ?)').run(id, name.trim(), key_value, created_at);
@@ -1195,7 +1220,6 @@ export async function deleteReportSchedule(id: string): Promise<{ success: boole
     catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
-// Legacy single-key shims
 export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
     try { await requireAdmin(); const row = getDb().prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined; return { success: true, key: row?.value }; }
     catch (error) { return { success: false, error: (error as Error).message }; }

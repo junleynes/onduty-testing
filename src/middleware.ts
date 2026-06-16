@@ -1,12 +1,8 @@
-export const runtime = 'nodejs';  // allows fs, path, better-sqlite3 in middleware
-
 import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
-// ── Rate limiter ──────────────────────────────────────────────────────────────
+// ── Rate limiter (in-memory) ───────────────────────────────────────────────────
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 function getClientIp(req: NextRequest): string {
@@ -42,26 +38,31 @@ function hasApiKey(req: NextRequest): boolean {
     return a.startsWith('Bearer ') || !!req.headers.get('x-api-key');
 }
 
-// ── Maintenance flag — read from .maintenance file in project root ────────────
-function isMaintenanceOn(): boolean {
-    try {
-        const flagFile = path.join(process.cwd(), '.maintenance');
-        return fs.existsSync(flagFile);
-    } catch { return false; }
+// ── Maintenance flag — read via custom request header set by API route ─────────
+// Middleware cannot read SQLite (Edge Runtime). Instead, a dedicated API route
+// /api/maintenance-status returns the flag from DB, and we cache it here.
+// BUT: that would require an async fetch inside middleware which is also problematic.
+// 
+// Real solution: check a cookie that gets set when admin toggles maintenance.
+// The cookie is set via a server action response header.
+function isMaintenanceOn(req: NextRequest): boolean {
+    return req.cookies.get('onduty_maintenance')?.value === '1';
 }
 
 export default auth((req) => {
     const { pathname } = req.nextUrl;
     const ip = getClientIp(req);
 
-    // 1. Block bots
-    if (looksLikeBot(req)) {
+    // 1. Block bots (skip for API routes with keys)
+    if (looksLikeBot(req) && !hasApiKey(req)) {
         return new NextResponse('Forbidden', { status: 403 });
     }
 
     // 2. Global rate limit: 120/60s per IP
     if (isRateLimited(ip, 120, 60_000)) {
-        return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
+        return new NextResponse('Too Many Requests', {
+            status: 429, headers: { 'Retry-After': '60' },
+        });
     }
 
     // 3. Always allow these routes
@@ -69,7 +70,7 @@ export default auth((req) => {
     if (alwaysAllow.some(r => pathname.startsWith(r))) {
         if (pathname.startsWith('/login') || pathname.startsWith('/api/auth/callback')) {
             if (isRateLimited(`login:${ip}`, 10, 60_000)) {
-                return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
+                return new NextResponse('Too Many Requests', { status: 429 });
             }
         }
         return NextResponse.next();
@@ -89,8 +90,8 @@ export default auth((req) => {
         return NextResponse.next();
     }
 
-    // 5. Maintenance mode check — read flag file written by setMaintenanceMode action
-    if (isMaintenanceOn()) {
+    // 5. Maintenance mode — check cookie (set by setMaintenanceMode server action)
+    if (isMaintenanceOn(req)) {
         const role = (req.auth?.user as any)?.role;
         if (role !== 'admin' && role !== 'super_admin') {
             return NextResponse.redirect(new URL('/maintenance', req.url));

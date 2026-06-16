@@ -1,6 +1,4 @@
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
-import { getMaintenanceMode } from '@/app/actions';
+'use client';
 import dynamic from 'next/dynamic';
 
 const AppClient = dynamic(
@@ -15,20 +13,4 @@ const AppClient = dynamic(
     }
 );
 
-export default async function Page() {
-    // Maintenance check — runs server-side, can read DB safely
-    try {
-        const { enabled } = await getMaintenanceMode();
-        if (enabled) {
-            const session = await auth();
-            const role = (session?.user as any)?.role;
-            if (role !== 'admin' && role !== 'super_admin') {
-                redirect('/maintenance');
-            }
-        }
-    } catch {
-        // If check fails (e.g. first boot before DB is ready), allow through
-    }
-
-    return <AppClient />;
-}
+export default function Page() { return <AppClient />; }

@@ -1,14 +1,17 @@
+export const runtime = 'nodejs';  // allows fs, path, better-sqlite3 in middleware
+
 import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
-// ── Rate limiter (in-memory, resets on restart) ───────────────────────────────
+// ── Rate limiter ──────────────────────────────────────────────────────────────
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 function getClientIp(req: NextRequest): string {
     return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-        ?? req.headers.get('x-real-ip')
-        ?? '127.0.0.1';
+        ?? req.headers.get('x-real-ip') ?? '127.0.0.1';
 }
 
 function isRateLimited(key: string, limit: number, windowMs: number): boolean {
@@ -22,7 +25,7 @@ function isRateLimited(key: string, limit: number, windowMs: number): boolean {
     return entry.count > limit;
 }
 
-// ── Bot UA blocklist ──────────────────────────────────────────────────────────
+// ── Bot blocklist ─────────────────────────────────────────────────────────────
 const BOT_UA = [/bot/i,/crawl/i,/spider/i,/scrape/i,/curl/i,/wget/i,
     /python-requests/i,/axios/i,/go-http/i,/java\//i,/httpclient/i,
     /libwww/i,/zgrab/i,/masscan/i,/nmap/i,/nuclei/i,/sqlmap/i,/nikto/i,
@@ -39,6 +42,14 @@ function hasApiKey(req: NextRequest): boolean {
     return a.startsWith('Bearer ') || !!req.headers.get('x-api-key');
 }
 
+// ── Maintenance flag — read from .maintenance file in project root ────────────
+function isMaintenanceOn(): boolean {
+    try {
+        const flagFile = path.join(process.cwd(), '.maintenance');
+        return fs.existsSync(flagFile);
+    } catch { return false; }
+}
+
 export default auth((req) => {
     const { pathname } = req.nextUrl;
     const ip = getClientIp(req);
@@ -48,15 +59,14 @@ export default auth((req) => {
         return new NextResponse('Forbidden', { status: 403 });
     }
 
-    // 2. Global rate limit: 120/60s
+    // 2. Global rate limit: 120/60s per IP
     if (isRateLimited(ip, 120, 60_000)) {
         return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
     }
 
-    // 3. Maintenance page and public routes — always allow
+    // 3. Always allow these routes
     const alwaysAllow = ['/maintenance', '/login', '/forgot-password', '/reset-password', '/api/auth'];
     if (alwaysAllow.some(r => pathname.startsWith(r))) {
-        // Tighter rate limit on login: 10/60s
         if (pathname.startsWith('/login') || pathname.startsWith('/api/auth/callback')) {
             if (isRateLimited(`login:${ip}`, 10, 60_000)) {
                 return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } });
@@ -65,11 +75,7 @@ export default auth((req) => {
         return NextResponse.next();
     }
 
-    // 4. Maintenance mode check via response header set by the app
-    // The maintenance flag is checked in the page itself (app-level, not middleware)
-    // because middleware can't read SQLite. The /maintenance route handles the UI.
-
-    // 5. External API routes — require API key
+    // 4. External API routes — require API key
     const externalApis = ['/api/import-schedule', '/api/backup', '/api/restore', '/api/reports'];
     if (externalApis.some(r => pathname.startsWith(r))) {
         if (!hasApiKey(req)) {
@@ -83,7 +89,15 @@ export default auth((req) => {
         return NextResponse.next();
     }
 
-    // 6. Everything else — must be authenticated
+    // 5. Maintenance mode check — read flag file written by setMaintenanceMode action
+    if (isMaintenanceOn()) {
+        const role = (req.auth?.user as any)?.role;
+        if (role !== 'admin' && role !== 'super_admin') {
+            return NextResponse.redirect(new URL('/maintenance', req.url));
+        }
+    }
+
+    // 6. Must be authenticated
     if (!req.auth) {
         const loginUrl = new URL('/login', req.url);
         loginUrl.searchParams.set('callbackUrl', pathname);

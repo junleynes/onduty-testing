@@ -1107,6 +1107,13 @@ export async function setMaintenanceMode(enabled: boolean, message?: string): Pr
         if (message !== undefined) {
             db.prepare("INSERT INTO key_value_store (key, value) VALUES ('maintenance_message', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(message);
         }
+        // Write/remove a flag file so middleware (Node.js runtime) can check it instantly
+        const flagFile = path.join(process.cwd(), '.maintenance');
+        if (enabled) {
+            fs.writeFileSync(flagFile, message || 'maintenance');
+        } else if (fs.existsSync(flagFile)) {
+            fs.unlinkSync(flagFile);
+        }
         return { success: true };
     } catch (error) {
         return { success: false, error: (error as Error).message };

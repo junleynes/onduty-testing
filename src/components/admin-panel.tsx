@@ -376,7 +376,6 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
       </DialogContent>
     </Dialog>
 
-    </>
 
       {/* Maintenance Mode */}
       <Card>
@@ -441,5 +440,6 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
         </CardContent>
       </Card>
 
+    </>
   );
 }

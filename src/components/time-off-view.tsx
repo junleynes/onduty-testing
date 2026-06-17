@@ -199,7 +199,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
     }
   }
 
-  const handleSaveRequest = (requestData: Partial<Leave>) => {
+  const handleSaveRequest = (requestData: Partial<Leave>, notifySuperior: boolean = true) => {
     if (editingRequest?.id) { 
       setLeaveRequests(prev => prev.map(r => r.id === editingRequest.id ? { ...r, ...requestData } as Leave : r));
       toast({ title: 'Request Updated' });
@@ -225,6 +225,44 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
         saveLeaveSignatures(newRequest.id, currentUser.signature, undefined).catch(() => {});
       }
       toast({ title: 'Request Submitted' });
+
+      // ── Notify the employee's direct superior (via reportsTo, falling back
+      //    to any manager/admin in the same group) ───────────────────────────
+      if (notifySuperior) {
+        const superior =
+          employees.find(e => e.id === currentUser.reportsTo) ??
+          employees.find(e =>
+            (e.role === 'manager' || e.role === 'admin') &&
+            e.group === currentUser.group &&
+            e.id !== currentUser.id
+          );
+
+        if (superior) {
+          const startStr  = newRequest.startDate ? format(new Date(newRequest.startDate), 'MMM d, yyyy') : '';
+          const endStr    = newRequest.endDate   ? format(new Date(newRequest.endDate),   'MMM d, yyyy') : '';
+          const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
+
+          // In-app notification — always fires, no SMTP required
+          addDbNotification({
+            employeeId: superior.id,
+            message: `${getFullName(currentUser)} filed a new ${newRequest.type} request for ${dateRange}.`,
+            link: '/time-off',
+          }).catch(() => {});
+
+          // Email — only if SMTP is configured and the superior has an email
+          if (smtpSettings?.host && superior.email) {
+            sendEmail({
+              to: superior.email,
+              subject: `[OnDuty] New ${newRequest.type} request from ${getFullName(currentUser)}`,
+              htmlBody: `<p>Hi ${superior.firstName},</p>
+<p><strong>${getFullName(currentUser)}</strong> has filed a new <strong>${newRequest.type}</strong> request.</p>
+<p><strong>Dates:</strong> ${dateRange}</p>
+${newRequest.reason ? `<p><strong>Reason:</strong> ${newRequest.reason}</p>` : ''}
+<p>Please log in to OnDuty to review and approve or reject the request.</p>`,
+            }, smtpSettings).catch(() => {});
+          }
+        }
+      }
     }
     setIsRequestDialogOpen(false);
     setIsOffsetDialogOpen(false);
@@ -337,7 +375,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
             sendEmail({
                 to: requester.email,
                 subject: `[OnDuty] Your ${finalUpdatedRequest.type} request has been ${newStatus}`,
-                html: `<p>Hi ${requester.firstName},</p>
+                htmlBody: `<p>Hi ${requester.firstName},</p>
 <p>Your <strong>${finalUpdatedRequest.type}</strong> request for <strong>${dateRange}</strong> has been <strong>${statusLabel}</strong> by ${managerName}.</p>
 ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpdatedRequest.reason}</p>` : ''}
 <p>Please log in to OnDuty for more details.</p>`,
@@ -387,24 +425,7 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
         return;
       }
     }
-    // Convert data: URI -> Blob URL — browsers block window.open on data: URIs
-    try {
-      const base64 = pdfDataUri!.split('base64,')[1];
-      const bytes = Uint8Array.from(atob(base64), ch => ch.charCodeAt(0));
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-      const win = window.open(blobUrl, '_blank');
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-      if (!win) {
-        // Popup blocked — fall back to download
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = `leave-form-${req.id}.pdf`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      }
-    } catch {
-      window.open(pdfDataUri!, '_blank');
-    }
+    window.open(pdfDataUri, '_blank');
   };
 
   const handleOpenEmailDialog = (leaveRequest: Leave) => {
@@ -977,11 +998,10 @@ ${getFullName(currentUser)}`);
                             </Select>
                         ) : (
                             <p className="text-sm text-muted-foreground">
-                                No saved recipients.{' '}
+                                No recipients configured.{' '}
                                 <button className="underline text-primary" onClick={() => setIsManageOpen(true)}>
-                                    Add one
+                                    Add one now.
                                 </button>
-                                {''} or enter an email below manually.
                             </p>
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1007,7 +1027,7 @@ ${getFullName(currentUser)}`);
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSend} disabled={isSending}>
+                    <Button onClick={handleSend} disabled={isSending || !to}>
                         {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Send Email
                     </Button>

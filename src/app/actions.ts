@@ -22,7 +22,7 @@ import {
 
 import { isLocked, trackFailed, clearAttempts } from '@/lib/rate-limit';
 
-/** Parses a date string OR Date object as local midnight to avoid UTC shift (UTC+8 Philippines). */
+/** Parses a YYYY-MM-DD string as local midnight to avoid UTC shift (UTC+8 Philippines). */
 function parseLocalDate(dateStr: string | Date | null | undefined): Date {
   if (!dateStr) return new Date();
   if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? new Date() : dateStr;
@@ -1092,13 +1092,8 @@ export async function getMaintenanceMode(): Promise<{ enabled: boolean; message:
         const db = getDb();
         const row    = db.prepare("SELECT value FROM key_value_store WHERE key = 'maintenance_mode'").get()    as { value: string } | undefined;
         const msgRow = db.prepare("SELECT value FROM key_value_store WHERE key = 'maintenance_message'").get() as { value: string } | undefined;
-        return {
-            enabled: row?.value === '1',
-            message: msgRow?.value || "We're performing scheduled maintenance and will be back shortly.",
-        };
-    } catch {
-        return { enabled: false, message: '' };
-    }
+        return { enabled: row?.value === '1', message: msgRow?.value || "We're performing scheduled maintenance and will be back shortly." };
+    } catch { return { enabled: false, message: '' }; }
 }
 
 export async function setMaintenanceMode(enabled: boolean, message?: string): Promise<{ success: boolean; error?: string }> {
@@ -1109,23 +1104,12 @@ export async function setMaintenanceMode(enabled: boolean, message?: string): Pr
         if (message !== undefined) {
             db.prepare("INSERT INTO key_value_store (key, value) VALUES ('maintenance_message', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(message);
         }
-        // Set a cookie so middleware (Edge Runtime) can read the flag without hitting DB
         const { cookies } = await import('next/headers');
         const cookieStore = await cookies();
-        if (enabled) {
-            cookieStore.set('onduty_maintenance', '1', {
-                path: '/',
-                httpOnly: true,
-                sameSite: 'lax',
-                maxAge: 60 * 60 * 24 * 365, // 1 year
-            });
-        } else {
-            cookieStore.delete('onduty_maintenance');
-        }
+        if (enabled) cookieStore.set('onduty_maintenance', '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 });
+        else cookieStore.delete('onduty_maintenance');
         return { success: true };
-    } catch (error) {
-        return { success: false, error: (error as Error).message };
-    }
+    } catch (error) { return { success: false, error: (error as Error).message }; }
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
@@ -1156,8 +1140,7 @@ export async function writeAuditLog(entry: { action: string; targetType?: string
         const session = await auth();
         const db = getDb();
         db.prepare(`INSERT INTO audit_logs (actor_id, actor_name, action, target_type, target_id, target_name, detail) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .run(session?.user?.id ?? null, session?.user?.name ?? null, entry.action,
-               entry.targetType ?? null, entry.targetId ?? null, entry.targetName ?? null, entry.detail ?? null);
+          .run(session?.user?.id ?? null, session?.user?.name ?? null, entry.action, entry.targetType ?? null, entry.targetId ?? null, entry.targetName ?? null, entry.detail ?? null);
     } catch (_) {}
 }
 
@@ -1205,8 +1188,7 @@ function ensureReportSchedulesTable(db: ReturnType<typeof getDb>) {
         day_of_week INTEGER, day_of_month INTEGER, scheduled_date TEXT,
         recipient_emails TEXT NOT NULL, subject_template TEXT NOT NULL, body_template TEXT NOT NULL,
         date_range_type TEXT NOT NULL, group_filter TEXT, created_by TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')), last_sent_at TEXT,
-        is_active INTEGER NOT NULL DEFAULT 1)`);
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), last_sent_at TEXT, is_active INTEGER NOT NULL DEFAULT 1)`);
 }
 
 export async function getReportSchedules(): Promise<{ success: boolean; schedules?: ReportSchedule[]; error?: string }> {
@@ -1219,10 +1201,7 @@ export async function saveReportSchedule(data: Omit<ReportSchedule, 'id' | 'crea
         await requireAdmin(); const db = getDb(); ensureReportSchedulesTable(db);
         const id = crypto.randomUUID();
         db.prepare(`INSERT INTO report_schedules (id,name,report_type,frequency,day_of_week,day_of_month,scheduled_date,recipient_emails,subject_template,body_template,date_range_type,group_filter,created_by,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-          .run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null,
-               data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails,
-               data.subject_template, data.body_template, data.date_range_type,
-               data.group_filter ?? null, data.created_by, data.is_active);
+          .run(id, data.name, data.report_type, data.frequency, data.day_of_week ?? null, data.day_of_month ?? null, data.scheduled_date ?? null, data.recipient_emails, data.subject_template, data.body_template, data.date_range_type, data.group_filter ?? null, data.created_by, data.is_active);
         return { success: true, id };
     } catch (error) { return { success: false, error: (error as Error).message }; }
 }
@@ -1239,8 +1218,6 @@ export async function deleteReportSchedule(id: string): Promise<{ success: boole
     try { await requireAdmin(); getDb().prepare('DELETE FROM report_schedules WHERE id = ?').run(id); return { success: true }; }
     catch (error) { return { success: false, error: (error as Error).message }; }
 }
-
-// ── Legacy single-key shims ───────────────────────────────────────────────────
 
 export async function getApiKey(): Promise<{ success: boolean; key?: string; error?: string }> {
     try { await requireAdmin(); const row = getDb().prepare("SELECT value FROM key_value_store WHERE key = 'import_api_key'").get() as { value: string } | undefined; return { success: true, key: row?.value }; }

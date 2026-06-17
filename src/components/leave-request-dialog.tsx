@@ -22,7 +22,7 @@ import { Input } from './ui/input';
 import type { LeaveTypeOption } from './leave-type-editor';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { CalendarIcon, ChevronDown } from 'lucide-react';
+import { CalendarIcon } from 'lucide-react';
 import { Checkbox } from './ui/checkbox';
 import { cn } from '@/lib/utils';
 import { format, differenceInCalendarDays, isSameDay } from 'date-fns';
@@ -400,19 +400,13 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
              <FormItem>
                 <FormLabel>Reason/Remarks</FormLabel>
                 <div className="space-y-2">
-                  {/* Template picker */}
                   <select
                     className="w-full text-sm border rounded-md px-3 py-2 bg-background text-muted-foreground"
                     value=""
-                    onChange={e => {
-                      if (e.target.value) form.setValue('reason', e.target.value);
-                      e.target.value = '';
-                    }}
+                    onChange={e => { if (e.target.value) form.setValue('reason', e.target.value); e.target.value = ''; }}
                   >
                     <option value="">— Use a template reason —</option>
-                    {REASON_TEMPLATES.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
+                    {REASON_TEMPLATES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <FormField
                     control={form.control}
@@ -429,15 +423,10 @@ export function LeaveRequestDialog({ isOpen, setIsOpen, request, onSave, leaveTy
                 </div>
               </FormItem>
 
-              {/* Notify superior option */}
               <div className="flex items-center gap-2 pt-1">
-                <Checkbox
-                  id="notifySuperiorLeave"
-                  checked={notifySuperior}
-                  onCheckedChange={v => setNotifySuperior(!!v)}
-                />
+                <Checkbox id="notifySuperiorLeave" checked={notifySuperior} onCheckedChange={v => setNotifySuperior(!!v)} />
                 <label htmlFor="notifySuperiorLeave" className="text-sm text-muted-foreground cursor-pointer select-none">
-                  Notify my superior/manager by email after submitting
+                  Notify my superior/manager after submitting
                 </label>
               </div>
 

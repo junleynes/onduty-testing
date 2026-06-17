@@ -329,15 +329,10 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
                   <select
                     className="w-full text-sm border rounded-md px-3 py-2 bg-background text-muted-foreground"
                     value=""
-                    onChange={e => {
-                      if (e.target.value) form.setValue('reason', e.target.value);
-                      e.target.value = '';
-                    }}
+                    onChange={e => { if (e.target.value) form.setValue('reason', e.target.value); e.target.value = ''; }}
                   >
                     <option value="">— Use a template reason —</option>
-                    {OFFSET_REASON_TEMPLATES.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
+                    {OFFSET_REASON_TEMPLATES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <FormField
                     control={form.control}
@@ -355,13 +350,9 @@ export function OffsetRequestDialog({ isOpen, setIsOpen, request, onSave, curren
               </FormItem>
 
               <div className="flex items-center gap-2 pt-1">
-                <Checkbox
-                  id="notifySuperiorOffset"
-                  checked={notifySuperior}
-                  onCheckedChange={v => setNotifySuperior(!!v)}
-                />
+                <Checkbox id="notifySuperiorOffset" checked={notifySuperior} onCheckedChange={v => setNotifySuperior(!!v)} />
                 <label htmlFor="notifySuperiorOffset" className="text-sm text-muted-foreground cursor-pointer select-none">
-                  Notify my superior/manager by email after submitting
+                  Notify my superior/manager after submitting
                 </label>
               </div>
 

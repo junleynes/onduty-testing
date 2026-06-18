@@ -48,6 +48,8 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
   const [isOffsetDialogOpen, setIsOffsetDialogOpen] = useState(false);
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ requestId: string; status: 'approved' | 'rejected' } | null>(null);
+  const [notifyEmployee, setNotifyEmployee] = useState(true);
   const [isPurging, startPurgeTransition] = useTransition();
   const [editingRequest, setEditingRequest] = useState<Partial<Leave> | null>(null);
   const [emailingRequest, setEmailingRequest] = useState<Leave | null>(null);
@@ -226,11 +228,10 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
       }
       toast({ title: 'Request Submitted' });
 
-      // ── Notify the employee's direct superior (via reportsTo, falling back
-      //    to any manager/admin in the same group) ───────────────────────────
+      // ── Notify the employee's direct superior ──────────────────────────────
       if (notifySuperior) {
         const superior =
-          employees.find(e => e.id === currentUser.reportsTo) ??
+          employees.find(e => e.id === (currentUser as any).reportsTo) ??
           employees.find(e =>
             (e.role === 'manager' || e.role === 'admin') &&
             e.group === currentUser.group &&
@@ -246,7 +247,7 @@ export default function TimeOffView({ leaveRequests, setLeaveRequests, shifts, s
           addDbNotification({
             employeeId: superior.id,
             message: `${getFullName(currentUser)} filed a new ${newRequest.type} request for ${dateRange}.`,
-            link: '/time-off',
+            link: 'time-off',
           }).catch(() => {});
 
           // Email — only if SMTP is configured and the superior has an email
@@ -268,7 +269,7 @@ ${newRequest.reason ? `<p><strong>Reason:</strong> ${newRequest.reason}</p>` : '
     setIsOffsetDialogOpen(false);
   };
   
-  const handleManageRequest = async (requestId: string, newStatus: LeaveRequestStatus) => {
+  const handleManageRequest = async (requestId: string, newStatus: LeaveRequestStatus, shouldNotifyEmployee: boolean = true) => {
     let finalUpdatedRequest: Leave | undefined;
 
     setLeaveRequests(prevLeaveRequests => {
@@ -363,33 +364,36 @@ ${newRequest.reason ? `<p><strong>Reason:</strong> ${newRequest.reason}</p>` : '
         toast({ title: `Request ${newStatus}` });
     }
 
-    // Notify the requester via email + in-app notification if configured
-    if (finalUpdatedRequest && smtpSettings?.host) {
-        const requester = employees.find(e => e.id === finalUpdatedRequest!.employeeId);
-        if (requester?.email) {
-            const statusLabel = newStatus === 'approved' ? 'Approved ✅' : 'Rejected ❌';
-            const managerName = getFullName(currentUser);
-            const startStr = finalUpdatedRequest.startDate ? format(new Date(finalUpdatedRequest.startDate), 'MMM d, yyyy') : '';
-            const endStr   = finalUpdatedRequest.endDate   ? format(new Date(finalUpdatedRequest.endDate),   'MMM d, yyyy') : '';
-            const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
-            sendEmail({
-                to: requester.email,
-                subject: `[OnDuty] Your ${finalUpdatedRequest.type} request has been ${newStatus}`,
-                htmlBody: `<p>Hi ${requester.firstName},</p>
+    // Notify the requester via email + in-app notification — only if the
+    // manager opted in via the confirmation dialog (shouldNotifyEmployee)
+    if (shouldNotifyEmployee) {
+        if (finalUpdatedRequest && smtpSettings?.host) {
+            const requester = employees.find(e => e.id === finalUpdatedRequest!.employeeId);
+            if (requester?.email) {
+                const statusLabel = newStatus === 'approved' ? 'Approved ✅' : 'Rejected ❌';
+                const managerName = getFullName(currentUser);
+                const startStr = finalUpdatedRequest.startDate ? format(new Date(finalUpdatedRequest.startDate), 'MMM d, yyyy') : '';
+                const endStr   = finalUpdatedRequest.endDate   ? format(new Date(finalUpdatedRequest.endDate),   'MMM d, yyyy') : '';
+                const dateRange = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
+                sendEmail({
+                    to: requester.email,
+                    subject: `[OnDuty] Your ${finalUpdatedRequest.type} request has been ${newStatus}`,
+                    htmlBody: `<p>Hi ${requester.firstName},</p>
 <p>Your <strong>${finalUpdatedRequest.type}</strong> request for <strong>${dateRange}</strong> has been <strong>${statusLabel}</strong> by ${managerName}.</p>
 ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpdatedRequest.reason}</p>` : ''}
 <p>Please log in to OnDuty for more details.</p>`,
-            }, smtpSettings).catch(() => {});
+                }, smtpSettings).catch(() => {});
+            }
         }
-    }
-    // In-app persistent notification for the requester regardless of SMTP
-    if (finalUpdatedRequest?.employeeId) {
-        const startStr = finalUpdatedRequest.startDate ? format(new Date(finalUpdatedRequest.startDate), 'MMM d') : '';
-        addDbNotification({
-            employeeId: finalUpdatedRequest.employeeId,
-            message: `Your ${finalUpdatedRequest.type} request${startStr ? ` for ${startStr}` : ''} was ${newStatus} by ${getFullName(currentUser)}.`,
-            link: 'time-off',
-        }).catch(() => {});
+        // In-app persistent notification for the requester
+        if (finalUpdatedRequest?.employeeId) {
+            const startStr = finalUpdatedRequest.startDate ? format(new Date(finalUpdatedRequest.startDate), 'MMM d') : '';
+            addDbNotification({
+                employeeId: finalUpdatedRequest.employeeId,
+                message: `Your ${finalUpdatedRequest.type} request${startStr ? ` for ${startStr}` : ''} was ${newStatus} by ${getFullName(currentUser)}.`,
+                link: 'time-off',
+            }).catch(() => {});
+        }
     }
   };
 
@@ -466,8 +470,8 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
             if (req.status === 'pending') {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')}><Check className="h-4 w-4 mr-1" />Approve</Button>
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')}><X className="h-4 w-4 mr-1" />Reject</Button>
+                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNotifyEmployee(true); setPendingAction({ requestId: req.id, status: 'approved' }); }}><Check className="h-4 w-4 mr-1" />Approve</Button>
+                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => { setNotifyEmployee(true); setPendingAction({ requestId: req.id, status: 'rejected' }); }}><X className="h-4 w-4 mr-1" />Reject</Button>
                     </div>
                 );
             }
@@ -563,8 +567,8 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
             if (req.status === 'pending') {
                 return (
                     <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => handleManageRequest(req.id, 'approved')} title="Approve"><Check className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => handleManageRequest(req.id, 'rejected')} title="Reject"><X className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNotifyEmployee(true); setPendingAction({ requestId: req.id, status: 'approved' }); }} title="Approve"><Check className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => { setNotifyEmployee(true); setPendingAction({ requestId: req.id, status: 'rejected' }); }} title="Reject"><X className="h-4 w-4" /></Button>
                     </div>
                 );
             }
@@ -832,6 +836,46 @@ ${finalUpdatedRequest.reason ? `<p><strong>Original reason:</strong> ${finalUpda
             currentUser={currentUser}
         />
       )}
+
+      {/* Approve / Reject confirmation with optional employee notification */}
+      <AlertDialog open={!!pendingAction} onOpenChange={open => { if (!open) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction?.status === 'approved' ? 'Approve Request?' : 'Reject Request?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction?.status === 'approved'
+                ? 'This will approve the request and generate the PDF form.'
+                : 'This will reject the request.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {smtpSettings?.host && (
+            <div className="flex items-center gap-2 px-1 py-2">
+              <Checkbox id="notifyEmployeeCheck" checked={notifyEmployee} onCheckedChange={v => setNotifyEmployee(!!v)} />
+              <label htmlFor="notifyEmployeeCheck" className="text-sm cursor-pointer select-none">
+                Notify employee by email after {pendingAction?.status === 'approved' ? 'approving' : 'rejecting'}
+              </label>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingAction(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={pendingAction?.status === 'rejected' ? 'bg-destructive hover:bg-destructive/90' : ''}
+              onClick={() => {
+                if (pendingAction) {
+                  handleManageRequest(pendingAction.requestId, pendingAction.status, notifyEmployee);
+                  setPendingAction(null);
+                }
+              }}
+            >
+              {pendingAction?.status === 'approved' ? 'Yes, Approve' : 'Yes, Reject'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

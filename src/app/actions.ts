@@ -44,10 +44,20 @@ function parseLocalDate(dateStr: string | Date | null | undefined): Date {
  * (which causes updateFieldAppearances to silently produce an empty stream).
  */
 function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, value: string): void {
+    // Skip entirely if there's nothing to draw — avoids replacing a correctly-set
+    // /V value with a blank custom appearance stream when value is empty.
+    if (!value) return;
+
     try {
         const allFields = form.getFields();
-        const field = allFields.find((f: any) => f.getName() === fieldName);
-        if (!field) return;
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const target = normalize(fieldName);
+
+        // Same robust matching as trySet/tryCheck: exact -> normalized -> suffix
+        let field = allFields.find((f: any) => f.getName() === fieldName);
+        if (!field) field = allFields.find((f: any) => normalize(f.getName()) === target);
+        if (!field) field = allFields.find((f: any) => normalize(f.getName()).endsWith(target));
+        if (!field) return; // field genuinely doesn't exist in this template
 
         const dict = field.acroField.dict;
 
@@ -67,17 +77,22 @@ function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, v
                 }
             }
         }
+        // If we can't find a Rect, bail out WITHOUT touching the field —
+        // the /V value set by setText() earlier remains intact and will
+        // still render correctly in most PDF viewers even without a custom AP stream.
         if (!rectArray) return;
 
         const w = (rectArray.get(2) as any).asNumber() - (rectArray.get(0) as any).asNumber();
         const h = (rectArray.get(3) as any).asNumber() - (rectArray.get(1) as any).asNumber();
+        if (!w || !h || w <= 0 || h <= 0) return; // degenerate box — don't draw garbage
+
         const fontSize = 8;
         const margin = 2;
         const lineHeight = fontSize * 1.35;
 
         const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 
-        const lines = (value || '').split('\n');
+        const lines = value.split('\n');
         let y = h - margin - fontSize;
         let content = `/Tx BMC\nBT\n/Helv ${fontSize} Tf\n0 g\n`;
         for (const line of lines) {
@@ -94,7 +109,8 @@ function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, v
         const apStreamRef = pdfDoc.context.register(apStream);
         widgetDict.set(PDFName.of('AP'), pdfDoc.context.obj({ N: apStreamRef }));
     } catch (_) {
-        // Silently ignore — field will still show correct /V when focused
+        // If appearance drawing fails, the /V value set earlier by setText()
+        // is untouched and will still display in most viewers.
     }
 }
 
@@ -503,14 +519,43 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             leaveTotalDays = String(Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         }
 
-        // Strict exact-name field setter — finds field by getName() === fieldName only
+        // Field setter with diagnostics — tries exact name first, then a normalized
+        // (lowercase, trimmed, no-space) match as a fallback for templates exported
+        // from Adobe/LibreOffice where field names sometimes pick up stray
+        // whitespace, casing differences, or a parent-form prefix like "form1.employee_name".
+        const missingFields: string[] = [];
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        const findField = (fieldName: string) => {
+            // 1. Exact match
+            let field = allFields.find(f => f.getName() === fieldName);
+            if (field) return field;
+            // 2. Normalized match (case/whitespace/punctuation insensitive)
+            const target = normalize(fieldName);
+            field = allFields.find(f => normalize(f.getName()) === target);
+            if (field) return field;
+            // 3. Suffix match — handles "form1.employee_name" style prefixed names
+            field = allFields.find(f => normalize(f.getName()).endsWith(target));
+            return field;
+        };
+
         const trySet = (fieldName: string, value: string) => {
-            const field = allFields.find(f => f.getName() === fieldName);
-            if (field) { try { form.getTextField(fieldName).setText(value || ''); } catch (e) {} }
+            const field = findField(fieldName);
+            if (!field) { missingFields.push(fieldName); return; }
+            try {
+                form.getTextField(field.getName()).setText(value || '');
+            } catch (e) {
+                missingFields.push(`${fieldName} (found but not a text field: ${(e as Error).message})`);
+            }
         };
         const tryCheck = (fieldName: string) => {
-            const field = allFields.find(f => f.getName() === fieldName);
-            if (field) { try { form.getCheckBox(fieldName).check(); } catch (e) {} }
+            const field = findField(fieldName);
+            if (!field) { missingFields.push(fieldName); return; }
+            try {
+                form.getCheckBox(field.getName()).check();
+            } catch (e) {
+                missingFields.push(`${fieldName} (found but not a checkbox: ${(e as Error).message})`);
+            }
         };
 
         // ── Text fields (exact names from ALAF_Template_Image_Sig.pdf) ────────────

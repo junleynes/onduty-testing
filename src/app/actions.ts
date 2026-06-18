@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { getDb } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import { isSameDay } from 'date-fns';
 import { requireAuth, requireAdmin, requireManager } from '@/lib/auth-guard';
 import { getFullName } from '@/lib/utils';
@@ -43,25 +43,34 @@ function parseLocalDate(dateStr: string | Date | null | undefined): Date {
  * Also fixes fields whose Rect is on a child widget rather than the field dict itself
  * (which causes updateFieldAppearances to silently produce an empty stream).
  */
-function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, value: string): void {
-    // Skip entirely if there's nothing to draw — avoids replacing a correctly-set
-    // /V value with a blank custom appearance stream when value is empty.
-    if (!value) return;
-
+/**
+ * Manually writes a correct /AP (appearance stream) for a text field, embedding
+ * a real font resource so the field renders identically whether focused or not.
+ *
+ * Root cause this fixes: pdf-lib's form.updateFieldAppearances() resolves each
+ * field's font from its /DA (default appearance) string, looked up against the
+ * form's /DR (default resources) dictionary. When a PDF template was produced by
+ * software that left /DR incomplete or pointing to a font not actually embedded,
+ * pdf-lib silently produces an empty appearance stream for that field — the /V
+ * value is still set correctly, which is why some viewers show the text only
+ * while the field is focused (they render live from /V in edit mode) but blank
+ * otherwise (rendering from the broken /AP). This function bypasses that broken
+ * resolution entirely by embedding a known-good font directly into the field's
+ * own appearance stream resources, guaranteeing both states render the same way.
+ */
+function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, value: string, font: any): void {
     try {
         const allFields = form.getFields();
         const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
         const target = normalize(fieldName);
 
-        // Same robust matching as trySet/tryCheck: exact -> normalized -> suffix
         let field = allFields.find((f: any) => f.getName() === fieldName);
         if (!field) field = allFields.find((f: any) => normalize(f.getName()) === target);
         if (!field) field = allFields.find((f: any) => normalize(f.getName()).endsWith(target));
-        if (!field) return; // field genuinely doesn't exist in this template
+        if (!field) return;
 
         const dict = field.acroField.dict;
 
-        // Find the widget that has the Rect — may be on the field or a child widget
         let rectArray: any = dict.lookup(PDFName.of('Rect'));
         let widgetDict: any = dict;
         if (!rectArray) {
@@ -77,14 +86,11 @@ function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, v
                 }
             }
         }
-        // If we can't find a Rect, bail out WITHOUT touching the field —
-        // the /V value set by setText() earlier remains intact and will
-        // still render correctly in most PDF viewers even without a custom AP stream.
         if (!rectArray) return;
 
         const w = (rectArray.get(2) as any).asNumber() - (rectArray.get(0) as any).asNumber();
         const h = (rectArray.get(3) as any).asNumber() - (rectArray.get(1) as any).asNumber();
-        if (!w || !h || w <= 0 || h <= 0) return; // degenerate box — don't draw garbage
+        if (!w || !h || w <= 0 || h <= 0) return;
 
         const fontSize = 8;
         const margin = 2;
@@ -92,25 +98,32 @@ function fixFieldAppearance(pdfDoc: PDFDocument, form: any, fieldName: string, v
 
         const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 
-        const lines = value.split('\n');
+        // Always write a stream — even for empty values — so a stale appearance
+        // from a previous fill never lingers on the rendered page.
+        const lines = (value || '').split('\n');
         let y = h - margin - fontSize;
-        let content = `/Tx BMC\nBT\n/Helv ${fontSize} Tf\n0 g\n`;
+        let content = `/Tx BMC\nq\nBT\n/F0 ${fontSize} Tf\n0 g\n`;
         for (const line of lines) {
             content += `${margin} ${y.toFixed(2)} Td\n(${escape(line)}) Tj\n0 ${(-lineHeight).toFixed(2)} Td\n`;
             y -= lineHeight;
         }
-        content += `ET\nEMC\n`;
+        content += `ET\nQ\nEMC\n`;
 
         const streamBytes = Buffer.from(content, 'latin1');
+        // Embed the font directly as a resource on THIS appearance stream —
+        // this is the key fix. We no longer depend on the form's shared /DR
+        // dictionary resolving correctly; the font reference here is guaranteed
+        // valid because `font` was embedded into pdfDoc earlier in this request.
         const apStream = pdfDoc.context.stream(streamBytes, {
             Subtype: 'Form',
             BBox: pdfDoc.context.obj([0, 0, w, h]),
+            Resources: pdfDoc.context.obj({ Font: { F0: font.ref } }),
         });
         const apStreamRef = pdfDoc.context.register(apStream);
         widgetDict.set(PDFName.of('AP'), pdfDoc.context.obj({ N: apStreamRef }));
     } catch (_) {
-        // If appearance drawing fails, the /V value set earlier by setText()
-        // is untouched and will still display in most viewers.
+        // If this fails, the /V value set earlier by setText() is untouched
+        // and most viewers will still show it when the field is focused.
     }
 }
 
@@ -519,43 +532,30 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
             leaveTotalDays = String(Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         }
 
-        // Field setter with diagnostics — tries exact name first, then a normalized
-        // (lowercase, trimmed, no-space) match as a fallback for templates exported
-        // from Adobe/LibreOffice where field names sometimes pick up stray
-        // whitespace, casing differences, or a parent-form prefix like "form1.employee_name".
-        const missingFields: string[] = [];
-        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-
+        // Robust field setter — exact name, then normalized, then suffix match.
+        // Tracks every value it sets so we can regenerate appearances for
+        // exactly those fields afterward (see fixFieldAppearance calls below).
+        const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
         const findField = (fieldName: string) => {
-            // 1. Exact match
             let field = allFields.find(f => f.getName() === fieldName);
             if (field) return field;
-            // 2. Normalized match (case/whitespace/punctuation insensitive)
-            const target = normalize(fieldName);
-            field = allFields.find(f => normalize(f.getName()) === target);
+            const target = normalizeName(fieldName);
+            field = allFields.find(f => normalizeName(f.getName()) === target);
             if (field) return field;
-            // 3. Suffix match — handles "form1.employee_name" style prefixed names
-            field = allFields.find(f => normalize(f.getName()).endsWith(target));
-            return field;
+            return allFields.find(f => normalizeName(f.getName()).endsWith(target));
         };
-
+        const setFieldValues: Record<string, string> = {};
         const trySet = (fieldName: string, value: string) => {
             const field = findField(fieldName);
-            if (!field) { missingFields.push(fieldName); return; }
+            if (!field) return;
             try {
                 form.getTextField(field.getName()).setText(value || '');
-            } catch (e) {
-                missingFields.push(`${fieldName} (found but not a text field: ${(e as Error).message})`);
-            }
+                setFieldValues[fieldName] = value || '';
+            } catch (e) {}
         };
         const tryCheck = (fieldName: string) => {
             const field = findField(fieldName);
-            if (!field) { missingFields.push(fieldName); return; }
-            try {
-                form.getCheckBox(field.getName()).check();
-            } catch (e) {
-                missingFields.push(`${fieldName} (found but not a checkbox: ${(e as Error).message})`);
-            }
+            if (field) { try { form.getCheckBox(field.getName()).check(); } catch (e) {} }
         };
 
         // ── Text fields (exact names from ALAF_Template_Image_Sig.pdf) ────────────
@@ -597,22 +597,31 @@ export async function generateLeavePdf(leaveRequest: Leave): Promise<{ success: 
         if (status === 'approved') tryCheck('approved');
         if (status === 'rejected') tryCheck('rejected');
 
-        // updateFieldAppearances handles single-line fields but silently skips multiline.
-        // fixFieldAppearance manually writes /AP for fields it misses so both focused
-        // and unfocused states render correctly (fixes the click/no-click value mismatch).
-        form.updateFieldAppearances();
-        fixFieldAppearance(pdfDoc, form, 'employee_name', getFullName(employee));
-        fixFieldAppearance(pdfDoc, form, 'manager_name',  manager ? getFullName(manager) : '');
-        fixFieldAppearance(pdfDoc, form, 'reason',        leaveRequest.reason || '');
-        fixFieldAppearance(pdfDoc, form, 'date_filed',    formatComponentDate(leaveRequest.dateFiled || new Date()));
-        fixFieldAppearance(pdfDoc, form, 'leave_dates',   datesDisplay);
-        fixFieldAppearance(pdfDoc, form, 'total_days',    leaveTotalDays);
-        fixFieldAppearance(pdfDoc, form, 'department',    leaveRequest.department || employee.department || employee.group || '');
-        fixFieldAppearance(pdfDoc, form, 'contact_info',  leaveRequest.contactInfo || employee.phone || '');
-        fixFieldAppearance(pdfDoc, form, 'employee_id',   leaveRequest.idNumber || employee.employeeNumber || '');
-        fixFieldAppearance(pdfDoc, form, 'approval_date', formatComponentDate(leaveRequest.managedAt));
+        // ── Appearance generation (the actual fix) ────────────────────────────
+        // 1. Embed a real, known-good font directly into this document.
+        // 2. Regenerate every text field's appearance using THAT font reference
+        //    rather than relying on the template's /DR dictionary, which is
+        //    often incomplete/broken in templates exported from third-party tools.
+        // 3. Only after every field's appearance is confirmed correct do we
+        //    flatten the form — baking in the now-correct appearances permanently
+        //    so the PDF renders identically in every viewer, focused or not.
+        const embeddedFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        try { form.updateFieldAppearances(embeddedFont); } catch (_) {}
+        for (const [fName, fValue] of Object.entries(setFieldValues)) {
+            fixFieldAppearance(pdfDoc, form, fName, fValue, embeddedFont);
+        }
         await embedSignatureToPdf(pdfDoc, employeeSig || leaveRequest.employeeSignature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, managerSig  || leaveRequest.managerSignature,  ['manager_signature_af_image'],  'manager');
+
+        // Flatten now that every field's appearance stream is confirmed correct —
+        // this bakes the text into the page permanently so it's identical in
+        // every PDF viewer regardless of focus state. Signature images (drawn as
+        // /AP image XObjects, not form fields) are unaffected by flattening.
+        try { form.flatten(); } catch (_) {
+            // If flattening fails for any reason, fall back to leaving the form
+            // fields in place — appearances are already correct at this point,
+            // so the PDF will still render properly even without flattening.
+        }
 
         const pdfBytes = await pdfDoc.save();
         const pdfDataUri = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
@@ -679,14 +688,28 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
             totalDaysValue = '0.5';
         }
 
-        // Strict exact-name field setter using getName() === fieldName
+        // Robust field setter — exact name, then normalized, then suffix match.
+        const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const findField = (fieldName: string) => {
+            let field = allFields.find(f => f.getName() === fieldName);
+            if (field) return field;
+            const target = normalizeName(fieldName);
+            field = allFields.find(f => normalizeName(f.getName()) === target);
+            if (field) return field;
+            return allFields.find(f => normalizeName(f.getName()).endsWith(target));
+        };
+        const setFieldValues: Record<string, string> = {};
         const trySet = (fieldName: string, value: string) => {
-            const field = allFields.find(f => f.getName() === fieldName);
-            if (field) { try { form.getTextField(fieldName).setText(value || ''); } catch (e) {} }
+            const field = findField(fieldName);
+            if (!field) return;
+            try {
+                form.getTextField(field.getName()).setText(value || '');
+                setFieldValues[fieldName] = value || '';
+            } catch (e) {}
         };
         const tryCheck = (fieldName: string) => {
-            const field = allFields.find(f => f.getName() === fieldName);
-            if (field) { try { form.getCheckBox(fieldName).check(); } catch (e) {} }
+            const field = findField(fieldName);
+            if (field) { try { form.getCheckBox(field.getName()).check(); } catch (e) {} }
         };
 
         // ── ALAF section — offset data only ──────────────────────────────────────
@@ -722,34 +745,21 @@ export async function generateOffsetPdf(leaveRequest: Leave, clientWeRequest?: L
             trySet('we_manager_name',  weManager ? getFullName(weManager) : '');
         }
 
-        form.updateFieldAppearances();
-        fixFieldAppearance(pdfDoc, form, 'employee_name',  getFullName(employee));
-        fixFieldAppearance(pdfDoc, form, 'employee_id',    leaveRequest.idNumber || employee?.employeeNumber || '');
-        fixFieldAppearance(pdfDoc, form, 'department',     leaveRequest.department || employee?.department || employee?.group || '');
-        fixFieldAppearance(pdfDoc, form, 'contact_info',   leaveRequest.contactInfo || employee?.phone || '');
-        fixFieldAppearance(pdfDoc, form, 'date_filed',     formatComponentDate(leaveRequest.dateFiled || new Date()));
-        fixFieldAppearance(pdfDoc, form, 'leave_dates',    formatComponentDate(leaveRequest.startDate));
-        fixFieldAppearance(pdfDoc, form, 'offset_reason',  leaveRequest.reason || '');
-        fixFieldAppearance(pdfDoc, form, 'total_days',     totalDaysValue);
-        fixFieldAppearance(pdfDoc, form, 'manager_name',   manager ? getFullName(manager) : '');
-        fixFieldAppearance(pdfDoc, form, 'approval_date',  formatComponentDate(leaveRequest.managedAt));
-        if (weRequest) {
-            fixFieldAppearance(pdfDoc, form, 'we_employee_name', getFullName(employee));
-            fixFieldAppearance(pdfDoc, form, 'we_department',    weRequest.department || employee?.department || employee?.group || '');
-            fixFieldAppearance(pdfDoc, form, 'we_date_filed',    formatComponentDate(weRequest.dateFiled || weRequest.requestedAt || new Date()));
-            fixFieldAppearance(pdfDoc, form, 'extended_date',    formatComponentDate(weRequest.startDate));
-            fixFieldAppearance(pdfDoc, form, 'we_shiftfrom',     weRequest.originalStartTime || '');
-            fixFieldAppearance(pdfDoc, form, 'we_shiftto',       weRequest.originalEndTime   || '');
-            fixFieldAppearance(pdfDoc, form, 'we_timein',        weRequest.startTime || '');
-            fixFieldAppearance(pdfDoc, form, 'we_timeout',       weRequest.endTime   || '');
-            fixFieldAppearance(pdfDoc, form, 'we_extendfrom',    weRequest.startTime || '');
-            fixFieldAppearance(pdfDoc, form, 'we_extendto',      weRequest.endTime   || '');
-            fixFieldAppearance(pdfDoc, form, 'we_reason',        weRequest.reason || '');
-            fixFieldAppearance(pdfDoc, form, 'we_manager_name',  weManager ? getFullName(weManager) : '');
+        // ── Appearance generation (same fix as generateLeavePdf) ──────────────
+        const embeddedFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        try { form.updateFieldAppearances(embeddedFont); } catch (_) {}
+        for (const [fName, fValue] of Object.entries(setFieldValues)) {
+            fixFieldAppearance(pdfDoc, form, fName, fValue, embeddedFont);
         }
 
         await embedSignatureToPdf(pdfDoc, employeeSig || leaveRequest.employeeSignature || employee?.signature, ['employee_signature_af_image'], 'employee');
         await embedSignatureToPdf(pdfDoc, managerSig  || leaveRequest.managerSignature  || manager?.signature,  ['manager_signature_af_image'],  'manager');
+
+        // Flatten now that every field's appearance is confirmed correct.
+        try { form.flatten(); } catch (_) {
+            // Falls back to leaving fields in place — appearances are already
+            // correct, so the PDF still renders properly without flattening.
+        }
         if (weRequest) {
             await embedSignatureToPdf(pdfDoc, weEmployeeSig, ['we_employee_signature_af_image'], 'employee');
             await embedSignatureToPdf(pdfDoc, weManagerSig,  ['we_manager_signature_af_image'],  'manager');

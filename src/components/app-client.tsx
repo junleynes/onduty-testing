@@ -23,6 +23,8 @@ import ScheduleView from '@/components/schedule-view';
 import MyScheduleView from '@/components/my-schedule-view';
 import TeamView from '@/components/team-view';
 import AdminPanel from '@/components/admin-panel';
+import ApiDocsView from '@/components/api-docs-view';
+import AuditLogsView from '@/components/audit-logs-view';
 import TemplatesView from '@/components/templates-view';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { TeamEditor } from '@/components/team-editor';
@@ -46,6 +48,7 @@ import type { LeaveTypeOption } from '@/components/leave-type-editor';
 import type { NavItemKey } from '@/types';
 import { PermissionsEditor } from '@/components/permissions-editor';
 import DangerZoneView from '@/components/danger-zone-view';
+import BackupRestoreView from '@/components/backup-restore-view';
 import DashboardView from '@/components/dashboard-view';
 import FaqView from '@/components/faq-view';
 import WorkExtensionsView from '@/components/work-extensions-view';
@@ -105,7 +108,26 @@ function AppContent() {
   // Save all data to the database whenever there's a change
   useEffect(() => {
     if (!initialDataLoaded || isLoading) return;
-    
+
+    /**
+     * Format any Date or date-like value to a plain "YYYY-MM-DD" string using the
+     * BROWSER's local timezone (date-fns `format` uses local time).
+     *
+     * Why this is necessary:
+     * Next.js server actions serialize arguments via JSON.stringify before the RPC
+     * call. A JS Date at local midnight in UTC+8 (e.g. June 10 00:00 UTC+8) becomes
+     * "2026-06-09T16:00:00.000Z" in the payload. The server (running UTC) then calls
+     * getDate() on that string and gets 9 — one day behind. Pre-formatting to a plain
+     * "YYYY-MM-DD" string here means the server receives "2026-06-10" and never needs
+     * to parse a time component at all, so the server timezone is irrelevant.
+     */
+    const toDateStr = (d: Date | string | undefined | null): string => {
+      if (!d) return '';
+      if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.trim())) return d.trim();
+      const dt = d instanceof Date ? d : new Date(d);
+      return format(dt, 'yyyy-MM-dd');
+    };
+
     const dataToSave = {
         employees: employees.map(e => ({
             ...e,
@@ -114,7 +136,12 @@ function AppContent() {
             avatar: undefined,
             signature: undefined,
         })),
-        shifts,
+        // Pre-format date to plain YYYY-MM-DD using the browser's local timezone so
+        // the UTC server never misinterprets a time-bearing ISO string.
+        shifts: shifts.map(s => ({
+            ...s,
+            date: toDateStr(s.date),
+        })),
         // Strip all binary fields from leave records — these are written directly
         // to DB by their respective actions and must not bloat the save payload
         leave: leave.map(l => ({
@@ -122,9 +149,13 @@ function AppContent() {
             pdfDataUri: undefined,
             employeeSignature: undefined,
             managerSignature: undefined,
+            startDate:         toDateStr(l.startDate),
+            endDate:           toDateStr(l.endDate),
+            dateFiled:         toDateStr(l.dateFiled),
+            originalShiftDate: l.originalShiftDate ? toDateStr(l.originalShiftDate) : undefined,
         })),
-        notes,
-        holidays,
+        notes:    notes.map(n => ({ ...n, date: toDateStr(n.date) })),
+        holidays: holidays.map(h => ({ ...h, date: toDateStr(h.date) })),
         tasks,
         allowances: allowances.map(a => ({
             ...a,
@@ -357,6 +388,14 @@ function AppContent() {
     return leave;
   }, [leave, approvedLeave, currentUser]);
 
+  // Only show holidays relevant to the current user's group (or unscoped nulls)
+  const holidaysForView = useMemo(() => {
+    if (!currentUser) return holidays;
+    return holidays.filter(h =>
+      h.groupName === null || h.groupName === undefined || h.groupName === currentUser.group
+    );
+  }, [holidays, currentUser]);
+
 
   const handleNavigate = (view: NavItem) => {
     setActiveView(view);
@@ -527,6 +566,7 @@ function AppContent() {
       const holidaysWithIds: Holiday[] = newHolidays.map((holiday) => ({
         ...holiday,
         id: uuidv4(),
+        groupName: currentUser?.group ?? null,
       } as Holiday));
 
       setHolidays(prev => [...prev, ...holidaysWithIds]);
@@ -713,7 +753,7 @@ function AppContent() {
             setLeave={setLeave}
             notes={notes}
             setNotes={setNotes}
-            holidays={holidays}
+            holidays={holidaysForView}
             setHolidays={setHolidays}
             tasks={tasks}
             setTasks={setTasks}
@@ -747,7 +787,7 @@ function AppContent() {
         return <CelebrationsView employees={employees} />;
       case 'holidays':
         return <HolidaysView 
-                  holidays={holidays} 
+                  holidays={holidaysForView} 
                   isManager={currentUser.role === 'manager' || currentUser.role === 'admin'}
                   onManageHolidays={() => setIsHolidayEditorOpen(true)}
                 />;
@@ -802,7 +842,7 @@ function AppContent() {
                     employees={employees} 
                     shifts={shifts} 
                     leave={leave} 
-                    holidays={holidays} 
+                    holidays={holidaysForView} 
                     currentUser={currentUser} 
                     tardyRecords={tardyRecords}
                     setTardyRecords={setTardyRecords}
@@ -848,8 +888,14 @@ function AppContent() {
         return <PermissionsEditor permissions={permissions} setPermissions={setPermissions} />;
       case 'smtp-settings':
         return <SmtpSettingsView settings={smtpSettings} onSave={setSmtpSettings} />;
+      case 'backup-restore':
+        return <BackupRestoreView />;
       case 'danger-zone':
         return <DangerZoneView onPurgeData={handlePurgeData} />;
+      case 'api-docs':
+        return <ApiDocsView />;
+      case 'audit-logs':
+        return <AuditLogsView />;
       default:
         return (
             <Card>
@@ -909,6 +955,7 @@ function AppContent() {
         setGroups={setGroups}
         employees={employees}
         shiftTemplates={shiftTemplates}
+        smtpSettings={smtpSettings}
     />
     <MemberImporter
         isOpen={isImporterOpen}
@@ -928,6 +975,7 @@ function AppContent() {
         holidays={holidays}
         setHolidays={setHolidays}
         onImport={() => setIsHolidayImporterOpen(true)}
+        currentUser={currentUser}
     />
     <HolidayImporter
         isOpen={isHolidayImporterOpen}

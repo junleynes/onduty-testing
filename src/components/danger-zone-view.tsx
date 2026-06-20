@@ -34,7 +34,7 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
         { type: 'shifts',          title: 'Clear All Schedule',          description: 'Permanently deletes all scheduled shifts for all employees across all dates. Shift templates are not affected.',                              buttonText: 'Clear Schedule',          friendlyName: 'scheduled shifts'  },
         { type: 'users',           title: 'Delete All Users',            description: 'Permanently deletes all users except the Super Admin, along with their associated shifts, leave, and tasks.',                                   buttonText: 'Delete Users',            friendlyName: 'users'             },
         { type: 'shiftTemplates',  title: 'Delete All Shift Templates',  description: 'Permanently deletes all saved shift templates.',                                                                                                  buttonText: 'Delete Shift Templates',  friendlyName: 'shift templates'   },
-        { type: 'reportTemplates', title: 'Delete All Report Templates', description: 'Permanently deletes all uploaded Excel templates for reports.',                                                                                   buttonText: 'Delete Report Templates', friendlyName: 'report templates'  },
+        { type: 'reportTemplates', title: 'Delete All Report Templates', description: 'Permanently deletes all uploaded Excel report templates.',                                                                                        buttonText: 'Delete Report Templates', friendlyName: 'report templates'  },
         { type: 'tasks',           title: 'Delete All Tasks',            description: 'Permanently deletes all personal, global, and shift-specific tasks.',                                                                             buttonText: 'Delete Tasks',            friendlyName: 'tasks'             },
         { type: 'mobileLoad',      title: 'Reset All Mobile Load Data',  description: "Deletes all historical mobile load balance records and resets every user's Load Allocation to zero.",                                            buttonText: 'Reset Mobile Load',       friendlyName: 'mobile load data'  },
         { type: 'leaveTypes',      title: 'Delete All Leave Types',      description: 'Permanently deletes all leave types.',                                                                                                            buttonText: 'Delete Leave Types',      friendlyName: 'leave types'       },
@@ -46,7 +46,9 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
             <Card className="border-destructive">
                 <CardHeader>
                     <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                    <CardDescription>These actions are irreversible and will affect the entire application. Please proceed with caution.</CardDescription>
+                    <CardDescription>
+                        These actions are irreversible and will affect the entire application. Please proceed with extreme caution.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {purgeItems.map((item) => (
@@ -59,18 +61,24 @@ export default function DangerZoneView({ onPurgeData }: DangerZoneViewProps) {
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                         <Button variant="destructive" disabled={isPurging} className="w-48 shrink-0">
-                                            {isPurging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                                            {isPurging
+                                                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                : <Trash2 className="mr-2 h-4 w-4" />}
                                             {item.buttonText}
                                         </Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
                                             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                            <AlertDialogDescription>{item.description} This action cannot be undone.</AlertDialogDescription>
+                                            <AlertDialogDescription>
+                                                {item.description} This action cannot be undone.
+                                            </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => handlePurge(item.type, item.friendlyName)}>Yes, delete them</AlertDialogAction>
+                                            <AlertDialogAction onClick={() => handlePurge(item.type, item.friendlyName)}>
+                                                Yes, delete them
+                                            </AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>

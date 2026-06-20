@@ -30,6 +30,9 @@ import {
     HelpCircle,
     Clock4,
     Palmtree,
+    BookOpen,
+    ShieldAlert,
+    HardDrive,
 } from 'lucide-react';
 import { SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarContent, SidebarFooter, SidebarTrigger } from '@/components/ui/sidebar';
 import type { UserRole, RolePermissions } from '@/types';
@@ -59,6 +62,9 @@ const adminNavItems: NavItemConfig[] = [
     { view: 'templates', label: 'Templates', icon: FileText, iconColor: 'bg-indigo-500' },
     { view: 'permissions', label: 'Permissions', icon: ShieldCheck, iconColor: 'bg-red-500' },
     { view: 'smtp-settings', label: 'SMTP Settings', icon: Mail, iconColor: 'bg-gray-500' },
+    { view: 'api-docs', label: 'API & Integrations', icon: BookOpen, iconColor: 'bg-sky-500' },
+    { view: 'audit-logs', label: 'Audit Logs', icon: ShieldAlert, iconColor: 'bg-orange-500' },
+    { view: 'backup-restore', label: 'Backup & Restore', icon: HardDrive, iconColor: 'bg-emerald-600' },
     { view: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle, iconColor: 'bg-destructive' },
 ];
 

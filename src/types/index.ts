@@ -128,6 +128,7 @@ export type Holiday = {
     id: string;
     date: Date;
     title: string;
+    groupName?: string | null;
 };
 
 export type Task = {
@@ -187,7 +188,7 @@ export type NavItemKey =
   | 'faq'
   | 'reports'
   | 'report-work-schedule' | 'report-attendance' | 'report-user-summary' | 'report-tardy' | 'report-wfh' | 'report-work-extension' | 'report-overtime' | 'report-alaf' | 'report-offset'
-  | 'admin' | 'smtp-settings' | 'permissions' | 'danger-zone';
+  | 'admin' | 'smtp-settings' | 'permissions' | 'backup-restore' | 'danger-zone';
 
 export type RolePermissions = {
   [key in UserRole]: NavItemKey[];

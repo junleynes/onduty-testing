@@ -15,10 +15,8 @@ A self-hosted workforce scheduling and HR management application for broadcast a
 - Import schedule from CSV (matrix format) via UI or API
 
 ### Time & Attendance
-- **Time-off requests** — leave filing with reason templates, approval workflow, PDF generation (ALAF), and automatic flattening for consistent rendering across all PDF viewers
-- **Approval workflow** — manager confirmation dialog with optional email notification to employee on approve/reject
-- **Superior notifications** — in-app and email notification to the employee's manager/superior when a request is filed (with opt-in checkbox)
-- **Work extensions** — overtime and shift extension tracking with PDF output
+- **Time-off requests** — leave filing, approval workflow, and PDF generation (ALAF)
+- **Work extensions** — overtime and shift extension tracking
 - **Tardy management** — manual entry and CSV import of tardiness records
 - **WFH (Work From Home)** certification with automated PDF output
 - Leave type configuration (custom types, colors, and policies)
@@ -54,60 +52,22 @@ A self-hosted workforce scheduling and HR management application for broadcast a
 
 ### Administration
 - SMTP email configuration (for leave notifications, password resets, activation links)
-- **API & Integration** — named API key management (create, revoke, view keys for external integrations)
 - Permissions editor — control which views each role can access
-- **Backup & Restore** — download a full `.zip` backup (database + all uploaded files) or restore from a previous backup; admin-panel-only, no HTTP API
-- **Maintenance Mode** — toggle site-wide maintenance with a custom message; only admins can log in while enabled
-- Audit Logs — record of login events and admin actions
-- Danger zone — purge data by category (shifts, users, templates, tasks, groups, leave types, mobile load)
+- Danger zone — purge data by category or full factory reset
 - FAQ management
 - Multi-tenant CLI (`deploy/onduty.sh`) for managing multiple instances on one server
 
 ### Security
-
-#### Authentication & Sessions
-- **bcrypt password hashing** — auto-upgrades legacy plaintext passwords on first login
+- bcrypt password hashing (auto-upgrades legacy plaintext passwords on first login)
 - **Two-factor authentication (2FA)** — TOTP-based, compatible with Google Authenticator, Authy, and any RFC 6238 app. Per-user opt-in via the sidebar shield icon
-- **JWT sessions** with 8-hour expiry
-- **Password reset** via secure, time-limited single-use email tokens
-- `AUTH_SECRET` required at startup — app refuses to initialize if not set
-- SMTP credentials never sent to the browser — read server-side only at send time
-
-#### Access Control
-- **Role-based server action guards** — `requireAdmin`, `requireManager`, `requireAuth` enforced on every mutating and data-reading server action
-- **Middleware route protection** — all routes require an authenticated session; unauthenticated requests are redirected to `/login`
-- **Per-group isolation** — managers can only manage and view employees in their own group
-- **Permissions editor** — admin controls which views each role can access
-
-#### Brute Force & Abuse Protection
-- **Login rate limiting** — 5 failed attempts locks the account for 15 minutes (shared across all login paths including API)
-- **Global rate limiting** — 600 requests per 60 seconds per IP via middleware (in-memory, nginx-aware via `X-Forwarded-For`)
-- **Login endpoint rate limiting** — separate 15 requests per 60 seconds limit on `/api/auth/callback`
-- **Bot / scanner blocking** — requests from headless tools (`curl`, `wget`, `sqlmap`, `nikto`, `nuclei`, `dirbuster`, and others) are rejected at the middleware layer before reaching any route handler
-- **No-UA blocking** — requests with no `User-Agent` header are rejected
-
-#### API Security
-- **Named API keys** — multi-key management with revocable named keys stored in the `api_keys` table; legacy single-key also supported for backwards compatibility
-- **API key required** on all external HTTP endpoints (`/api/import-schedule`, `/api/reports/*`)
-- **Backup and Restore are admin-panel-only** — no HTTP API endpoint exists for either operation; middleware returns HTTP 410 Gone for any request to `/api/backup` or `/api/restore` as an additional defense-in-depth layer
-- **Separate API rate limit** — 100 requests per 60 seconds per IP for API consumers, independent of the global limit
-
-#### Backup & Restore Security
-- **Admin session required** — `requireAdmin()` enforced server-side on both `backupDatabase()` and `restoreDatabase()` server actions
-- **File type validation** — restore rejects files that are not a valid ZIP (`PK` magic bytes) or SQLite3 database header
-- **50 MB size cap** on restore uploads
-- **Path traversal protection** — zip entries with `..` or absolute paths are silently skipped during restore
-- **Audit logged** — backup downloads and restore operations are recorded in the audit log
-
-#### Maintenance Mode
-- **Admin-only toggle** — sets an `httpOnly` cookie checked by middleware on every request
-- Non-admin users are redirected to a maintenance page; admins pass through normally
-- Custom maintenance message configurable from the Backup & Restore admin section
-
-#### Infrastructure (when deployed behind nginx)
-- **HTTPS enforcement** — configure nginx to redirect HTTP → HTTPS and set `Strict-Transport-Security`
-- **Real IP extraction** — middleware reads `X-Forwarded-For` set by nginx for accurate per-user rate limiting; direct local access falls back to `127.0.0.1` gracefully
-- **Static asset bypass** — all static file extensions excluded from middleware matcher so they are served directly without auth overhead
+- JWT sessions with 8-hour expiry
+- Unified rate limiting — 5 failed login attempts triggers 15-minute lockout (shared across all login paths)
+- Per-role server action guards (`requireAdmin`, `requireManager`, `requireAuth`) on all mutating and file-reading actions
+- Middleware protection on all routes except public auth pages
+- SMTP password never sent to the browser — read server-side only at send time
+- Security headers — `X-Frame-Options`, `X-Content-Type-Options`, `Content-Security-Policy`
+- Password reset via secure time-limited email tokens
+- `NEXTAUTH_SECRET` required at startup — app refuses to start if not set
 
 ---
 
@@ -200,8 +160,6 @@ NEXTAUTH_SECRET=your-strong-secret-here
 # Required — must match the URL users access the app from
 NEXTAUTH_URL=http://your-server-ip:9988
 
-# Optional
-GEMINI_API_KEY=your-gemini-api-key
 ```
 
 #### 5. Create the systemd service
@@ -245,54 +203,25 @@ sudo nano /etc/nginx/sites-available/onduty
 ```
 
 ```nginx
-# Redirect HTTP → HTTPS
 server {
     listen 80;
     server_name your-domain.com;
-    return 301 https://$host$request_uri;
-}
 
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    # Security headers
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
-    add_header X-Frame-Options DENY always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header Referrer-Policy strict-origin-when-cross-origin always;
-
-    # Max upload size — covers report template uploads and backup restores
-    client_max_body_size 55M;
+    client_max_body_size 20M;
 
     location / {
         proxy_pass http://127.0.0.1:9988;
         proxy_http_version 1.1;
-
-        # Required for Next.js websockets / hot reload
-        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-
-        # Forward real client IP — used by OnDuty middleware for accurate rate limiting.
-        # These headers overwrite any client-supplied values, preventing IP spoofing.
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Host              $host;
-
         proxy_cache_bypass $http_upgrade;
     }
 }
 ```
-
-> **HTTPS certificate:** Use Certbot for a free Let's Encrypt certificate:
-> ```bash
-> sudo apt install certbot python3-certbot-nginx
-> sudo certbot --nginx -d your-domain.com
-> ```
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/onduty /etc/nginx/sites-enabled/
@@ -351,17 +280,15 @@ Use these credentials on first launch to set up your team:
 
 OnDuty uses SQLite (`local.db`) in the project root. The database is created and migrated automatically on first start — no manual setup required.
 
-Back up regularly in production. The recommended way is the **Admin Panel > Backup & Restore** section, which downloads a `.zip` containing both the database and all uploaded files (avatars, signatures, PDFs, report templates). The backup is admin-session-only — no API key can trigger it.
+Back up regularly in production:
 
 ```bash
-# Manual database-only backup (no uploads)
+# Manual backup
 cp /var/www/onduty/local.db /var/backups/onduty/local-$(date +%Y%m%d).db
 
 # Or use the CLI
 sudo ./deploy/onduty.sh backup <tenant>
 ```
-
-> **Restore note:** When restoring via the admin panel, the server restarts automatically (handled by PM2 or systemd). The restore validates file type (ZIP or SQLite), enforces a 50 MB size cap, and guards against path traversal in zip entries.
 
 ---
 
@@ -377,6 +304,5 @@ sudo ./deploy/onduty.sh backup <tenant>
 | Excel | ExcelJS |
 | CSV | PapaParse |
 | Email | Nodemailer |
-| AI | Google Gemini via Genkit |
 | Charts | Recharts |
 | Forms | React Hook Form + Zod |

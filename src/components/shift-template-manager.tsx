@@ -39,6 +39,16 @@ const colorToName: { [key: string]: string } = {
   '#ffffff': 'White',
   '#f1c40f': 'Yellow',
   '#6b7280': 'Dark Grayish Blue',
+  '#1abc9c': 'Teal',
+  '#00bcd4': 'Cyan',
+  '#6366f1': 'Indigo',
+  '#d946ef': 'Magenta',
+  '#8d6e63': 'Brown',
+  '#a3e635': 'Lime',
+  '#f59e0b': 'Amber',
+  '#1e3a8a': 'Navy',
+  '#7f1d1d': 'Maroon',
+  '#000000': 'Black',
 };
 
 type ShiftTemplateManagerProps = {

@@ -115,6 +115,16 @@ const shiftColorOptions = [
     { label: 'Yellow', value: '#f1c40f' },
     { label: 'White', value: '#ffffff' },
     { label: 'Dark Grayish Blue', value: '#6b7280' },
+    { label: 'Teal', value: '#1abc9c' },
+    { label: 'Cyan', value: '#00bcd4' },
+    { label: 'Indigo', value: '#6366f1' },
+    { label: 'Magenta', value: '#d946ef' },
+    { label: 'Brown', value: '#8d6e63' },
+    { label: 'Lime', value: '#a3e635' },
+    { label: 'Amber', value: '#f59e0b' },
+    { label: 'Navy', value: '#1e3a8a' },
+    { label: 'Maroon', value: '#7f1d1d' },
+    { label: 'Black', value: '#000000' },
 ];
 
 function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees, shiftTemplates, setShiftTemplates, tasks, setTasks, currentUser }: ShiftEditorProps) {

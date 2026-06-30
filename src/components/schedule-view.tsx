@@ -22,6 +22,7 @@ import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ScheduleImporter } from './schedule-importer';
+import { GoogleSheetSyncDialog } from './google-sheet-sync-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { DatePicker } from './ui/date-picker';
@@ -66,6 +67,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
+  const [isGoogleSheetSyncOpen, setIsGoogleSheetSyncOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
   const [exportFrom, setExportFrom] = useState<Date>(new Date());
@@ -703,6 +705,33 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     toast({ title: "Template Loaded" });
   };
 
+  const handleScheduleImportResult = (data: {
+    shifts: Shift[],
+    leave: Leave[],
+    monthlyOrders: Record<string, string[]>,
+    overwrittenCells: { employeeId: string, date: Date }[],
+    monthKeys: string[],
+  }) => {
+    const { shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells } = data;
+
+    const cellsToOverwrite = new Set(
+      overwrittenCells.map(cell => `${cell.employeeId}-${format(cell.date, 'yyyy-MM-dd')}`)
+    );
+
+    setShifts(prev => [
+      ...prev.filter(s => !s.employeeId || !cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)),
+      ...importedShifts
+    ]);
+
+    setLeave(prev => [
+      ...prev.filter(l => !l.employeeId || !cellsToOverwrite.has(`${l.employeeId}-${format(new Date(l.startDate), 'yyyy-MM-dd')}`)),
+      ...importedLeave
+    ]);
+
+    setMonthlyEmployeeOrder(prev => ({ ...prev, ...monthlyOrders }));
+    toast({ title: "Import Successful" });
+  };
+
   return (
     <Card className="h-full flex flex-col">
        <CardHeader>
@@ -855,6 +884,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuLabel>Data Management</DropdownMenuLabel>
                         <DropdownMenuGroup>
                             <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsGoogleSheetSyncOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Sync from Google Sheets</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setExportPreset('current-view'); setExportFrom(dateRange.from); setExportTo(dateRange.to); setIsExportDialogOpen(true); }}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export to Excel</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
@@ -960,25 +990,20 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         shiftTemplates={shiftTemplates}
         leaveTypes={leaveTypes}
         onImport={(data) => {
-          const { shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells } = data;
-          
-          const cellsToOverwrite = new Set(
-            overwrittenCells.map(cell => `${cell.employeeId}-${format(cell.date, 'yyyy-MM-dd')}`)
-          );
-
-          setShifts(prev => [
-            ...prev.filter(s => !s.employeeId || !cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)),
-            ...importedShifts
-          ]);
-
-          setLeave(prev => [
-            ...prev.filter(l => !l.employeeId || !cellsToOverwrite.has(`${l.employeeId}-${format(new Date(l.startDate), 'yyyy-MM-dd')}`)),
-            ...importedLeave
-          ]);
-
-          setMonthlyEmployeeOrder(prev => ({ ...prev, ...monthlyOrders }));
+          handleScheduleImportResult(data);
           setIsScheduleImporterOpen(false);
-          toast({ title: "Import Successful" });
+        }}
+      />
+
+      <GoogleSheetSyncDialog
+        isOpen={isGoogleSheetSyncOpen}
+        setIsOpen={setIsGoogleSheetSyncOpen}
+        employees={employees}
+        shiftTemplates={shiftTemplates}
+        leaveTypes={leaveTypes}
+        onImport={(data) => {
+          handleScheduleImportResult(data);
+          setIsGoogleSheetSyncOpen(false);
         }}
       />
 

@@ -1287,3 +1287,120 @@ export async function regenerateApiKey(): Promise<{ success: boolean; key?: stri
         return { success: true, key: newKey };
     } catch (error) { return { success: false, error: (error as Error).message }; }
 }
+
+// ── Google Sheets Schedule Sync ──────────────────────────────────────────────
+
+/**
+ * Fetches a sheet tab as CSV from a Google Sheets file (works for both native
+ * Sheets and uploaded .xlsx files converted by Google Sheets, since the
+ * gviz/tq export endpoint reads whatever the sheet engine currently renders).
+ *
+ * Strips rows whose first cell matches any of the supplied filter prefixes
+ * (case-insensitive, startsWith match) so the result is import-schedule
+ * compliant: only "Employee" header rows and actual schedule rows remain.
+ *
+ * @param fileId     Google Sheets file ID (the long string in the share URL)
+ * @param sheetName  Tab name to read, e.g. "2026"
+ * @param filters    Prefixes to strip — rows whose first cell starts with
+ *                   any of these (case-insensitive) are removed entirely.
+ */
+export async function syncScheduleFromGoogleSheet(
+    fileId: string,
+    sheetName: string,
+    filters: string[]
+): Promise<{ success: boolean; csv?: string; rowsKept?: number; rowsRemoved?: number; error?: string }> {
+    try {
+        await requireManager();
+
+        if (!fileId?.trim()) return { success: false, error: 'File ID is required.' };
+        if (!sheetName?.trim()) return { success: false, error: 'Sheet name is required.' };
+
+        const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(fileId.trim())}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName.trim())}`;
+
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) {
+            if (res.status === 404) {
+                return { success: false, error: 'Sheet not found. Check the File ID and Sheet Name, and make sure the sheet is shared as "Anyone with the link can view".' };
+            }
+            return { success: false, error: `Google Sheets returned an error (HTTP ${res.status}). Check sharing permissions.` };
+        }
+
+        const rawCsv = await res.text();
+
+        // A login/redirect page comes back as HTML, not CSV, when the sheet
+        // isn't publicly viewable — detect and report that clearly.
+        if (rawCsv.trim().startsWith('<')) {
+            return { success: false, error: 'Could not read the sheet as CSV. Make sure it is shared as "Anyone with the link can view".' };
+        }
+
+        // Parse with a minimal CSV splitter that respects quoted commas —
+        // good enough for the matrix format (Employee + date columns).
+        const parseCsvLine = (line: string): string[] => {
+            const cells: string[] = [];
+            let cur = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+                    else inQuotes = !inQuotes;
+                } else if (ch === ',' && !inQuotes) {
+                    cells.push(cur); cur = '';
+                } else {
+                    cur += ch;
+                }
+            }
+            cells.push(cur);
+            return cells;
+        };
+
+        const toCsvLine = (cells: string[]): string =>
+            cells.map(c => (c.includes(',') || c.includes('"') || c.includes('\n'))
+                ? `"${c.replace(/"/g, '""')}"`
+                : c
+            ).join(',');
+
+        const normalizedFilters = (filters ?? [])
+            .map(f => f.trim().toLowerCase())
+            .filter(Boolean);
+
+        const lines = rawCsv.split(/\r\n|\n/);
+        const keptLines: string[] = [];
+        let rowsRemoved = 0;
+
+        for (const line of lines) {
+            if (line.trim() === '') {
+                // Preserve blank lines — they are block separators in the
+                // matrix format the importer expects.
+                keptLines.push('');
+                continue;
+            }
+            const cells = parseCsvLine(line);
+            const firstCell = (cells[0] ?? '').trim().toLowerCase();
+
+            const shouldFilter = normalizedFilters.some(f => firstCell.startsWith(f));
+            if (shouldFilter) {
+                rowsRemoved++;
+                continue;
+            }
+            keptLines.push(toCsvLine(cells));
+        }
+
+        // Trim trailing blank lines so the importer's block-detection doesn't
+        // see a phantom empty block at the end.
+        while (keptLines.length > 0 && keptLines[keptLines.length - 1].trim() === '') {
+            keptLines.pop();
+        }
+
+        const cleanedCsv = keptLines.join('\n');
+        const rowsKept = keptLines.filter(l => l.trim() !== '').length;
+
+        if (rowsKept === 0) {
+            return { success: false, error: 'After filtering, no rows remained. Check your filter list and sheet contents.' };
+        }
+
+        return { success: true, csv: cleanedCsv, rowsKept, rowsRemoved };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

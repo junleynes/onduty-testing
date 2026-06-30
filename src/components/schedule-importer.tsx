@@ -65,6 +65,204 @@ const convertTo24Hour = (timeStr: string): string => {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
+type ParsedScheduleResult = {
+  shifts: Shift[],
+  leave: Leave[],
+  monthlyOrders: Record<string, string[]>,
+  overwrittenCells: { employeeId: string, date: Date }[],
+  monthKeys: string[],
+};
+
+/**
+ * Core CSV-matrix parsing logic, extracted so it can be reused by both the
+ * manual file-upload flow (ScheduleImporter) and the Google Sheets sync flow
+ * (which fetches CSV text server-side and hands the already-filtered rows
+ * back to the client for this exact same parsing).
+ */
+export function parseScheduleRows(
+  rows: string[][],
+  employees: Employee[],
+  shiftTemplates: ShiftTemplate[],
+  leaveTypes: LeaveTypeOption[]
+): ParsedScheduleResult | { error: string } {
+  const importedShifts: Shift[] = [];
+  const importedLeave: Leave[] = [];
+  const monthlyOrders: Record<string, string[]> = {};
+  const overwrittenCells: { employeeId: string, date: Date }[] = [];
+  const allMonthKeys = new Set<string>();
+
+  const scheduleBlocks: string[][][] = [];
+  let currentBlock: string[][] = [];
+
+  for (const row of rows) {
+      const isRowEmpty = row.every(cell => cell === null || cell.trim() === '');
+      if (isRowEmpty) {
+          if (currentBlock.length > 0) {
+              scheduleBlocks.push(currentBlock);
+              currentBlock = [];
+          }
+      } else {
+          currentBlock.push(row);
+      }
+  }
+  if (currentBlock.length > 0) {
+      scheduleBlocks.push(currentBlock);
+  }
+
+  if (scheduleBlocks.length === 0) {
+      return { error: 'Could not find any schedule blocks in the file.' };
+  }
+
+  const validLeaveTypes = new Set(leaveTypes.map(lt => lt.type.toUpperCase()));
+
+  scheduleBlocks.forEach((block, blockIndex) => {
+      const headerRow = block[0];
+      if (!headerRow || !headerRow[0] || !headerRow[0].trim().toLowerCase().includes('employee')) {
+          console.warn(`Block ${blockIndex + 1} is missing a valid header row. Skipping.`);
+          return;
+      }
+
+      const dates: { colIndex: number, date: Date }[] = [];
+      const blockMonthKeySet = new Set<string>();
+
+      for(let i = 1; i < headerRow.length; i++) {
+          const dateStr = headerRow[i]?.trim();
+          if (dateStr) {
+              // Use UTC to avoid timezone issues, especially for YYYY-MM-DD
+              const date = new Date(dateStr + 'T00:00:00Z');
+              if (!isNaN(date.getTime())) {
+                  dates.push({ colIndex: i, date });
+                  const monthKey = format(date, 'yyyy-MM');
+                  blockMonthKeySet.add(monthKey);
+                  allMonthKeys.add(monthKey);
+              }
+          }
+      }
+
+      if (dates.length === 0) {
+          console.warn(`No valid dates found in header of block ${blockIndex + 1}. Skipping.`);
+          return;
+      }
+
+      const blockEmployeeOrder: string[] = [];
+
+      for (let rowIndex = 1; rowIndex < block.length; rowIndex++) {
+          const employeeRow = block[rowIndex];
+          const employeeName = employeeRow[0];
+          if (!employeeName) continue;
+
+          const employee = findEmployeeByName(employeeName, employees);
+          if (!employee) {
+              console.warn(`Employee "${employeeName}" not found. Skipping row.`);
+              continue;
+          }
+
+          if (!blockEmployeeOrder.includes(employee.id)) {
+              blockEmployeeOrder.push(employee.id);
+          }
+
+          dates.forEach(({ colIndex, date }) => {
+              const cellValue = employeeRow[colIndex]?.trim();
+              if (!cellValue) {
+                  overwrittenCells.push({ employeeId: employee.id, date });
+                  return;
+              };
+
+              overwrittenCells.push({ employeeId: employee.id, date });
+
+              const upperCellValue = cellValue.toUpperCase();
+
+              if (upperCellValue === 'OFF') {
+                  importedShifts.push({ id: uuidv4(), employeeId: employee.id, date, startTime: '', endTime: '', label: 'OFF', color: 'transparent', isDayOff: true, status: 'draft' });
+                  return;
+              }
+              if (upperCellValue === 'HOL-OFF') {
+                  importedShifts.push({ id: uuidv4(), employeeId: employee.id, date, startTime: '', endTime: '', label: 'HOL-OFF', color: 'transparent', isHolidayOff: true, status: 'draft' });
+                  return;
+              }
+
+              if (cellValue.includes('/')) {
+                const parts = cellValue.split('/').map(p => p.trim());
+                const timeRegex = /(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i;
+                const timeMatch = parts[0].match(timeRegex);
+                const leaveType = parts[1]?.toUpperCase();
+
+                if (timeMatch && leaveType && validLeaveTypes.has(leaveType)) {
+                    const startTime = convertTo24Hour(timeMatch[1]);
+                    const endTime = convertTo24Hour(timeMatch[2]);
+                    const leaveTypeDetails = leaveTypes.find(lt => lt.type.toUpperCase() === leaveType);
+                    if (startTime && endTime) {
+                        importedLeave.push({
+                            id: uuidv4(),
+                            employeeId: employee.id,
+                            startDate: date,
+                            endDate: date,
+                            type: leaveTypeDetails!.type,
+                            isAllDay: false,
+                            startTime,
+                            endTime,
+                            status: 'approved',
+                            color: leaveTypeDetails?.color
+                        } as Leave);
+                        return;
+                    }
+                }
+              }
+
+              if (validLeaveTypes.has(upperCellValue)) {
+                  const leaveTypeDetails = leaveTypes.find(lt => lt.type.toUpperCase() === upperCellValue);
+                  importedLeave.push({
+                      id: uuidv4(),
+                      employeeId: employee.id,
+                      startDate: date,
+                      endDate: date,
+                      type: leaveTypeDetails!.type,
+                      isAllDay: true,
+                      status: 'approved',
+                      color: leaveTypeDetails?.color
+                  } as Leave);
+                  return;
+              }
+
+              const timeRegex = /(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i;
+              const timeMatch = cellValue.match(timeRegex);
+
+              if (timeMatch) {
+                  const startTime = convertTo24Hour(timeMatch[1]);
+                  const endTime = convertTo24Hour(timeMatch[2]);
+                  if (!startTime || !endTime) return;
+
+                  const matchedTemplate = shiftTemplates.find(t => t.startTime === startTime && t.endTime === endTime);
+                  importedShifts.push({
+                      id: uuidv4(),
+                      employeeId: employee.id,
+                      date,
+                      startTime,
+                      endTime,
+                      label: matchedTemplate ? matchedTemplate.label : 'Shift',
+                      color: matchedTemplate ? matchedTemplate.color : '#9b59b6',
+                      status: 'draft',
+                      breakStartTime: matchedTemplate?.breakStartTime,
+                      breakEndTime: matchedTemplate?.breakEndTime,
+                      isUnpaidBreak: matchedTemplate?.isUnpaidBreak,
+                  });
+              }
+          });
+      }
+
+      // After processing a block, save its order for all its months
+      blockMonthKeySet.forEach(monthKey => {
+          monthlyOrders[monthKey] = blockEmployeeOrder;
+      });
+  });
+
+  if (importedShifts.length === 0 && importedLeave.length === 0) {
+    return { error: 'No valid shifts or leave could be parsed. Please check employee names, date headers (yyyy-mm-dd), and shift formats (e.g., 9am-5pm).' };
+  }
+
+  return { shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells, monthKeys: Array.from(allMonthKeys) };
+}
+
 export function ScheduleImporter({ isOpen, setIsOpen, onImport, employees, shiftTemplates, leaveTypes }: ScheduleImporterProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -89,188 +287,17 @@ export function ScheduleImporter({ isOpen, setIsOpen, onImport, employees, shift
       complete: (results) => {
         try {
           const rows = results.data as string[][];
-          const importedShifts: Shift[] = [];
-          const importedLeave: Leave[] = [];
-          const monthlyOrders: Record<string, string[]> = {};
-          const overwrittenCells: { employeeId: string, date: Date }[] = [];
-          const allMonthKeys = new Set<string>();
-          
-          const scheduleBlocks: string[][][] = [];
-          let currentBlock: string[][] = [];
+          const result = parseScheduleRows(rows, employees, shiftTemplates, leaveTypes);
 
-          for (const row of rows) {
-              const isRowEmpty = row.every(cell => cell === null || cell.trim() === '');
-              if (isRowEmpty) {
-                  if (currentBlock.length > 0) {
-                      scheduleBlocks.push(currentBlock);
-                      currentBlock = [];
-                  }
-              } else {
-                  currentBlock.push(row);
-              }
-          }
-          if (currentBlock.length > 0) {
-              scheduleBlocks.push(currentBlock);
-          }
-          
-          if (scheduleBlocks.length === 0) {
-              toast({ title: 'Import Warning', description: 'Could not find any schedule blocks in the file.', variant: 'destructive', duration: 8000 });
-              setIsImporting(false);
-              return;
-          }
-          
-          const validLeaveTypes = new Set(leaveTypes.map(lt => lt.type.toUpperCase()));
-
-          scheduleBlocks.forEach((block, blockIndex) => {
-              const headerRow = block[0];
-              if (!headerRow || !headerRow[0] || !headerRow[0].trim().toLowerCase().includes('employee')) {
-                  console.warn(`Block ${blockIndex + 1} is missing a valid header row. Skipping.`);
-                  return;
-              }
-
-              const dates: { colIndex: number, date: Date }[] = [];
-              const blockMonthKeySet = new Set<string>();
-
-              for(let i = 1; i < headerRow.length; i++) {
-                  const dateStr = headerRow[i]?.trim();
-                  if (dateStr) {
-                      // Use UTC to avoid timezone issues, especially for YYYY-MM-DD
-                      const date = new Date(dateStr + 'T00:00:00Z');
-                      if (!isNaN(date.getTime())) {
-                          dates.push({ colIndex: i, date });
-                          const monthKey = format(date, 'yyyy-MM');
-                          blockMonthKeySet.add(monthKey);
-                          allMonthKeys.add(monthKey);
-                      }
-                  }
-              }
-
-              if (dates.length === 0) {
-                  console.warn(`No valid dates found in header of block ${blockIndex + 1}. Skipping.`);
-                  return;
-              }
-              
-              const blockEmployeeOrder: string[] = [];
-
-              for (let rowIndex = 1; rowIndex < block.length; rowIndex++) {
-                  const employeeRow = block[rowIndex];
-                  const employeeName = employeeRow[0];
-                  if (!employeeName) continue;
-
-                  const employee = findEmployeeByName(employeeName, employees);
-                  if (!employee) {
-                      console.warn(`Employee "${employeeName}" not found. Skipping row.`);
-                      continue;
-                  }
-
-                  if (!blockEmployeeOrder.includes(employee.id)) {
-                      blockEmployeeOrder.push(employee.id);
-                  }
-
-                  dates.forEach(({ colIndex, date }) => {
-                      const cellValue = employeeRow[colIndex]?.trim();
-                      if (!cellValue) {
-                          overwrittenCells.push({ employeeId: employee.id, date });
-                          return;
-                      };
-
-                      overwrittenCells.push({ employeeId: employee.id, date });
-
-                      const upperCellValue = cellValue.toUpperCase();
-
-                      if (upperCellValue === 'OFF') {
-                          importedShifts.push({ id: uuidv4(), employeeId: employee.id, date, startTime: '', endTime: '', label: 'OFF', color: 'transparent', isDayOff: true, status: 'draft' });
-                          return;
-                      }
-                      if (upperCellValue === 'HOL-OFF') {
-                          importedShifts.push({ id: uuidv4(), employeeId: employee.id, date, startTime: '', endTime: '', label: 'HOL-OFF', color: 'transparent', isHolidayOff: true, status: 'draft' });
-                          return;
-                      }
-
-                      if (cellValue.includes('/')) {
-                        const parts = cellValue.split('/').map(p => p.trim());
-                        const timeRegex = /(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i;
-                        const timeMatch = parts[0].match(timeRegex);
-                        const leaveType = parts[1]?.toUpperCase();
-
-                        if (timeMatch && leaveType && validLeaveTypes.has(leaveType)) {
-                            const startTime = convertTo24Hour(timeMatch[1]);
-                            const endTime = convertTo24Hour(timeMatch[2]);
-                            const leaveTypeDetails = leaveTypes.find(lt => lt.type.toUpperCase() === leaveType);
-                            if (startTime && endTime) {
-                                importedLeave.push({
-                                    id: uuidv4(),
-                                    employeeId: employee.id,
-                                    startDate: date,
-                                    endDate: date,
-                                    type: leaveTypeDetails!.type,
-                                    isAllDay: false,
-                                    startTime,
-                                    endTime,
-                                    status: 'approved',
-                                    color: leaveTypeDetails?.color
-                                } as Leave);
-                                return;
-                            }
-                        }
-                      }
-                      
-                      if (validLeaveTypes.has(upperCellValue)) {
-                          const leaveTypeDetails = leaveTypes.find(lt => lt.type.toUpperCase() === upperCellValue);
-                          importedLeave.push({ 
-                              id: uuidv4(), 
-                              employeeId: employee.id, 
-                              startDate: date,
-                              endDate: date,
-                              type: leaveTypeDetails!.type, 
-                              isAllDay: true, 
-                              status: 'approved',
-                              color: leaveTypeDetails?.color
-                          } as Leave);
-                          return;
-                      }
-                      
-                      const timeRegex = /(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i;
-                      const timeMatch = cellValue.match(timeRegex);
-
-                      if (timeMatch) {
-                          const startTime = convertTo24Hour(timeMatch[1]);
-                          const endTime = convertTo24Hour(timeMatch[2]);
-                          if (!startTime || !endTime) return;
-                          
-                          const matchedTemplate = shiftTemplates.find(t => t.startTime === startTime && t.endTime === endTime);
-                          importedShifts.push({
-                              id: uuidv4(),
-                              employeeId: employee.id,
-                              date,
-                              startTime,
-                              endTime,
-                              label: matchedTemplate ? matchedTemplate.label : 'Shift',
-                              color: matchedTemplate ? matchedTemplate.color : '#9b59b6',
-                              status: 'draft',
-                              breakStartTime: matchedTemplate?.breakStartTime,
-                              breakEndTime: matchedTemplate?.breakEndTime,
-                              isUnpaidBreak: matchedTemplate?.isUnpaidBreak,
-                          });
-                      }
-                  });
-              }
-
-              // After processing a block, save its order for all its months
-              blockMonthKeySet.forEach(monthKey => {
-                  monthlyOrders[monthKey] = blockEmployeeOrder;
-              });
-          });
-
-          if (importedShifts.length === 0 && importedLeave.length === 0) {
-            toast({ title: 'Import Warning', description: 'No valid shifts or leave could be parsed. Please check employee names, date headers (yyyy-mm-dd), and shift formats (e.g., 9am-5pm).', variant: 'destructive', duration: 10000 });
+          if ('error' in result) {
+            toast({ title: 'Import Warning', description: result.error, variant: 'destructive', duration: 8000 });
             setIsImporting(false);
             setFile(null);
             return;
           }
 
-          onImport({ shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells, monthKeys: Array.from(allMonthKeys) });
-          toast({ title: 'Import Successful', description: `${importedShifts.length} shifts and ${importedLeave.length} leave entries imported.` });
+          onImport(result);
+          toast({ title: 'Import Successful', description: `${result.shifts.length} shifts and ${result.leave.length} leave entries imported.` });
           setIsOpen(false);
 
         } catch (error: any) {

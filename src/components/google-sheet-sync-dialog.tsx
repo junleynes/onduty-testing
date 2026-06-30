@@ -22,7 +22,7 @@ import type { ShiftTemplate } from './shift-editor';
 import type { LeaveTypeOption } from './leave-type-editor';
 import { saveAs } from 'file-saver';
 
-const DEFAULT_FILTERS = ['1', 'POST PRODUCTION', 'MAMS SUPPORT', 'MEDIA SERVER SUPPORT'];
+const DEFAULT_FILTERS = ['1', 'POST PRODUCTION', 'MAMS SUPPORT', 'MEDIA SERVER SUPPORT','1YDl3DNXALbcw-m1i0Gs4HZLge5M2jITe'];
 
 type GoogleSheetSyncDialogProps = {
   isOpen: boolean;

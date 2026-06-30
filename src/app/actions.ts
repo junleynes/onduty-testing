@@ -1388,15 +1388,21 @@ export async function syncScheduleFromGoogleSheet(
             const shouldFilter = normalizedFilters.some(f => firstCell.startsWith(f));
             if (shouldFilter) {
                 rowsRemoved++;
-                // Don't just drop the line — if this row was acting as a
-                // visual block separator in the sheet (e.g. a row marked
-                // with a filter tag like "1"), dropping it entirely would
-                // glue the surrounding employee tables into one block.
-                // Replace it with a blank line instead so the importer's
-                // block-detection still sees a separator here.
-                keptLines.push('');
                 continue;
             }
+
+            // Google's gviz CSV export can collapse genuinely blank rows
+            // that existed in the sheet (e.g. the blank row separating one
+            // employee table from the next), which would otherwise merge
+            // two tables into a single block. If this is a new header row
+            // and the previous kept line wasn't already blank, force a
+            // separator in ourselves so the importer still sees each table
+            // as its own block.
+            const isHeaderRow = firstCell.includes('employee');
+            if (isHeaderRow && keptLines.length > 0 && keptLines[keptLines.length - 1].trim() !== '') {
+                keptLines.push('');
+            }
+
             keptLines.push(toCsvLine(cells));
         }
 

@@ -1388,6 +1388,13 @@ export async function syncScheduleFromGoogleSheet(
             const shouldFilter = normalizedFilters.some(f => firstCell.startsWith(f));
             if (shouldFilter) {
                 rowsRemoved++;
+                // Don't just drop the line — if this row was acting as a
+                // visual block separator in the sheet (e.g. a row marked
+                // with a filter tag like "1"), dropping it entirely would
+                // glue the surrounding employee tables into one block.
+                // Replace it with a blank line instead so the importer's
+                // block-detection still sees a separator here.
+                keptLines.push('');
                 continue;
             }
             keptLines.push(toCsvLine(cells));

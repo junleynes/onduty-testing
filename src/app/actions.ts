@@ -1376,6 +1376,13 @@ export async function syncScheduleFromGoogleSheet(
                 continue;
             }
             const cells = parseCsvLine(line);
+
+            const isEmptyCsvRow = cells.every(cell => cell.trim() === '');
+            if (isEmptyCsvRow) {
+                keptLines.push(toCsvLine(cells));
+                continue;
+            }
+            
             const firstCell = (cells[0] ?? '').trim().toLowerCase();
 
             const shouldFilter = normalizedFilters.some(f => firstCell.startsWith(f));

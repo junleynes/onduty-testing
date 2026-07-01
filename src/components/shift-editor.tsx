@@ -95,6 +95,7 @@ type ShiftEditorProps = {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   currentUser: Employee;
+  currentGroup?: string | null;
 };
 
 const roleColors: { [key: string]: string } = {
@@ -127,7 +128,7 @@ const shiftColorOptions = [
     { label: 'Black', value: '#000000' },
 ];
 
-function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees, shiftTemplates, setShiftTemplates, tasks, setTasks, currentUser }: ShiftEditorProps) {
+function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees, shiftTemplates, setShiftTemplates, tasks, setTasks, currentUser, currentGroup }: ShiftEditorProps) {
   const { toast } = useToast();
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | null>(null);
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
@@ -330,6 +331,7 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
         breakStartTime: currentValues.breakStartTime,
         breakEndTime: currentValues.breakEndTime,
         isUnpaidBreak: currentValues.isUnpaidBreak,
+        groupName: currentGroup ?? null,
     };
     setShiftTemplates(prev => [...prev, newTemplate]);
     toast({ title: 'Template Saved', description: `New template "${newTemplate.name}" has been created.` });

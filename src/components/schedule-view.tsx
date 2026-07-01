@@ -979,6 +979,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         tasks={tasks}
         setTasks={setTasks}
         currentUser={currentUser}
+        currentGroup={currentUser.group ?? null}
       />
       <LeaveEditor
         isOpen={isLeaveEditorOpen}

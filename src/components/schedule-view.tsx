@@ -23,6 +23,7 @@ import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ScheduleImporter } from './schedule-importer';
 import { GoogleSheetSyncDialog } from './google-sheet-sync-dialog';
+import { CoverageGapDialog } from './coverage-gap-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { DatePicker } from './ui/date-picker';
@@ -68,6 +69,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   const [isGoogleSheetSyncOpen, setIsGoogleSheetSyncOpen] = useState(false);
+  const [isCoverageGapOpen, setIsCoverageGapOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
   const [exportFrom, setExportFrom] = useState<Date>(new Date());
@@ -886,6 +888,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                             <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setIsGoogleSheetSyncOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Sync from Google Sheets</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setExportPreset('current-view'); setExportFrom(dateRange.from); setExportTo(dateRange.to); setIsExportDialogOpen(true); }}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export to Excel</span></DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsCoverageGapOpen(true)}><AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /><span>Detect Coverage Gaps</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Template Actions</DropdownMenuLabel>
@@ -1001,10 +1004,18 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         employees={employees}
         shiftTemplates={shiftTemplates}
         leaveTypes={leaveTypes}
+        shifts={shifts}
         onImport={(data) => {
           handleScheduleImportResult(data);
           setIsGoogleSheetSyncOpen(false);
         }}
+      />
+
+      <CoverageGapDialog
+        isOpen={isCoverageGapOpen}
+        setIsOpen={setIsCoverageGapOpen}
+        shifts={shifts}
+        employees={employees}
       />
 
       <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>

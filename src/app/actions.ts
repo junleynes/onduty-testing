@@ -1307,7 +1307,8 @@ export async function regenerateApiKey(): Promise<{ success: boolean; key?: stri
 export async function syncScheduleFromGoogleSheet(
     fileId: string,
     sheetName: string,
-    filters: string[]
+    filters: string[],
+    dateRange?: { from: string; to: string }
 ): Promise<{ success: boolean; csv?: string; rowsKept?: number; rowsRemoved?: number; error?: string }> {
     try {
         await requireManager();
@@ -1412,14 +1413,189 @@ export async function syncScheduleFromGoogleSheet(
             keptLines.pop();
         }
 
-        const cleanedCsv = keptLines.join('\n');
-        const rowsKept = keptLines.filter(l => l.trim() !== '').length;
+        // ── Date-range column filtering ───────────────────────────────────────
+        // If a date range is provided, strip columns whose header (the "Employee"
+        // header row) holds a date outside the requested range.  Column 0 (the
+        // employee name column) is always kept.
+        let finalLines = keptLines;
+        if (dateRange?.from && dateRange?.to) {
+            const rangeFrom = new Date(dateRange.from);
+            const rangeTo   = new Date(dateRange.to);
+            // Collect column indices to KEEP across all kept lines
+            // We need to find each "Employee" header row and determine which
+            // date columns fall within range, then keep only those columns.
+            let keepCols: number[] | null = null;
+            finalLines = keptLines.map(line => {
+                if (line.trim() === '') return line; // preserve block separators
+                const cells = parseCsvLine(line);
+                const firstCellLow = (cells[0] ?? '').trim().toLowerCase();
+
+                if (firstCellLow.includes('employee')) {
+                    // This is a header row — recompute which columns to keep
+                    keepCols = cells.reduce<number[]>((acc, cell, idx) => {
+                        if (idx === 0) { acc.push(idx); return acc; }
+                        const d = new Date(cell.trim());
+                        if (!isNaN(d.getTime()) && d >= rangeFrom && d <= rangeTo) acc.push(idx);
+                        return acc;
+                    }, []);
+                }
+
+                if (!keepCols) return line; // no header seen yet, keep as-is
+                return toCsvLine(keepCols.map(i => cells[i] ?? ''));
+            });
+        }
+
+        const cleanedCsv = finalLines.join('\n');
+        const rowsKept = finalLines.filter(l => l.trim() !== '').length;
 
         if (rowsKept === 0) {
             return { success: false, error: 'After filtering, no rows remained. Check your filter list and sheet contents.' };
         }
 
         return { success: true, csv: cleanedCsv, rowsKept, rowsRemoved };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// ── Update Google Sheet ───────────────────────────────────────────────────────
+
+/**
+ * Writes schedule shifts back to a Google Sheet using the Sheets REST API v4.
+ * Requires a valid API key with write access to the sheet.
+ *
+ * Finds each employee row by matching the name in column A, then writes the
+ * shift label into the cell whose column header (row with "Employee") matches
+ * the shift date.  If a dateRange is provided only those date columns are
+ * touched.
+ */
+export async function updateGoogleSheet(
+    fileId: string,
+    sheetName: string,
+    apiKey: string,
+    shifts: { employeeId: string; date: Date; label: string }[],
+    employees: { id: string; name: string }[],
+    dateRange?: { from: string; to: string }
+): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+        await requireManager();
+
+        if (!fileId?.trim()) return { success: false, error: 'File ID is required.' };
+        if (!sheetName?.trim()) return { success: false, error: 'Sheet name is required.' };
+        if (!apiKey?.trim()) return { success: false, error: 'API Key is required to update the sheet.' };
+        if (!shifts.length) return { success: false, error: 'No shifts to push.' };
+
+        const base = 'https://sheets.googleapis.com/v4/spreadsheets';
+        const encSheet = encodeURIComponent(sheetName.trim());
+        const key = `key=${encodeURIComponent(apiKey.trim())}`;
+
+        // 1. Fetch the sheet values to locate header rows and employee rows
+        const getUrl = `${base}/${fileId}/values/${encSheet}?${key}&valueRenderOption=FORMATTED_VALUE`;
+        const getRes = await fetch(getUrl, { cache: 'no-store' });
+        if (!getRes.ok) {
+            const body = await getRes.text().catch(() => '');
+            return { success: false, error: `Could not read sheet (HTTP ${getRes.status}). Check API key and sharing settings. ${body}` };
+        }
+        const getJson = await getRes.json() as { values?: string[][] };
+        const sheetValues: string[][] = getJson.values ?? [];
+
+        // Build employee name → id lookup
+        const nameToId = new Map(employees.map(e => [e.name.toLowerCase().trim(), e.id]));
+        const idToName = new Map(employees.map(e => [e.id, e.name]));
+
+        // Filter shifts by date range if provided
+        const rangeFrom = dateRange?.from ? new Date(dateRange.from) : null;
+        const rangeTo   = dateRange?.to   ? new Date(dateRange.to)   : null;
+        const filteredShifts = shifts.filter(s => {
+            if (rangeFrom && s.date < rangeFrom) return false;
+            if (rangeTo   && s.date > rangeTo)   return false;
+            return true;
+        });
+
+        if (!filteredShifts.length) {
+            return { success: false, error: 'No shifts fall within the selected date range.' };
+        }
+
+        // 2. Walk the sheet rows to build a map of (row, col) → new value
+        type CellUpdate = { row: number; col: number; value: string };
+        const updates: CellUpdate[] = [];
+
+        // Track the current header row's date→col mapping
+        let dateColMap = new Map<string, number>(); // date string 'yyyy-MM-dd' → 0-based col
+
+        for (let r = 0; r < sheetValues.length; r++) {
+            const row = sheetValues[r];
+            const firstCell = (row[0] ?? '').trim().toLowerCase();
+
+            if (firstCell.includes('employee')) {
+                // Header row — re-build the date→col mapping
+                dateColMap = new Map();
+                for (let c = 1; c < row.length; c++) {
+                    const d = new Date((row[c] ?? '').trim());
+                    if (!isNaN(d.getTime())) {
+                        const key = d.toISOString().slice(0, 10);
+                        dateColMap.set(key, c);
+                    }
+                }
+                continue;
+            }
+
+            // Regular employee row — try to match by name
+            const rowName = (row[0] ?? '').trim().toLowerCase();
+            const empId = nameToId.get(rowName);
+            if (!empId) continue;
+
+            // Find shifts for this employee
+            for (const shift of filteredShifts) {
+                if (shift.employeeId !== empId) continue;
+                const dateKey = new Date(shift.date).toISOString().slice(0, 10);
+                const col = dateColMap.get(dateKey);
+                if (col === undefined) continue;
+                updates.push({ row: r, col, value: shift.label });
+            }
+        }
+
+        if (!updates.length) {
+            return { success: false, error: 'Could not match any shifts to cells in the sheet. Check employee names and dates align with the sheet.' };
+        }
+
+        // 3. Batch-update via batchUpdate valueInputOption=RAW
+        // Convert (row, col) to A1 notation
+        const colLetter = (c: number): string => {
+            let s = '';
+            let n = c + 1;
+            while (n > 0) {
+                const rem = (n - 1) % 26;
+                s = String.fromCharCode(65 + rem) + s;
+                n = Math.floor((n - 1) / 26);
+            }
+            return s;
+        };
+
+        const batchBody = {
+            valueInputOption: 'RAW',
+            data: updates.map(u => ({
+                range: `${sheetName}!${colLetter(u.col)}${u.row + 1}`,
+                values: [[u.value]],
+            })),
+        };
+
+        const batchUrl = `${base}/${fileId}/values:batchUpdate?${key}`;
+        const batchRes = await fetch(batchUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(batchBody),
+        });
+
+        if (!batchRes.ok) {
+            const body = await batchRes.text().catch(() => '');
+            return { success: false, error: `Sheet update failed (HTTP ${batchRes.status}). ${body}` };
+        }
+
+        return {
+            success: true,
+            message: `Updated ${updates.length} cell(s) in "${sheetName}".`,
+        };
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }

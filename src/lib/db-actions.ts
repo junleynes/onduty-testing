@@ -7,6 +7,7 @@ import { readAvatar, readSignature, ensureUploadDirs } from '@/lib/file-storage'
 import { requireAuth } from '@/lib/auth-guard';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
+import { writeAuditLog } from '@/app/actions';
 
 function safeParseJSON(jsonString: string | null | undefined, defaultValue: any) {
   if (!jsonString) return defaultValue;
@@ -567,6 +568,7 @@ export async function saveAllData({
     db.pragma('foreign_keys = OFF');
     saveTransaction();
     db.pragma('foreign_keys = ON');
+    writeAuditLog({ action: 'data.save', detail: `shifts:${shifts.length}, leave:${leave.length}, employees:${employees.length}` }).catch(() => {});
     return { success: true };
   } catch (error) {
     db.pragma('foreign_keys = ON');

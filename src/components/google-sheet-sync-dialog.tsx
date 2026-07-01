@@ -23,7 +23,7 @@ import type { LeaveTypeOption } from './leave-type-editor';
 import { saveAs } from 'file-saver';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 
-const DEFAULT_FILTERS = ['1', 'POST PRODUCTION', 'MAMS SUPPORT', 'MEDIA SERVER SUPPORT','1YDl3DNXALbcw-m1i0Gs4HZLge5M2jITe'];
+const DEFAULT_FILTERS = ['1', 'POST PRODUCTION', 'MAMS SUPPORT', 'MEDIA SERVER SUPPORT','TECHNICAL AND MEDIA SERVER SUPPORT DIVISION'];
 
 const STORAGE_KEY = 'onduty_gsheet_configs';
 

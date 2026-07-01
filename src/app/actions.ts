@@ -1616,6 +1616,7 @@ export type AiConfig = {
 export async function getAiConfig(): Promise<{ success: boolean; config?: AiConfig; error?: string }> {
     try {
         await requireManager();
+        const db = getDb();
         const row = db.prepare('SELECT * FROM ai_config WHERE id = 1').get() as any;
         if (!row) return { success: false, error: 'No AI config found.' };
         return {
@@ -1636,6 +1637,7 @@ export async function getAiConfig(): Promise<{ success: boolean; config?: AiConf
 export async function saveAiConfig(config: AiConfig): Promise<{ success: boolean; error?: string }> {
     try {
         await requireAdmin();
+        const db = getDb();
         db.prepare(`
             UPDATE ai_config SET
                 provider = ?, base_url = ?, api_key = ?, model = ?, enabled = ?

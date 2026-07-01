@@ -10,14 +10,11 @@ import { getInitials, getBackgroundColor, getFullName } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu';
-import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download, ShieldCheck, ShieldOff, ShieldAlert, Sparkles, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, PlusCircle, Trash2, Upload, Users, EyeOff, KeyRound, Mail, Download, ShieldCheck, ShieldOff, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from './ui/checkbox';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-import { sendActivationLink, getAiConfig, saveAiConfig } from '@/app/actions';
-import type { AiConfig, AiProvider } from '@/app/actions';
+import { sendActivationLink } from '@/app/actions';
 import { adminSetupTotp, adminDisableTotp, adminDisableAllTotp, getTotpStatusAll } from '@/app/totp-actions';
 import Papa from 'papaparse';
 import { saveAs } from 'file-saver';
@@ -55,12 +52,6 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
   const [totpStatuses, setTotpStatuses] = useState<Record<string, boolean>>({});
   const [totpDialog, setTotpDialog] = useState<{ open: boolean; secret?: string; qrDataUri?: string; userEmail?: string }>({ open: false });
 
-  // AI Config state
-  const [aiConfig, setAiConfig] = useState<AiConfig>({ provider: 'anthropic', enabled: false });
-  const [isLoadingAiConfig, setIsLoadingAiConfig] = useState(false);
-  const [isSavingAiConfig, setIsSavingAiConfig] = useState(false);
-  const [aiConfigLoaded, setAiConfigLoaded] = useState(false);
-
 
   // Load 2FA statuses on mount
   useEffect(() => {
@@ -68,29 +59,6 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
       if (res.success && res.statuses) setTotpStatuses(res.statuses);
     });
   }, []);
-
-  const handleLoadAiConfig = async () => {
-    setIsLoadingAiConfig(true);
-    const res = await getAiConfig();
-    setIsLoadingAiConfig(false);
-    if (res.success && res.config) {
-      setAiConfig(res.config);
-      setAiConfigLoaded(true);
-    } else {
-      toast({ variant: 'destructive', title: 'Failed to load AI config', description: res.error });
-    }
-  };
-
-  const handleSaveAiConfig = async () => {
-    setIsSavingAiConfig(true);
-    const res = await saveAiConfig(aiConfig);
-    setIsSavingAiConfig(false);
-    if (res.success) {
-      toast({ title: 'AI Config Saved' });
-    } else {
-      toast({ variant: 'destructive', title: 'Failed to save AI config', description: res.error });
-    }
-  };
 
   const handleRoleChange = (userId: string, newRole: UserRole) => {
     setUsers(users.map(user =>
@@ -371,104 +339,6 @@ export default function AdminPanel({ users, setUsers, groups, onAddMember, onEdi
           </TableBody>
         </Table>
       </CardContent>
-    </Card>
-
-    {/* ── AI Configuration ── */}
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            AI Configuration
-          </CardTitle>
-          <CardDescription>
-            Configure the AI provider for Smart Scheduling and other AI features.
-          </CardDescription>
-        </div>
-        {!aiConfigLoaded && (
-          <Button variant="outline" size="sm" onClick={handleLoadAiConfig} disabled={isLoadingAiConfig}>
-            {isLoadingAiConfig ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading…</> : 'Load Config'}
-          </Button>
-        )}
-      </CardHeader>
-      {aiConfigLoaded && (
-        <CardContent className="space-y-4">
-          {/* Enable toggle */}
-          <div className="flex items-center gap-3">
-            <input
-              id="ai-enabled"
-              type="checkbox"
-              className="h-4 w-4 rounded border"
-              checked={aiConfig.enabled}
-              onChange={e => setAiConfig(c => ({ ...c, enabled: e.target.checked }))}
-            />
-            <Label htmlFor="ai-enabled">Enable AI features</Label>
-          </div>
-
-          {/* Provider */}
-          <div className="space-y-1.5">
-            <Label>Provider</Label>
-            <Select
-              value={aiConfig.provider}
-              onValueChange={v => setAiConfig(c => ({ ...c, provider: v as AiProvider, baseUrl: undefined, model: undefined }))}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
-                <SelectItem value="openrouter">OpenRouter</SelectItem>
-                <SelectItem value="ollama">Ollama (local)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Base URL — shown for openrouter and ollama */}
-          {(aiConfig.provider === 'openrouter' || aiConfig.provider === 'ollama') && (
-            <div className="space-y-1.5">
-              <Label>Base URL</Label>
-              <Input
-                placeholder={aiConfig.provider === 'ollama' ? 'http://localhost:11434' : 'https://openrouter.ai/api/v1'}
-                value={aiConfig.baseUrl ?? ''}
-                onChange={e => setAiConfig(c => ({ ...c, baseUrl: e.target.value }))}
-              />
-            </div>
-          )}
-
-          {/* API Key — not needed for local Ollama */}
-          {aiConfig.provider !== 'ollama' && (
-            <div className="space-y-1.5">
-              <Label>API Key</Label>
-              <Input
-                type="password"
-                placeholder={aiConfig.provider === 'anthropic' ? 'sk-ant-…' : 'sk-or-…'}
-                value={aiConfig.apiKey ?? ''}
-                onChange={e => setAiConfig(c => ({ ...c, apiKey: e.target.value }))}
-              />
-            </div>
-          )}
-
-          {/* Model */}
-          <div className="space-y-1.5">
-            <Label>Model <span className="text-xs text-muted-foreground font-normal">(leave blank for default)</span></Label>
-            <Input
-              placeholder={
-                aiConfig.provider === 'anthropic'  ? 'claude-sonnet-4-6' :
-                aiConfig.provider === 'openrouter' ? 'openai/gpt-4o' :
-                'llama3'
-              }
-              value={aiConfig.model ?? ''}
-              onChange={e => setAiConfig(c => ({ ...c, model: e.target.value || undefined }))}
-            />
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button onClick={handleSaveAiConfig} disabled={isSavingAiConfig}>
-              {isSavingAiConfig ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : 'Save AI Config'}
-            </Button>
-          </div>
-        </CardContent>
-      )}
     </Card>
 
     {/* 2FA QR Code Dialog — shown to admin after enabling for a user */}

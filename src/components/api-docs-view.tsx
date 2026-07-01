@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Copy, Check, Terminal, Lock, Download, Upload, FileSpreadsheet, BarChart3, BookOpen, Plus, Trash2, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { getApiKeys, createApiKey, deleteApiKey } from '@/app/actions';
-import type { ApiKeyRecord } from '@/app/actions';
+import { Copy, Check, Terminal, Lock, Download, Upload, FileSpreadsheet, BarChart3, BookOpen, Plus, Trash2, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
+import { getApiKeys, createApiKey, deleteApiKey, getAiConfig, saveAiConfig } from '@/app/actions';
+import type { ApiKeyRecord, AiConfig, AiProvider } from '@/app/actions';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Clipboard helper (works on http + https) ──────────────────────────────────
@@ -213,6 +214,12 @@ export default function ApiDocsView() {
     const [creating, setCreating] = useState(false);
     const [newlyCreated, setNewlyCreated] = useState<ApiKeyRecord | null>(null);
 
+    // AI Config state
+    const [aiConfig, setAiConfig] = useState<AiConfig>({ provider: 'anthropic', enabled: false });
+    const [aiConfigLoaded, setAiConfigLoaded] = useState(false);
+    const [isLoadingAi, setIsLoadingAi] = useState(false);
+    const [isSavingAi, setIsSavingAi] = useState(false);
+
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-onduty.com';
     // Use the first key value in examples, if any
     const exampleKey = keys[0]?.key_value ?? 'YOUR_API_KEY';
@@ -225,6 +232,32 @@ export default function ApiDocsView() {
     }, []);
 
     useEffect(() => { load(); }, [load]);
+
+    const handleLoadAiConfig = async () => {
+        setIsLoadingAi(true);
+        const res = await getAiConfig();
+        setIsLoadingAi(false);
+        if (res.success && res.config) {
+            setAiConfig(res.config);
+            setAiConfigLoaded(true);
+        } else {
+            toast({ variant: 'destructive', title: 'Failed to load AI config', description: res.error });
+        }
+    };
+
+    const handleSaveAiConfig = async () => {
+        setIsSavingAi(true);
+        const res = await saveAiConfig(aiConfig);
+        setIsSavingAi(false);
+        if (res.success) {
+            toast({ title: 'AI Config Saved' });
+        } else {
+            toast({ variant: 'destructive', title: 'Failed to save AI config', description: res.error });
+        }
+    };
+
+    // Auto-load AI config when view mounts
+    useEffect(() => { handleLoadAiConfig(); }, []);
 
     const handleCreate = async () => {
         if (!newKeyName.trim()) {
@@ -259,6 +292,106 @@ export default function ApiDocsView() {
                     <p className="text-sm text-muted-foreground">Manage API keys and integrate OnDuty data with external systems.</p>
                 </div>
             </div>
+
+            {/* ── AI Configuration ── */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        AI Configuration
+                    </CardTitle>
+                    <CardDescription>
+                        Configure the AI provider for Smart Scheduling. Supports Anthropic, OpenRouter, and local Ollama.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {isLoadingAi && !aiConfigLoaded && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading AI config…
+                        </div>
+                    )}
+                    {aiConfigLoaded && (
+                        <>
+                            {/* Enable toggle */}
+                            <div className="flex items-center gap-3">
+                                <input
+                                    id="ai-enabled"
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border"
+                                    checked={aiConfig.enabled}
+                                    onChange={e => setAiConfig(c => ({ ...c, enabled: e.target.checked }))}
+                                />
+                                <label htmlFor="ai-enabled" className="text-sm font-medium cursor-pointer">Enable AI features</label>
+                            </div>
+
+                            {/* Provider */}
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">Provider</label>
+                                <Select
+                                    value={aiConfig.provider}
+                                    onValueChange={v => setAiConfig(c => ({ ...c, provider: v as AiProvider, baseUrl: undefined, model: undefined }))}
+                                >
+                                    <SelectTrigger className="w-52">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
+                                        <SelectItem value="openrouter">OpenRouter</SelectItem>
+                                        <SelectItem value="ollama">Ollama (local)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Base URL — openrouter and ollama only */}
+                            {(aiConfig.provider === 'openrouter' || aiConfig.provider === 'ollama') && (
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium">Base URL</label>
+                                    <Input
+                                        placeholder={aiConfig.provider === 'ollama' ? 'http://localhost:11434' : 'https://openrouter.ai/api/v1'}
+                                        value={aiConfig.baseUrl ?? ''}
+                                        onChange={e => setAiConfig(c => ({ ...c, baseUrl: e.target.value }))}
+                                    />
+                                </div>
+                            )}
+
+                            {/* API Key — not needed for Ollama */}
+                            {aiConfig.provider !== 'ollama' && (
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium">API Key</label>
+                                    <Input
+                                        type="password"
+                                        placeholder={aiConfig.provider === 'anthropic' ? 'sk-ant-…' : 'sk-or-…'}
+                                        value={aiConfig.apiKey ?? ''}
+                                        onChange={e => setAiConfig(c => ({ ...c, apiKey: e.target.value }))}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Model */}
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">
+                                    Model <span className="text-xs text-muted-foreground font-normal">(leave blank for default)</span>
+                                </label>
+                                <Input
+                                    placeholder={
+                                        aiConfig.provider === 'anthropic'  ? 'claude-sonnet-4-6' :
+                                        aiConfig.provider === 'openrouter' ? 'openai/gpt-4o' :
+                                        'llama3'
+                                    }
+                                    value={aiConfig.model ?? ''}
+                                    onChange={e => setAiConfig(c => ({ ...c, model: e.target.value || undefined }))}
+                                />
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <Button onClick={handleSaveAiConfig} disabled={isSavingAi}>
+                                    {isSavingAi ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : 'Save AI Config'}
+                                </Button>
+                            </div>
+                        </>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* API Key Management */}
             <Card>

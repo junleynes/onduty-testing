@@ -13,7 +13,8 @@ import { isSameDay, getMonth, getDate, getYear, format, differenceInYears, addDa
 import { getData, saveAllData } from '@/lib/db-actions';
 import { useSession, signOut } from 'next-auth/react';
 import { addEmployee, updateEmployee } from '@/app/employee-actions';
-import { saveTemplate } from '@/app/actions';
+import { saveTemplate, getAiConfig } from '@/app/actions';
+import type { AiConfig } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -84,6 +85,7 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const [aiConfig, setAiConfig] = useState<AiConfig | undefined>(undefined);
 
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [activeView, setActiveView] = useState<NavItem>('dashboard');
@@ -276,6 +278,9 @@ function AppContent() {
       }
       setIsLoading(false);
       setInitialDataLoaded(true);
+
+      // Load AI config in background — non-critical, don't block or show error
+      getAiConfig().then(res => { if (res.success && res.config) setAiConfig(res.config); }).catch(() => {});
     }
     loadData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -772,6 +777,7 @@ function AppContent() {
             leaveTypes={leaveTypes}
             monthlyEmployeeOrder={monthlyEmployeeOrder}
             setMonthlyEmployeeOrder={setMonthlyEmployeeOrder}
+            aiConfig={aiConfig}
           />
         );
       }

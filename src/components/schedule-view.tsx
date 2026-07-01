@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square, TrendingUp, Sparkles } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -24,6 +24,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ScheduleImporter } from './schedule-importer';
 import { GoogleSheetSyncDialog } from './google-sheet-sync-dialog';
 import { CoverageGapDialog } from './coverage-gap-dialog';
+import { SmartSchedulingDialog } from './smart-scheduling-dialog';
+import { WorkHoursSummaryDialog } from './work-hours-summary-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { DatePicker } from './ui/date-picker';
@@ -56,9 +58,10 @@ type ScheduleViewProps = {
   leaveTypes: LeaveTypeOption[];
   monthlyEmployeeOrder: Record<string, string[]>;
   setMonthlyEmployeeOrder: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
+  aiConfig?: import('@/app/actions').AiConfig;
 }
 
-export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder }: ScheduleViewProps) {
+export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder, aiConfig }: ScheduleViewProps) {
   const isReadOnly = currentUser?.role === 'member';
   
   const visibleEmployees = useMemo(() => employees.filter(e => e.visibility?.schedule !== false), [employees]);
@@ -70,6 +73,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   const [isGoogleSheetSyncOpen, setIsGoogleSheetSyncOpen] = useState(false);
   const [isCoverageGapOpen, setIsCoverageGapOpen] = useState(false);
+  const [isWorkHoursSummaryOpen, setIsWorkHoursSummaryOpen] = useState(false);
+  const [isSmartSchedulingOpen, setIsSmartSchedulingOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
   const [exportFrom, setExportFrom] = useState<Date>(new Date());
@@ -889,6 +894,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                             <DropdownMenuItem onClick={() => setIsGoogleSheetSyncOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Sync from Google Sheets</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setExportPreset('current-view'); setExportFrom(dateRange.from); setExportTo(dateRange.to); setIsExportDialogOpen(true); }}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export to Excel</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsCoverageGapOpen(true)}><AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /><span>Detect Coverage Gaps</span></DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsWorkHoursSummaryOpen(true)}><TrendingUp className="mr-2 h-4 w-4 text-primary" /><span>Work Hours Summary</span></DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsSmartSchedulingOpen(true)} disabled={!aiConfig?.enabled}><Sparkles className="mr-2 h-4 w-4 text-violet-500" /><span>Smart Scheduling{!aiConfig?.enabled ? ' (AI disabled)' : ''}</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Template Actions</DropdownMenuLabel>
@@ -1016,6 +1023,27 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         setIsOpen={setIsCoverageGapOpen}
         shifts={shifts}
         employees={employees}
+      />
+
+      <WorkHoursSummaryDialog
+        isOpen={isWorkHoursSummaryOpen}
+        setIsOpen={setIsWorkHoursSummaryOpen}
+        shifts={shifts}
+        leave={leave}
+        employees={employees}
+        holidays={holidays}
+      />
+
+      <SmartSchedulingDialog
+        isOpen={isSmartSchedulingOpen}
+        setIsOpen={setIsSmartSchedulingOpen}
+        shifts={shifts}
+        employees={employees}
+        shiftTemplates={shiftTemplates}
+        aiConfig={aiConfig}
+        onAccept={(newShifts) => {
+          setShifts(prev => [...prev, ...newShifts]);
+        }}
       />
 
       <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>

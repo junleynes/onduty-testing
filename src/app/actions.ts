@@ -1600,3 +1600,79 @@ export async function updateGoogleSheet(
         return { success: false, error: (error as Error).message };
     }
 }
+
+// ── AI Config ─────────────────────────────────────────────────────────────────
+
+export type AiProvider = 'anthropic' | 'openrouter' | 'ollama';
+
+export type AiConfig = {
+    provider: AiProvider;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+    enabled: boolean;
+};
+
+export async function getAiConfig(): Promise<{ success: boolean; config?: AiConfig; error?: string }> {
+    try {
+        await requireManager();
+        const row = db.prepare('SELECT * FROM ai_config WHERE id = 1').get() as any;
+        if (!row) return { success: false, error: 'No AI config found.' };
+        return {
+            success: true,
+            config: {
+                provider: row.provider as AiProvider,
+                baseUrl: row.base_url ?? undefined,
+                apiKey: row.api_key ?? undefined,
+                model: row.model ?? undefined,
+                enabled: !!row.enabled,
+            },
+        };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+export async function saveAiConfig(config: AiConfig): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireAdmin();
+        db.prepare(`
+            UPDATE ai_config SET
+                provider = ?, base_url = ?, api_key = ?, model = ?, enabled = ?
+            WHERE id = 1
+        `).run(
+            config.provider,
+            config.baseUrl ?? null,
+            config.apiKey ?? null,
+            config.model ?? null,
+            config.enabled ? 1 : 0,
+        );
+        await writeAuditLog({ action: 'ai_config.update', detail: `Provider: ${config.provider}, Enabled: ${config.enabled}` });
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// ── Audit logging helpers for key data mutations ──────────────────────────────
+// Called from the main saveAllData action and individual mutation actions.
+
+export async function auditShiftsSaved(count: number): Promise<void> {
+    await writeAuditLog({ action: 'shifts.save', detail: `${count} shift(s) saved` });
+}
+
+export async function auditEmployeeSaved(name: string, id: string): Promise<void> {
+    await writeAuditLog({ action: 'employee.save', targetType: 'employee', targetId: id, targetName: name });
+}
+
+export async function auditEmployeeDeleted(name: string, id: string): Promise<void> {
+    await writeAuditLog({ action: 'employee.delete', targetType: 'employee', targetId: id, targetName: name });
+}
+
+export async function auditLeaveSubmitted(type: string, employeeName: string, leaveId: string): Promise<void> {
+    await writeAuditLog({ action: 'leave.submit', targetType: 'leave', targetId: leaveId, targetName: employeeName, detail: `Type: ${type}` });
+}
+
+export async function auditLeaveStatusChanged(leaveId: string, employeeName: string, status: string): Promise<void> {
+    await writeAuditLog({ action: 'leave.status_change', targetType: 'leave', targetId: leaveId, targetName: employeeName, detail: `Status → ${status}` });
+}

@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { saveAvatar, saveSignature, readAvatar, readSignature } from '@/lib/file-storage';
 import { requireAuth, requireAdmin, requireManager } from '@/lib/auth-guard';
-
+import { writeAuditLog } from '@/app/actions';
 const employeeSchema = z.object({
   id: z.string().optional(),
   employeeNumber: z.string().optional().nullable(),
@@ -161,6 +161,7 @@ export async function addEmployee(employeeData: Partial<Employee>): Promise<{ su
         });
 
         // Return employee with actual binary data for immediate UI use
+        await writeAuditLog({ action: 'employee.create', targetType: 'employee', targetId: employeeId, targetName: `${newEmployee.firstName} ${newEmployee.lastName}` });
         return { success: true, employee: { ...newEmployee, avatar: data.avatar || avatarPath, signature: data.signature || signaturePath } };
 
     } catch (error) {
@@ -330,6 +331,7 @@ export async function updateEmployee(employeeData: Partial<Employee>): Promise<{
             department: updatedEmployee.department || null,
         });
 
+        await writeAuditLog({ action: 'employee.update', targetType: 'employee', targetId: updatedEmployee.id, targetName: `${updatedEmployee.firstName} ${updatedEmployee.lastName}` });
         return { success: true, employee: updatedEmployee };
 
     } catch (error) {

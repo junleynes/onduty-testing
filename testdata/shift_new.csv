@@ -17,7 +17,7 @@ Late Manager Shift,11:00,20:00,Red,15:30,16:30,TRUE
 Late Manager Shift,12:00,21:00,Red,16:30,17:30,TRUE
 Late Morning Shift,7:00,15:00,Green,11:00,11:30,FALSE
 Late Morning Shift,8:00,16:00,Green,12:00,12:30,FALSE
-Manager / Proby /Training Shift,10:00,19:00,White,12:00,13:00,TRUE
+Manager / Proby / Training Shift,10:00,19:00,White,12:00,13:00,TRUE
 Morning Shift,6:00,14:00,Green,10:00,10:30,FALSE
 Night Shift,22:00,6:00,Pink,2:00,2:30,FALSE
 Proby / Training Shift,9:00,18:00,White,12:00,13:00,TRUE

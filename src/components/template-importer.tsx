@@ -18,6 +18,12 @@ import { Label } from './ui/label';
 import { Loader2 } from 'lucide-react';
 import type { ShiftTemplate } from '@/components/shift-editor';
 
+const normalizeTime = (t: string): string => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  return `${String(h).padStart(2, '0')}:${String(isNaN(m) ? 0 : m).padStart(2, '0')}`;
+};
+
 const shiftColorMap: { [key: string]: string } = {
   'default': 'default',
   'orange': 'hsl(var(--chart-4))',
@@ -85,16 +91,21 @@ export function TemplateImporter({ isOpen, setIsOpen, onImport }: TemplateImport
             const isUnpaidValue = (row['Is Unpaid Break'] || 'false').toLowerCase();
             const isUnpaidBreak = ['true', '1'].includes(isUnpaidValue);
 
+            // Use group from CSV if present, otherwise fall back to null
+            // (handles CSVs exported before Group Name column was added)
+            const groupName = row['Group Name']?.trim() || null;
+
             return {
               id: uuidv4(),
               label: row['Shift Label'] || '',
-              startTime: row['Start Time'] || '',
-              endTime: row['End Time'] || '',
+              startTime: normalizeTime(row['Start Time'] || ''),
+              endTime: normalizeTime(row['End Time'] || ''),
               color: colorValue,
               name: `${row['Shift Label']} (${row['Start Time']}-${row['End Time']})`,
-              breakStartTime: row['Break Start'] || '',
-              breakEndTime: row['Break End'] || '',
+              breakStartTime: normalizeTime(row['Break Start'] || ''),
+              breakEndTime: normalizeTime(row['Break End'] || ''),
               isUnpaidBreak: isUnpaidBreak,
+              groupName,
             };
           });
 

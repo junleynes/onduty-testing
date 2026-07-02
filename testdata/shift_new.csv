@@ -1,10 +1,11 @@
 Shift Label,Start Time,End Time,Shift Color,Break Start,Break End,Is Unpaid Break
+Mid Shift,10:00,18:00,White,14:00,14:30,FALSE
+10hour Mid Shift,9:00,19:00,White,15:00,15:30,FALSE
+10hour Manager Shift,9:00,20:00,Red,12:00,13:00,TRUE
 10hour Afternoon Shift,9:00,19:00,Blue,15:00,15:30,FALSE
 10hour Afternoon Shift,12:00,22:00,Blue,15:00,15:30,FALSE
-10hour Manager Shift,9:00,20:00,Red,12:00,13:00,TRUE
 10hour Manager Shift,9:30,20:30,Red,12:00,13:00,TRUE
 10hour Manager Shift,10:00,21:00,Red,12:00,13:00,TRUE
-10hour Mid Shift,9:00,19:00,White,15:00,15:30,FALSE
 10hour Mid Shift,10:00,20:00,White,15:00,15:30,FALSE
 10hour Morning Shift,6:00,16:00,Green,11:30,12:00,FALSE
 10hour Night Shift,21:00,7:00,Pink,3:00,3:30,FALSE
@@ -17,7 +18,15 @@ Late Manager Shift,12:00,21:00,Red,16:30,17:30,TRUE
 Late Morning Shift,7:00,15:00,Green,11:00,11:30,FALSE
 Late Morning Shift,8:00,16:00,Green,12:00,12:30,FALSE
 Manager / Proby /Training Shift,10:00,19:00,White,12:00,13:00,TRUE
-Mid Shift,10:00,18:00,White,14:00,14:30,FALSE
 Morning Shift,6:00,14:00,Green,10:00,10:30,FALSE
 Night Shift,22:00,6:00,Pink,2:00,2:30,FALSE
 Proby / Training Shift,9:00,18:00,White,12:00,13:00,TRUE
+10hour OB,8:30,19:30,Red,12:00,13:00,TRUE
+Proby Morning Shift,06:00,15:00,Green,11:00,12:00,TRUE
+Proby Afternoon Shift,13:00,22:00,Blue,18:00,19:00,TRUE
+Night Shift,21:00,6:00,Pink,2:00,3:00,TRUE
+Early Duty Afternoon Shift,10:00,22:00,Blue,16:00,16:30,FALSE
+Early Duty Night Shift,18:00,6:00,Pink,2:00,2:30,FALSE
+OT Morning Shift,6:00,18:00,Green,10:00,10:30,FALSE
+
+

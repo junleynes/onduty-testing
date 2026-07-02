@@ -1,4 +1,5 @@
-ai key openrouter
+ai key openrouter openai/gpt-oss-120b:free
+
 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
 model
 openai/gpt-oss-120b:free

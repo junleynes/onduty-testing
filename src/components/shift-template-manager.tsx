@@ -30,15 +30,51 @@ import { TemplateImporter } from './template-importer';
 // Reverse map for export
 const colorToName: { [key: string]: string } = {
   'default': 'Default',
+  // ── Shift palette ──
+  '#FFE599': 'Pale Yellow',
+  '#ffe599': 'Pale Yellow',
+  '#FFD966': 'Gold',
+  '#ffd966': 'Gold',
+  '#9FC5E8': 'Sky Blue',
+  '#9fc5e8': 'Sky Blue',
+  '#6FA8DC': 'Steel Blue',
+  '#6fa8dc': 'Steel Blue',
+  '#4A86E8': 'Royal Blue',
+  '#4a86e8': 'Royal Blue',
+  '#B4A7D6': 'Periwinkle',
+  '#b4a7d6': 'Periwinkle',
+  '#F6B26B': 'Sandy Brown',
+  '#f6b26b': 'Sandy Brown',
+  '#D9EAD3': 'Mint Green',
+  '#d9ead3': 'Mint Green',
+  // ── General colors ──
+  '#ffffff': 'White',
+  '#F8CBAD': 'Peach',
+  '#f8cbad': 'Peach',
+  '#CC99FF': 'Lavender',
+  '#cc99ff': 'Lavender',
+  '#FF99CC': 'Light Pink',
+  '#ff99cc': 'Light Pink',
+  '#D9D2E9': 'Pale Lavender',
+  '#d9d2e9': 'Pale Lavender',
+  '#F472B3': 'Hot Pink',
+  '#f472b3': 'Hot Pink',
+  '#C0C0C0': 'Silver',
+  '#c0c0c0': 'Silver',
+  '#0000FF': 'Pure Blue',
+  '#0000ff': 'Pure Blue',
   'hsl(var(--chart-4))': 'Orange',
   'hsl(var(--chart-1))': 'Red',
-  '#3498db': 'Blue',
   'hsl(var(--chart-2))': 'Green',
   '#9b59b6': 'Purple',
   '#e91e63': 'Pink',
-  '#ffffff': 'White',
   '#f1c40f': 'Yellow',
-  '#6b7280': 'Dark Grayish Blue',
+  '#1abc9c': 'Teal',
+  '#00bcd4': 'Cyan',
+  '#6366f1': 'Indigo',
+  '#f59e0b': 'Amber',
+  '#1e3a8a': 'Navy',
+  '#000000': 'Black',
 };
 
 type ShiftTemplateManagerProps = {
@@ -75,6 +111,7 @@ export function ShiftTemplateManager({
 
   const handleExportTemplates = () => {
     const csvData = groupTemplates.map(t => ({
+      'Group Name': t.groupName ?? '',
       'Shift Label': t.label,
       'Start Time': t.startTime,
       'End Time': t.endTime,

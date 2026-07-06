@@ -18,17 +18,46 @@ import { Label } from './ui/label';
 import { Loader2 } from 'lucide-react';
 import type { ShiftTemplate } from '@/components/shift-editor';
 
+const normalizeTime = (t: string): string => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  return `${String(h).padStart(2, '0')}:${String(isNaN(m) ? 0 : m).padStart(2, '0')}`;
+};
+
 const shiftColorMap: { [key: string]: string } = {
   'default': 'default',
+  // ── Shift palette ──
+  'pale yellow': '#FFE599',
+  'gold': '#FFD966',
+  'sky blue': '#9FC5E8',
+  'steel blue': '#6FA8DC',
+  'royal blue': '#4A86E8',
+  'periwinkle': '#B4A7D6',
+  'sandy brown': '#F6B26B',
+  'mint green': '#D9EAD3',
+  // ── General colors ──
+  'white': '#ffffff',
+  'peach': '#F8CBAD',
+  'lavender': '#CC99FF',
+  'light pink': '#FF99CC',
+  'cornflower blue': '#4A86E8',
+  'pale lavender': '#D9D2E9',
+  'hot pink': '#F472B3',
+  'silver': '#C0C0C0',
+  'pure blue': '#0000FF',
   'orange': 'hsl(var(--chart-4))',
   'red': 'hsl(var(--chart-1))',
-  'blue': '#3498db',
+  'blue': '#4A86E8',
   'green': 'hsl(var(--chart-2))',
   'purple': '#9b59b6',
   'pink': '#e91e63',
-  'white': '#ffffff',
   'yellow': '#f1c40f',
-  'dark grayish blue': '#6b7280',
+  'teal': '#1abc9c',
+  'cyan': '#00bcd4',
+  'indigo': '#6366f1',
+  'amber': '#f59e0b',
+  'navy': '#1e3a8a',
+  'black': '#000000',
 };
 
 type TemplateImporterProps = {
@@ -85,16 +114,21 @@ export function TemplateImporter({ isOpen, setIsOpen, onImport }: TemplateImport
             const isUnpaidValue = (row['Is Unpaid Break'] || 'false').toLowerCase();
             const isUnpaidBreak = ['true', '1'].includes(isUnpaidValue);
 
+            // Use group from CSV if present, otherwise fall back to null
+            // (handles CSVs exported before Group Name column was added)
+            const groupName = row['Group Name']?.trim() || null;
+
             return {
               id: uuidv4(),
               label: row['Shift Label'] || '',
-              startTime: row['Start Time'] || '',
-              endTime: row['End Time'] || '',
+              startTime: normalizeTime(row['Start Time'] || ''),
+              endTime: normalizeTime(row['End Time'] || ''),
               color: colorValue,
               name: `${row['Shift Label']} (${row['Start Time']}-${row['End Time']})`,
-              breakStartTime: row['Break Start'] || '',
-              breakEndTime: row['Break End'] || '',
+              breakStartTime: normalizeTime(row['Break Start'] || ''),
+              breakEndTime: normalizeTime(row['Break End'] || ''),
               isUnpaidBreak: isUnpaidBreak,
+              groupName,
             };
           });
 

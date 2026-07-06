@@ -95,6 +95,7 @@ type ShiftEditorProps = {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   currentUser: Employee;
+  currentGroup?: string | null;
 };
 
 const roleColors: { [key: string]: string } = {
@@ -106,18 +107,38 @@ const roleColors: { [key: string]: string } = {
 
 const shiftColorOptions = [
     { label: 'Default', value: 'default' },
+    // ── Shift palette (24-hour cycle) ──
+    { label: 'Pale Yellow', value: '#FFE599' },
+    { label: 'Gold', value: '#FFD966' },
+    { label: 'Sky Blue', value: '#9FC5E8' },
+    { label: 'Steel Blue', value: '#6FA8DC' },
+    { label: 'Royal Blue', value: '#4A86E8' },
+    { label: 'Periwinkle', value: '#B4A7D6' },
+    { label: 'Sandy Brown', value: '#F6B26B' },
+    { label: 'Mint Green', value: '#D9EAD3' },
+    // ── General colors ──
+    { label: 'White', value: '#ffffff' },
+    { label: 'Peach', value: '#F8CBAD' },
+    { label: 'Lavender', value: '#CC99FF' },
+    { label: 'Light Pink', value: '#FF99CC' },
+    { label: 'Pale Lavender', value: '#D9D2E9' },
+    { label: 'Hot Pink', value: '#F472B3' },
+    { label: 'Silver', value: '#C0C0C0' },
     { label: 'Orange', value: 'hsl(var(--chart-4))' },
     { label: 'Red', value: 'hsl(var(--chart-1))' },
-    { label: 'Blue', value: '#3498db' },
     { label: 'Green', value: 'hsl(var(--chart-2))' },
     { label: 'Purple', value: '#9b59b6' },
     { label: 'Pink', value: '#e91e63' },
     { label: 'Yellow', value: '#f1c40f' },
-    { label: 'White', value: '#ffffff' },
-    { label: 'Dark Grayish Blue', value: '#6b7280' },
+    { label: 'Teal', value: '#1abc9c' },
+    { label: 'Cyan', value: '#00bcd4' },
+    { label: 'Indigo', value: '#6366f1' },
+    { label: 'Amber', value: '#f59e0b' },
+    { label: 'Navy', value: '#1e3a8a' },
+    { label: 'Black', value: '#000000' },
 ];
 
-function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees, shiftTemplates, setShiftTemplates, tasks, setTasks, currentUser }: ShiftEditorProps) {
+function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees, shiftTemplates, setShiftTemplates, tasks, setTasks, currentUser, currentGroup }: ShiftEditorProps) {
   const { toast } = useToast();
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | null>(null);
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
@@ -320,6 +341,7 @@ function ShiftEditorForm({ isOpen, setIsOpen, shift, onSave, onDelete, employees
         breakStartTime: currentValues.breakStartTime,
         breakEndTime: currentValues.breakEndTime,
         isUnpaidBreak: currentValues.isUnpaidBreak,
+        groupName: currentGroup ?? null,
     };
     setShiftTemplates(prev => [...prev, newTemplate]);
     toast({ title: 'Template Saved', description: `New template "${newTemplate.name}" has been created.` });

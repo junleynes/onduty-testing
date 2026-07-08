@@ -108,15 +108,16 @@ const roleColors: { [key: string]: string } = {
 const shiftColorOptions = [
     { label: 'Default', value: 'default' },
     // ── Shift palette (24-hour cycle, white-text friendly) ──
-    { label: 'Pale Yellow', value: '#B8860B' },
-    { label: 'Gold', value: '#A0720A' },
-    { label: 'Sky Blue', value: '#2980B9' },
-    { label: 'Steel Blue', value: '#1A6FA3' },
-    { label: 'Royal Blue', value: '#1447C0' },
-    { label: 'Periwinkle', value: '#5B3FA6' },
-    { label: 'Sandy Brown', value: '#C05621' },
-    { label: 'Mint Green', value: '#1E8449' },
+    { label: 'Dark Goldenrod', value: '#B8860B' },
+    { label: 'Deep Gold', value: '#A0720A' },
+    { label: 'Belize Blue', value: '#2980B9' },
+    { label: 'Steel Blue Dark', value: '#1A6FA3' },
+    { label: 'Royal Blue Dark', value: '#1447C0' },
+    { label: 'Deep Purple', value: '#5B3FA6' },
+    { label: 'Burnt Orange', value: '#C05621' },
+    { label: 'Forest Green', value: '#1E8449' },
     // ── General colors ──
+
     { label: 'White', value: '#ffffff' },
     { label: 'Peach', value: '#F8CBAD' },
     { label: 'Lavender', value: '#CC99FF' },

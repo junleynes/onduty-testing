@@ -27,15 +27,16 @@ const normalizeTime = (t: string): string => {
 const shiftColorMap: { [key: string]: string } = {
   'default': 'default',
   // ── Shift palette ──
-  'pale yellow': '#B8860B',
-  'gold': '#A0720A',
-  'sky blue': '#2980B9',
-  'steel blue': '#1A6FA3',
-  'royal blue': '#1447C0',
-  'periwinkle': '#5B3FA6',
-  'sandy brown': '#C05621',
-  'mint green': '#1E8449',
+  'dark goldenrod': '#B8860B',
+  'deep gold': '#A0720A',
+  'belize blue': '#2980B9',
+  'steel blue dark': '#1A6FA3',
+  'royal blue dark': '#1447C0',
+  'deep purple': '#5B3FA6',
+  'burnt orange': '#C05621',
+  'forest green': '#1E8449',
   // ── General colors ──
+
   'white': '#ffffff',
   'peach': '#F8CBAD',
   'lavender': '#CC99FF',

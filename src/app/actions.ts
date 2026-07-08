@@ -1732,7 +1732,11 @@ export async function generateAiSchedule(
             let errMsg = `HTTP ${res.status}`;
             try {
                 const errBody = await res.json();
-                errMsg = errBody?.error?.message ?? errBody?.message ?? JSON.stringify(errBody);
+                // OpenRouter nests errors differently
+                errMsg = errBody?.error?.message
+                      ?? errBody?.error?.code
+                      ?? errBody?.message
+                      ?? JSON.stringify(errBody).slice(0, 300);
             } catch {
                 errMsg = await res.text().catch(() => errMsg);
             }

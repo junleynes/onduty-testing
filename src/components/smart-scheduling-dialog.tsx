@@ -165,59 +165,57 @@ export function SmartSchedulingDialog({
     setSuggestions(null);
     setWarnings([]);
 
+    // Compact employee context — no pretty-printing
     const empContext = eligibleEmployees.map(emp => ({
       id: emp.id,
       name: `${emp.firstName} ${emp.lastName}`,
       position: emp.position,
-      isProbationary: isProbationary(emp),
-      maxWeeklyHours: isProbationary(emp) ? 48 : 40,
+      proby: isProbationary(emp),
+      maxHrs: isProbationary(emp) ? 48 : 40,
       pattern: buildPatternSummary(emp, pastShifts),
-      defaultTemplateId: emp.defaultShiftTemplateId ?? null,
     }));
 
-    const templateContext = shiftTemplates.map(t => ({
-      id: t.id,
-      label: t.label,
-      startTime: t.startTime,
-      endTime: t.endTime,
-      color: t.color,
-    }));
+    // Deduplicate templates by label+startTime+endTime to reduce tokens
+    const seen = new Set<string>();
+    const templateContext = shiftTemplates
+      .filter(t => {
+        const key = `${t.label}|${t.startTime}|${t.endTime}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(t => ({ id: t.id, label: t.label, start: t.startTime, end: t.endTime }));
 
     const rangeLabel = `${format(rangeStart, 'MMM d')} – ${format(rangeEnd, 'MMM d, yyyy')}`;
-    const daysStr = targetDays.map(d => format(d, 'yyyy-MM-dd (EEEE)')).join(', ');
 
-    const prompt = `You are a workforce scheduling assistant. Generate a schedule for ${rangeLabel}.
+    // For ranges > 2 weeks, just specify the date range — don't list every day
+    // (listing 90 dates blows up the token count)
+    const daysNote = targetDays.length <= 14
+      ? `Dates: ${targetDays.map(d => format(d, 'yyyy-MM-dd (EEE)')).join(', ')}`
+      : `Date range: ${format(rangeStart, 'yyyy-MM-dd')} to ${format(rangeEnd, 'yyyy-MM-dd')} (${targetDays.length} days). Generate for ALL days in this range, respecting each employee's typical rest days.`;
 
-DAYS TO SCHEDULE: ${daysStr}
+    const prompt = `You are a workforce scheduler. Generate a schedule for ${rangeLabel}.
 
-CONSTRAINTS (strictly enforce):
-- Max 40 hours/week per regular employee
-- Max 48 hours/week for probationary employees (< 6 months tenure)
-- Max 14 hours per single shift
-- Respect each employee's typical shift pattern from their history
-- Do not schedule on historical rest days unless coverage requires it
+${daysNote}
 
-EMPLOYEES:
-${JSON.stringify(empContext, null, 2)}
+RULES: Max 40h/week regular, 48h/week probationary, 14h max per shift. Follow each employee's historical pattern. Skip rest days unless needed.
 
-AVAILABLE SHIFT TEMPLATES:
-${JSON.stringify(templateContext, null, 2)}
+EMPLOYEES: ${JSON.stringify(empContext)}
 
-INSTRUCTIONS:
-1. Analyze each employee's pattern to determine their typical days/times
-2. Generate a realistic schedule matching their patterns
-3. Assign the closest matching template by start/end time and include its id as templateId
-4. Flag any constraint violation with a "warning" field on that shift
-5. Include only working shifts (no OFF days needed)
+TEMPLATES: ${JSON.stringify(templateContext)}
 
-Respond ONLY with a valid JSON array, no markdown, no explanation:
-[{"employeeId":"...","employeeName":"...","date":"yyyy-MM-dd","startTime":"HH:MM","endTime":"HH:MM","label":"...","templateId":"...or null","color":"...or null","warning":"...or null"}]`;
+Reply ONLY with a JSON array, no markdown:
+[{"employeeId":"","employeeName":"","date":"yyyy-MM-dd","startTime":"HH:MM","endTime":"HH:MM","label":"","templateId":"or null","color":"or null","warning":"or null"}]`;
 
     const result = await generateAiSchedule(prompt, effectiveConfig);
     setIsGenerating(false);
 
     if (!result.success || !result.result) {
-      toast({ variant: 'destructive', title: 'Generation Failed', description: result.error ?? 'Unknown error', duration: 10000 });
+      let desc = result.error ?? 'Unknown error';
+      if (desc.includes('429')) {
+        desc += '\n\nThis usually means: (1) rate limit hit — wait a moment and retry, (2) prompt too large — try a shorter range like 1 or 2 weeks, or (3) insufficient API credits on your account.';
+      }
+      toast({ variant: 'destructive', title: 'Generation Failed', description: desc, duration: 15000 });
       return;
     }
 

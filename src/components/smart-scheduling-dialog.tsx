@@ -12,8 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   Loader2, Sparkles, CheckCircle2, AlertTriangle, User, Clock,
   CalendarRange, ChevronDown, ChevronRight, Info,
-} from 'lucide-react';
-import type { Shift, Employee } from '@/types';
+} from 'lucide-react';import type { Shift, Employee } from '@/types';
 import type { ShiftTemplate } from './shift-editor';
 import type { AiConfig } from '@/app/actions';
 import { generateAiSchedule } from '@/app/actions';
@@ -145,14 +144,23 @@ export function SmartSchedulingDialog({
   const [expandedEmp, setExpandedEmp] = useState<Set<string>>(new Set());
   const [checkedShifts, setCheckedShifts] = useState<Set<number>>(new Set());
 
+  // ── Toggleable constraints ──
+  const [constraintWeeklyHours, setConstraintWeeklyHours] = useState(true);
+  const [constraintProbyHours, setConstraintProbyHours] = useState(true);
+  const [constraintMaxShift, setConstraintMaxShift] = useState(true);
+  const [constraintPattern, setConstraintPattern] = useState(true);
+  const [constraintExcludeManagers, setConstraintExcludeManagers] = useState(true);
+
   const pastShifts = useMemo(() => {
     const from = subMonths(today, 1);
     return shifts.filter(s => new Date(s.date) >= from && new Date(s.date) < today);
   }, [shifts]);
 
   const eligibleEmployees = useMemo(() =>
-    employees.filter(e => e.employeeClassification !== 'Managerial'),
-    [employees]
+    constraintExcludeManagers
+      ? employees.filter(e => e.employeeClassification !== 'Managerial')
+      : employees,
+    [employees, constraintExcludeManagers]
   );
 
   const handleGenerate = async () => {
@@ -165,14 +173,16 @@ export function SmartSchedulingDialog({
     setSuggestions(null);
     setWarnings([]);
 
-    // Compact employee context — no pretty-printing
+    // Compact employee context — only include pattern if constraint is on
     const empContext = eligibleEmployees.map(emp => ({
       id: emp.id,
       name: `${emp.firstName} ${emp.lastName}`,
       position: emp.position,
       proby: isProbationary(emp),
-      maxHrs: isProbationary(emp) ? 48 : 40,
-      pattern: buildPatternSummary(emp, pastShifts),
+      maxHrs: constraintProbyHours && isProbationary(emp) ? 48
+            : constraintWeeklyHours ? 40
+            : null,
+      pattern: constraintPattern ? buildPatternSummary(emp, pastShifts) : undefined,
     }));
 
     // Deduplicate templates by label+startTime+endTime to reduce tokens
@@ -194,11 +204,19 @@ export function SmartSchedulingDialog({
       ? `Dates: ${targetDays.map(d => format(d, 'yyyy-MM-dd (EEE)')).join(', ')}`
       : `Date range: ${format(rangeStart, 'yyyy-MM-dd')} to ${format(rangeEnd, 'yyyy-MM-dd')} (${targetDays.length} days). Generate for ALL days in this range, respecting each employee's typical rest days.`;
 
+    const activeRules = [
+      constraintWeeklyHours && 'Max 40h/week per regular employee',
+      constraintProbyHours  && 'Max 48h/week for probationary employees',
+      constraintMaxShift    && 'Max 14h per single shift',
+      constraintPattern     && 'Follow each employee\'s historical shift pattern and rest days',
+      constraintExcludeManagers && 'Do not schedule managerial staff',
+    ].filter(Boolean).join('. ');
+
     const prompt = `You are a workforce scheduler. Generate a schedule for ${rangeLabel}.
 
 ${daysNote}
 
-RULES: Max 40h/week regular, 48h/week probationary, 14h max per shift. Follow each employee's historical pattern. Skip rest days unless needed.
+RULES: ${activeRules || 'No constraints — schedule freely.'}
 
 EMPLOYEES: ${JSON.stringify(empContext)}
 
@@ -229,7 +247,7 @@ Reply ONLY with a JSON array, no markdown:
       return;
     }
 
-    // Constraint validation
+    // Constraint validation (only check what's enabled)
     const constraintWarnings: ConstraintWarning[] = [];
     const grouped: Record<string, SuggestedShift[]> = {};
     for (const s of parsed) {
@@ -241,15 +259,23 @@ Reply ONLY with a JSON array, no markdown:
       const emp = eligibleEmployees.find(e => e.id === empId);
       if (!emp) continue;
       const name = `${emp.firstName} ${emp.lastName}`;
-      const maxHours = isProbationary(emp) ? 48 : 40;
-      const total = empShifts.reduce((sum, s) => sum + shiftDurationHours(s.startTime, s.endTime), 0);
-      if (total > maxHours) {
-        constraintWarnings.push({ employeeId: empId, employeeName: name, message: `${total.toFixed(1)}h — exceeds ${maxHours}h weekly limit`, type: 'hours' });
+
+      if (constraintWeeklyHours || constraintProbyHours) {
+        const maxHours = (constraintProbyHours && isProbationary(emp)) ? 48
+                       : constraintWeeklyHours ? 40
+                       : Infinity;
+        const total = empShifts.reduce((sum, s) => sum + shiftDurationHours(s.startTime, s.endTime), 0);
+        if (total > maxHours) {
+          constraintWarnings.push({ employeeId: empId, employeeName: name, message: `${total.toFixed(1)}h — exceeds ${maxHours}h weekly limit`, type: 'hours' });
+        }
       }
-      for (const s of empShifts) {
-        const dur = shiftDurationHours(s.startTime, s.endTime);
-        if (dur > 14) {
-          constraintWarnings.push({ employeeId: empId, employeeName: name, message: `${format(parseISO(s.date), 'EEE MMM d')}: ${dur.toFixed(1)}h shift exceeds 14h`, type: 'duration' });
+
+      if (constraintMaxShift) {
+        for (const s of empShifts) {
+          const dur = shiftDurationHours(s.startTime, s.endTime);
+          if (dur > 14) {
+            constraintWarnings.push({ employeeId: empId, employeeName: name, message: `${format(parseISO(s.date), 'EEE MMM d')}: ${dur.toFixed(1)}h shift exceeds 14h`, type: 'duration' });
+          }
         }
       }
     }
@@ -362,15 +388,29 @@ Reply ONLY with a JSON array, no markdown:
             </p>
           </div>
 
-          {/* Constraint summary */}
-          <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+          {/* Constraints */}
+          <div className="rounded-md border bg-muted/30 p-3 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Applied Constraints</p>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="gap-1 text-xs"><Clock className="h-3 w-3" />40h/week (regular)</Badge>
-              <Badge variant="outline" className="gap-1 text-xs"><Clock className="h-3 w-3" />48h/week (probationary)</Badge>
-              <Badge variant="outline" className="gap-1 text-xs"><Clock className="h-3 w-3" />14h max per shift</Badge>
-              <Badge variant="outline" className="gap-1 text-xs"><Info className="h-3 w-3" />1 month pattern analysis</Badge>
-              <Badge variant="outline" className="gap-1 text-xs"><User className="h-3 w-3" />Excludes managers</Badge>
+            <div className="grid grid-cols-1 gap-1.5">
+              {[
+                { id: 'weekly-hours', label: '40h/week max (regular)', icon: <Clock className="h-3 w-3" />, state: constraintWeeklyHours, set: setConstraintWeeklyHours },
+                { id: 'proby-hours',  label: '48h/week max (probationary)', icon: <Clock className="h-3 w-3" />, state: constraintProbyHours, set: setConstraintProbyHours },
+                { id: 'max-shift',    label: '14h max per shift', icon: <Clock className="h-3 w-3" />, state: constraintMaxShift, set: setConstraintMaxShift },
+                { id: 'pattern',      label: 'Follow 1-month shift pattern', icon: <Info className="h-3 w-3" />, state: constraintPattern, set: setConstraintPattern },
+                { id: 'excl-mgr',     label: 'Exclude managers', icon: <User className="h-3 w-3" />, state: constraintExcludeManagers, set: setConstraintExcludeManagers },
+              ].map(c => (
+                <label key={c.id} className="flex items-center gap-2 cursor-pointer text-xs">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border"
+                    checked={c.state}
+                    onChange={e => c.set(e.target.checked)}
+                  />
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    {c.icon}{c.label}
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 

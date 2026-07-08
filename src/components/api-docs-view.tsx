@@ -215,7 +215,7 @@ export default function ApiDocsView() {
     const [newlyCreated, setNewlyCreated] = useState<ApiKeyRecord | null>(null);
 
     // AI Config state
-    const [aiConfig, setAiConfig] = useState<AiConfig>({ provider: 'anthropic', enabled: false });
+    const [aiConfig, setAiConfig] = useState<AiConfig>({ provider: 'openrouter', enabled: false });
     const [aiConfigLoaded, setAiConfigLoaded] = useState(false);
     const [isLoadingAi, setIsLoadingAi] = useState(false);
     const [isSavingAi, setIsSavingAi] = useState(false);
@@ -238,7 +238,14 @@ export default function ApiDocsView() {
         const res = await getAiConfig();
         setIsLoadingAi(false);
         if (res.success && res.config) {
-            setAiConfig(res.config);
+            const cfg = res.config;
+            // Auto-fill base URL if not stored
+            if (!cfg.baseUrl) {
+                cfg.baseUrl = cfg.provider === 'anthropic'  ? 'https://api.anthropic.com'
+                            : cfg.provider === 'openrouter' ? 'https://openrouter.ai/api/v1'
+                            :                                 'http://localhost:11434';
+            }
+            setAiConfig(cfg);
             setAiConfigLoaded(true);
         } else {
             toast({ variant: 'destructive', title: 'Failed to load AI config', description: res.error });
@@ -329,7 +336,14 @@ export default function ApiDocsView() {
                                 <label className="text-sm font-medium">Provider</label>
                                 <Select
                                     value={aiConfig.provider}
-                                    onValueChange={v => setAiConfig(c => ({ ...c, provider: v as AiProvider, baseUrl: undefined, model: undefined }))}
+                                    onValueChange={v => setAiConfig(c => ({
+                                        ...c,
+                                        provider: v as AiProvider,
+                                        model: undefined,
+                                        baseUrl: v === 'anthropic' ? 'https://api.anthropic.com'
+                                               : v === 'openrouter' ? 'https://openrouter.ai/api/v1'
+                                               : 'http://localhost:11434',
+                                    }))}
                                 >
                                     <SelectTrigger className="w-52">
                                         <SelectValue />

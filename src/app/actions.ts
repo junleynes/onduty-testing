@@ -1678,3 +1678,85 @@ export async function auditLeaveSubmitted(type: string, employeeName: string, le
 export async function auditLeaveStatusChanged(leaveId: string, employeeName: string, status: string): Promise<void> {
     await writeAuditLog({ action: 'leave.status_change', targetType: 'leave', targetId: leaveId, targetName: employeeName, detail: `Status → ${status}` });
 }
+
+// ── AI Schedule Generation (server-side to avoid CORS) ───────────────────────
+
+export async function generateAiSchedule(
+    prompt: string,
+    config: AiConfig,
+): Promise<{ success: boolean; result?: string; error?: string }> {
+    try {
+        await requireManager();
+
+        const provider = config.provider ?? 'openrouter';
+        const apiKey   = config.apiKey ?? '';
+        const model    = config.model
+            ?? (provider === 'anthropic'  ? 'claude-sonnet-4-6'
+              : provider === 'openrouter' ? 'openai/gpt-4o'
+              :                            'llama3');
+
+        let url: string;
+        let headers: Record<string, string>;
+        let body: object;
+
+        if (provider === 'ollama') {
+            const base = (config.baseUrl ?? 'http://localhost:11434').replace(/\/$/, '');
+            url = `${base}/api/chat`;
+            headers = { 'Content-Type': 'application/json' };
+            body = { model, stream: false, messages: [{ role: 'user', content: prompt }] };
+        } else if (provider === 'openrouter') {
+            const base = (config.baseUrl ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
+            url = `${base}/chat/completions`;
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'HTTP-Referer': 'https://onduty.app',
+                'X-Title': 'Onduty Smart Scheduling',
+            };
+            body = { model, messages: [{ role: 'user', content: prompt }] };
+        } else {
+            // Anthropic
+            const base = (config.baseUrl ?? 'https://api.anthropic.com').replace(/\/$/, '');
+            url = `${base}/v1/messages`;
+            headers = {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+            };
+            body = { model, max_tokens: 8000, messages: [{ role: 'user', content: prompt }] };
+        }
+
+        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+
+        if (!res.ok) {
+            let errMsg = `HTTP ${res.status}`;
+            try {
+                const errBody = await res.json();
+                errMsg = errBody?.error?.message ?? errBody?.message ?? JSON.stringify(errBody);
+            } catch {
+                errMsg = await res.text().catch(() => errMsg);
+            }
+            return { success: false, error: `API error (${res.status}): ${errMsg}` };
+        }
+
+        const data = await res.json();
+
+        let raw = '';
+        if (provider === 'ollama') {
+            raw = data?.message?.content ?? data?.choices?.[0]?.message?.content ?? '';
+        } else if (provider === 'openrouter') {
+            raw = data?.choices?.[0]?.message?.content ?? '';
+        } else {
+            raw = (data.content ?? [])
+                .filter((b: { type: string }) => b.type === 'text')
+                .map((b: { text: string }) => b.text)
+                .join('');
+        }
+
+        if (!raw.trim()) return { success: false, error: 'AI returned an empty response. Check your API key and model.' };
+
+        return { success: true, result: raw };
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+}

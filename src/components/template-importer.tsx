@@ -27,27 +27,27 @@ const normalizeTime = (t: string): string => {
 const shiftColorMap: { [key: string]: string } = {
   'default': 'default',
   // ── Shift palette ──
-  'pale yellow': '#FFE599',
-  'gold': '#FFD966',
-  'sky blue': '#9FC5E8',
-  'steel blue': '#6FA8DC',
-  'royal blue': '#4A86E8',
-  'periwinkle': '#B4A7D6',
-  'sandy brown': '#F6B26B',
-  'mint green': '#D9EAD3',
+  'pale yellow': '#B8860B',
+  'gold': '#A0720A',
+  'sky blue': '#2980B9',
+  'steel blue': '#1A6FA3',
+  'royal blue': '#1447C0',
+  'periwinkle': '#5B3FA6',
+  'sandy brown': '#C05621',
+  'mint green': '#1E8449',
   // ── General colors ──
   'white': '#ffffff',
   'peach': '#F8CBAD',
   'lavender': '#CC99FF',
   'light pink': '#FF99CC',
-  'cornflower blue': '#4A86E8',
+  'cornflower blue': '#1447C0',
   'pale lavender': '#D9D2E9',
   'hot pink': '#F472B3',
   'silver': '#C0C0C0',
   'pure blue': '#0000FF',
   'orange': 'hsl(var(--chart-4))',
   'red': 'hsl(var(--chart-1))',
-  'blue': '#4A86E8',
+  'blue': '#1447C0',
   'green': 'hsl(var(--chart-2))',
   'purple': '#9b59b6',
   'pink': '#e91e63',
@@ -104,7 +104,7 @@ export function TemplateImporter({ isOpen, setIsOpen, onImport }: TemplateImport
           const newTemplates: ShiftTemplate[] = results.data.map((row: any) => {
             const rawColor = (row['Shift Color'] || '').trim().toLowerCase();
             let colorValue = shiftColorMap['default'];
-            
+
             if (rawColor.startsWith('#') || rawColor.startsWith('hsl')) {
                 colorValue = (row['Shift Color'] || '').trim();
             } else if (shiftColorMap[rawColor]) {

@@ -112,10 +112,10 @@ export async function getData() {
             { id: 'lt-vl', type: 'VL', color: '#6b7280', groupName: null },
             { id: 'lt-sl', type: 'SL', color: '#FF0000', groupName: null },
             { id: 'lt-el', type: 'EL', color: '#FF0000', groupName: null },
-            { id: 'lt-el', type: 'ML', color: '#6b7280', groupName: null },
             { id: 'lt-bl', type: 'BL', color: '#6b7280', groupName: null },
             { id: 'lt-offset', type: 'OFFSET', color: '#6b7280', groupName: null },
             { id: 'lt-pl', type: 'PL', color: '#6b7280', groupName: null },
+            { id: 'lt-ml', type: 'ML', color: '#6b7280', groupName: null },
         ];
         const insertStmt = db.prepare('INSERT OR IGNORE INTO leave_types (id, type, color, groupName) VALUES (?, ?, ?, ?)');
         defaults.forEach(d => insertStmt.run(d.id, d.type, d.color, d.groupName ?? null));
@@ -533,7 +533,15 @@ export async function saveAllData({
         // ── Leave types: full replace (group-scoped) ──────────────────────────
         db.prepare('DELETE FROM leave_types').run();
         const leaveTypeStmt = db.prepare('INSERT INTO leave_types (id, type, color, groupName) VALUES (@id, @type, @color, @groupName)');
-        for (const lt of leaveTypes) { leaveTypeStmt.run({ id: (lt as any).id || `lt-${lt.type}-${Date.now()}`, type: lt.type, color: lt.color, groupName: (lt as any).groupName ?? null }); }
+        for (let i = 0; i < leaveTypes.length; i++) {
+            const lt = leaveTypes[i] as any;
+            leaveTypeStmt.run({
+                id: lt.id || `lt-${lt.type.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${i}`,
+                type: lt.type,
+                color: lt.color,
+                groupName: lt.groupName ?? null,
+            });
+        }
 
         // ── SMTP: upsert ──────────────────────────────────────────────────────
         if (smtpSettings && smtpSettings.host) {

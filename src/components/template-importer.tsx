@@ -77,9 +77,17 @@ export function TemplateImporter({ isOpen, setIsOpen, onImport }: TemplateImport
             let colorValue = shiftColorMap['default'];
             
             if (rawColor.startsWith('#') || rawColor.startsWith('hsl')) {
+                // Color column already contains a hex/hsl value — use directly
                 colorValue = (row['Shift Color'] || '').trim();
             } else if (shiftColorMap[rawColor]) {
+                // Color name found in map
                 colorValue = shiftColorMap[rawColor];
+            } else {
+                // Name not recognised — fall back to Shift Color Hex column
+                const hexFallback = (row['Shift Color Hex'] || '').trim();
+                if (hexFallback.startsWith('#') || hexFallback.startsWith('hsl')) {
+                    colorValue = hexFallback;
+                }
             }
 
             const isUnpaidValue = (row['Is Unpaid Break'] || 'false').toLowerCase();

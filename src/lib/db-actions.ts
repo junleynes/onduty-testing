@@ -112,6 +112,7 @@ export async function getData() {
             { id: 'lt-vl', type: 'VL', color: '#6b7280', groupName: null },
             { id: 'lt-sl', type: 'SL', color: '#FF0000', groupName: null },
             { id: 'lt-el', type: 'EL', color: '#FF0000', groupName: null },
+            { id: 'lt-el', type: 'ML', color: '#6b7280', groupName: null },
             { id: 'lt-bl', type: 'BL', color: '#6b7280', groupName: null },
             { id: 'lt-offset', type: 'OFFSET', color: '#6b7280', groupName: null },
             { id: 'lt-pl', type: 'PL', color: '#6b7280', groupName: null },

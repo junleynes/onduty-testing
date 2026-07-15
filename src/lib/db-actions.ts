@@ -7,7 +7,6 @@ import { readAvatar, readSignature, ensureUploadDirs } from '@/lib/file-storage'
 import { requireAuth } from '@/lib/auth-guard';
 import type { ShiftTemplate } from '@/components/shift-editor';
 import type { LeaveTypeOption } from '@/components/leave-type-editor';
-import { writeAuditLog } from '@/app/actions';
 
 function safeParseJSON(jsonString: string | null | undefined, defaultValue: any) {
   if (!jsonString) return defaultValue;
@@ -109,12 +108,12 @@ export async function getData() {
     // Seed default leave types if empty (legacy global migration — assigned to null group)
     if (leaveTypes.length === 0) {
         const defaults: LeaveTypeOption[] = [
-            { id: 'lt-avl', type: 'AVL', color: '#14b8a6', groupName: null },
-            { id: 'lt-vl', type: 'VL', color: '#3b82f6', groupName: null },
-            { id: 'lt-sl', type: 'SL', color: '#ef4444', groupName: null },
-            { id: 'lt-el', type: 'EL', color: '#f59e0b', groupName: null },
-            { id: 'lt-bl', type: 'BL', color: '#10b981', groupName: null },
-            { id: 'lt-offset', type: 'OFFSET', color: '#8b5cf6', groupName: null },
+            { id: 'lt-avl', type: 'AVL', color: '#6b7280', groupName: null },
+            { id: 'lt-vl', type: 'VL', color: '#6b7280', groupName: null },
+            { id: 'lt-sl', type: 'SL', color: '#FF0000', groupName: null },
+            { id: 'lt-el', type: 'EL', color: '#FF0000', groupName: null },
+            { id: 'lt-bl', type: 'BL', color: '#6b7280', groupName: null },
+            { id: 'lt-offset', type: 'OFFSET', color: '#6b7280', groupName: null },
             { id: 'lt-pl', type: 'PL', color: '#6b7280', groupName: null },
         ];
         const insertStmt = db.prepare('INSERT OR IGNORE INTO leave_types (id, type, color, groupName) VALUES (?, ?, ?, ?)');
@@ -568,7 +567,6 @@ export async function saveAllData({
     db.pragma('foreign_keys = OFF');
     saveTransaction();
     db.pragma('foreign_keys = ON');
-    writeAuditLog({ action: 'data.save', detail: `shifts:${shifts.length}, leave:${leave.length}, employees:${employees.length}` }).catch(() => {});
     return { success: true };
   } catch (error) {
     db.pragma('foreign_keys = ON');

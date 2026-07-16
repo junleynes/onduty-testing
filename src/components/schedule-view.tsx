@@ -947,21 +947,23 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-auto" style={{ isolation: 'isolate' }}>
         <div className="overflow-auto">
-            <div className="grid min-w-max" style={{ gridTemplateColumns: viewMode === 'week'
-              ? `minmax(140px, 1.2fr) repeat(${displayedDays.length}, minmax(100px, 1fr))`
-              : viewMode === 'month'
-              ? `minmax(180px, 1.5fr) repeat(${Math.max(firstHalfDays.length, secondHalfDays.length)}, minmax(140px, 1fr))`
-              : `minmax(180px, 1.5fr) repeat(${displayedDays.length}, minmax(140px, 1fr))` }}>
-                {viewMode === 'month' ? (
-                    <>
-                        <div className="contents">{renderGridHeader(firstHalfDays)}{renderNotesRow(firstHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, firstHalfDays))}</div>
-                        <div className="h-8 bg-muted/20 col-span-full border-y flex items-center px-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">Second Half</div>
-                        <div className="contents">{renderGridHeader(secondHalfDays)}{renderNotesRow(secondHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, secondHalfDays))}</div>
-                    </>
-                ) : (
-                    <>{renderGridHeader(displayedDays)}{renderNotesRow(displayedDays)}{orderedEmployees.map(e => renderEmployeeRow(e, displayedDays))}</>
-                )}
-            </div>
+            {viewMode === 'month' ? (
+                <>
+                    <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${firstHalfDays.length}, minmax(140px, 1fr))` }}>
+                        {renderGridHeader(firstHalfDays)}{renderNotesRow(firstHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, firstHalfDays))}
+                    </div>
+                    <div className="h-8 bg-muted/20 border-y flex items-center px-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">Second Half</div>
+                    <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${secondHalfDays.length}, minmax(140px, 1fr))` }}>
+                        {renderGridHeader(secondHalfDays)}{renderNotesRow(secondHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, secondHalfDays))}
+                    </div>
+                </>
+            ) : (
+                <div className={cn("grid", viewMode === 'week' ? 'w-full' : 'min-w-max')} style={{ gridTemplateColumns: viewMode === 'week'
+                  ? `minmax(120px, 1.2fr) repeat(${displayedDays.length}, minmax(0, 1fr))`
+                  : `minmax(180px, 1.5fr) repeat(${displayedDays.length}, minmax(140px, 1fr))` }}>
+                    {renderGridHeader(displayedDays)}{renderNotesRow(displayedDays)}{orderedEmployees.map(e => renderEmployeeRow(e, displayedDays))}
+                </div>
+            )}
         </div>
       </CardContent>
 

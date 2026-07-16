@@ -11,7 +11,7 @@ import { Check } from 'lucide-react';
 
 
 const blockVariants = cva(
-  'w-full p-1 rounded-md text-left text-white overflow-hidden border relative',
+  'w-full rounded-md text-left text-white overflow-hidden border relative',
   {
     variants: {
       type: {
@@ -24,7 +24,7 @@ const blockVariants = cva(
         false: 'cursor-default',
       },
       context: {
-        week: '',
+        week: 'p-1',
         month: 'p-0.5',
       }
     },
@@ -122,13 +122,9 @@ export function ShiftBlock({ item, onClick, interactive, context, employee: empl
     const [h, m] = time.split(':');
     let hour = parseInt(h, 10);
     const suffix = hour >= 12 ? 'p' : 'a';
-    hour = hour % 12 || 12; // convert to 12-hour format
-    
-    if (context === 'month') {
-        if (m === '00') return `${hour}${suffix}`;
-        return `${hour}:${m}${suffix}`;
-    }
-
+    hour = hour % 12 || 12;
+    // Always drop :00 minutes in week view for compactness
+    if (m === '00') return `${hour}${suffix}`;
     return `${hour}:${m}${suffix}`;
   };
 
@@ -139,7 +135,7 @@ export function ShiftBlock({ item, onClick, interactive, context, employee: empl
   return (
     <div
       onClick={onClick}
-      className={cn(blockVariants({ type: 'shift', interactive, context }), 'p-1.5 text-center')}
+      className={cn(blockVariants({ type: 'shift', interactive, context }), 'text-center')}
       style={{ backgroundColor: backgroundColor, color: textColor, borderColor: backgroundColor === '#ffffff' ? 'hsl(var(--border))' : 'transparent' }}
     >
       {isDraft && context !== 'month' && (

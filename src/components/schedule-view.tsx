@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square, Sparkles } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -23,8 +23,6 @@ import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ScheduleImporter } from './schedule-importer';
 import { GoogleSheetSyncDialog } from './google-sheet-sync-dialog';
-import { CoverageGapDialog } from './coverage-gap-dialog';
-import { SmartSchedulingDialog } from './smart-scheduling-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { DatePicker } from './ui/date-picker';
@@ -57,10 +55,9 @@ type ScheduleViewProps = {
   leaveTypes: LeaveTypeOption[];
   monthlyEmployeeOrder: Record<string, string[]>;
   setMonthlyEmployeeOrder: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
-  aiConfig?: import('@/app/actions').AiConfig;
 }
 
-export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder, aiConfig }: ScheduleViewProps) {
+export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder }: ScheduleViewProps) {
   const isReadOnly = currentUser?.role === 'member';
   
   const visibleEmployees = useMemo(() => employees.filter(e => e.visibility?.schedule !== false), [employees]);
@@ -71,8 +68,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   const [isGoogleSheetSyncOpen, setIsGoogleSheetSyncOpen] = useState(false);
-  const [isCoverageGapOpen, setIsCoverageGapOpen] = useState(false);
-  const [isSmartSchedulingOpen, setIsSmartSchedulingOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
   const [exportFrom, setExportFrom] = useState<Date>(new Date());
@@ -493,7 +488,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         {days.map((day) => {
             const shiftsForDay = shifts.filter(shift => isSameDay(new Date(shift.date), day) && !shift.isDayOff && !shift.isHolidayOff);
             return (
-                <div key={day.toISOString()} className="sticky top-0 z-10 col-start-auto p-2 text-center font-semibold bg-card border-b border-l">
+                <div key={day.toISOString()} className="sticky top-0 z-10 col-start-auto p-1 text-center font-semibold bg-card border-b border-l">
                     <div className="text-lg whitespace-nowrap">{format(day, 'E M/d')}</div>
                     <div className="text-xs text-muted-foreground font-normal flex justify-center gap-3 mt-1">
                         <TooltipProvider>
@@ -576,7 +571,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
             <div
             key={`${employee.id}-${day.toISOString()}`}
             className={cn(
-              "group/cell col-start-auto p-1 border-b border-l min-h-[52px] space-y-1 relative transition-colors",
+              "group/cell col-start-auto border-b border-l min-h-[48px] space-y-0.5 relative transition-colors",
+              viewMode === 'week' ? 'p-0.5' : 'p-1',
               viewMode === 'month' && day.getMonth() !== currentDate.getMonth() && 'bg-muted/50',
               isSelected ? 'bg-primary/10 ring-2 ring-inset ring-primary' : 'bg-background/30',
               isSelectMode && 'cursor-pointer select-none'
@@ -891,8 +887,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                             <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setIsGoogleSheetSyncOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Sync from Google Sheets</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setExportPreset('current-view'); setExportFrom(dateRange.from); setExportTo(dateRange.to); setIsExportDialogOpen(true); }}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export to Excel</span></DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => setIsCoverageGapOpen(true)}><AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /><span>Detect Coverage Gaps</span></DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => setIsSmartSchedulingOpen(true)} disabled={!aiConfig?.enabled}><Sparkles className="mr-2 h-4 w-4 text-violet-500" /><span>Smart Scheduling{!aiConfig?.enabled ? ' (AI disabled)' : ''}</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Template Actions</DropdownMenuLabel>
@@ -953,7 +947,11 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-auto" style={{ isolation: 'isolate' }}>
         <div className="overflow-auto">
-            <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${viewMode === 'month' ? 15 : displayedDays.length}, minmax(140px, 1fr))` }}>
+            <div className="grid min-w-max" style={{ gridTemplateColumns: viewMode === 'week'
+              ? `minmax(140px, 1.2fr) repeat(${displayedDays.length}, minmax(100px, 1fr))`
+              : viewMode === 'month'
+              ? `minmax(180px, 1.5fr) repeat(${Math.max(firstHalfDays.length, secondHalfDays.length)}, minmax(140px, 1fr))`
+              : `minmax(180px, 1.5fr) repeat(${displayedDays.length}, minmax(140px, 1fr))` }}>
                 {viewMode === 'month' ? (
                     <>
                         <div className="contents">{renderGridHeader(firstHalfDays)}{renderNotesRow(firstHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, firstHalfDays))}</div>
@@ -979,7 +977,6 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         tasks={tasks}
         setTasks={setTasks}
         currentUser={currentUser}
-        currentGroup={currentUser.group ?? null}
       />
       <LeaveEditor
         isOpen={isLeaveEditorOpen}
@@ -1009,29 +1006,9 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         employees={employees}
         shiftTemplates={shiftTemplates}
         leaveTypes={leaveTypes}
-        shifts={shifts}
         onImport={(data) => {
           handleScheduleImportResult(data);
           setIsGoogleSheetSyncOpen(false);
-        }}
-      />
-
-      <CoverageGapDialog
-        isOpen={isCoverageGapOpen}
-        setIsOpen={setIsCoverageGapOpen}
-        shifts={shifts}
-        employees={employees}
-      />
-
-      <SmartSchedulingDialog
-        isOpen={isSmartSchedulingOpen}
-        setIsOpen={setIsSmartSchedulingOpen}
-        shifts={shifts}
-        employees={employees}
-        shiftTemplates={shiftTemplates}
-        aiConfig={aiConfig}
-        onAccept={(newShifts) => {
-          setShifts(prev => [...prev, ...newShifts]);
         }}
       />
 

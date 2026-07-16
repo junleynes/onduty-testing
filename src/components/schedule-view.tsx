@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { addDays, format, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, getDate, parse, isWithinInterval, startOfDay, startOfYear, endOfYear, eachMonthOfInterval, addMonths } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -22,6 +22,7 @@ import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ScheduleImporter } from './schedule-importer';
+import { GoogleSheetSyncDialog } from './google-sheet-sync-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { DatePicker } from './ui/date-picker';
@@ -66,6 +67,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
+  const [isGoogleSheetSyncOpen, setIsGoogleSheetSyncOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
   const [exportFrom, setExportFrom] = useState<Date>(new Date());
@@ -89,6 +91,24 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   
   const [weekTemplate, setWeekTemplate] = useState<Omit<Shift, 'id' | 'date'>[] | null>(null);
   const { toast } = useToast();
+
+  // ── Multi-select & clipboard ───────────────────────────────────────────
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [clipboard, setClipboard] = useState<{ offsetDays: number; employeeId: string | null; items: (Shift | Leave)[] }[] | null>(null);
+  const [anchorCell, setAnchorCell] = useState<{ employeeId: string; date: Date } | null>(null);
+  const scheduleRef = useRef<HTMLDivElement>(null);
+
+  const cellKey = (employeeId: string, date: Date) => `${employeeId}|${format(date, 'yyyy-MM-dd')}`;
+
+  const toggleSelectMode = () => {
+    setIsSelectMode(prev => !prev);
+    setSelectedCells(new Set());
+    setAnchorCell(null);
+  };
+
+  // NOTE: handleCellSelect, handleCopySelected, handlePasteSelected declared below
+  // after orderedEmployees/displayedDays useMemo values are defined.
 
   const dateRange = useMemo(() => {
     switch (viewMode) {
@@ -278,6 +298,108 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     setEditingLeave(null);
   };
   
+  // ── Multi-select handlers (declared here so displayedDays/orderedEmployees are in scope) ──
+  const handleCellSelect = useCallback((employeeId: string, date: Date, shiftEvent: React.MouseEvent) => {
+    if (!isSelectMode) return;
+    const key = cellKey(employeeId, date);
+    if (shiftEvent.shiftKey && anchorCell) {
+      const days = displayedDays.length > 0 ? displayedDays : [...firstHalfDays, ...secondHalfDays];
+      const allEmployeeIds = orderedEmployees.map(e => e.id);
+      const anchorDayIdx = days.findIndex(d => format(d, 'yyyy-MM-dd') === format(anchorCell.date, 'yyyy-MM-dd'));
+      const currDayIdx = days.findIndex(d => format(d, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
+      const anchorEmpIdx = allEmployeeIds.indexOf(anchorCell.employeeId);
+      const currEmpIdx = allEmployeeIds.indexOf(employeeId);
+      const minDay = Math.min(anchorDayIdx, currDayIdx);
+      const maxDay = Math.max(anchorDayIdx, currDayIdx);
+      const minEmp = Math.min(anchorEmpIdx, currEmpIdx);
+      const maxEmp = Math.max(anchorEmpIdx, currEmpIdx);
+      setSelectedCells(prev => {
+        const next = new Set(prev);
+        for (let ei = minEmp; ei <= maxEmp; ei++)
+          for (let di = minDay; di <= maxDay; di++)
+            next.add(cellKey(allEmployeeIds[ei], days[di]));
+        return next;
+      });
+    } else {
+      setAnchorCell({ employeeId, date });
+      setSelectedCells(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) { next.delete(key); } else { next.add(key); }
+        return next;
+      });
+    }
+  }, [isSelectMode, anchorCell, displayedDays, firstHalfDays, secondHalfDays, orderedEmployees]);
+
+  const handleCopySelected = useCallback(() => {
+    if (selectedCells.size === 0) return;
+    const allDates = Array.from(selectedCells).map(k => new Date(k.split('|')[1] + 'T00:00:00'));
+    const minTime = allDates.reduce((a, b) => a < b ? a : b).getTime();
+    const entries = Array.from(selectedCells).map(key => {
+      const [empId, dateStr] = key.split('|');
+      const cellDate = new Date(dateStr + 'T00:00:00');
+      const offsetDays = Math.round((cellDate.getTime() - minTime) / 86400000);
+      const employeeId = empId === 'unassigned' ? null : empId;
+      const cellShifts = shifts.filter(s =>
+        (s.employeeId === employeeId || (employeeId === null && s.employeeId === null)) &&
+        isSameDay(new Date(s.date), cellDate)
+      );
+      const cellLeave = leave.filter(l =>
+        l.employeeId === empId && l.startDate && isSameDay(new Date(l.startDate), cellDate)
+      );
+      return { offsetDays, employeeId, items: [...cellShifts, ...cellLeave] };
+    }).filter(e => e.items.length > 0);
+
+    if (entries.length === 0) {
+      toast({ title: 'Nothing to copy', description: 'Selected cells have no shifts or leave.', variant: 'destructive' });
+      return;
+    }
+    setClipboard(entries);
+    toast({ title: `Copied ${entries.reduce((s, e) => s + e.items.length, 0)} item(s)`, description: 'Click a cell then press Paste, or use Ctrl+V.' });
+  }, [selectedCells, shifts, leave, toast]);
+
+  const handlePasteSelected = useCallback((targetEmployeeId: string, targetDate: Date) => {
+    if (!clipboard || clipboard.length === 0 || isReadOnly) return;
+    const newShifts: Shift[] = [];
+    const newLeave: Leave[] = [];
+    clipboard.forEach(entry => {
+      const pasteDate = addDays(targetDate, entry.offsetDays);
+      entry.items.forEach(item => {
+        if ('label' in item) {
+          const exists = shifts.find(s =>
+            (s.employeeId === (targetEmployeeId === 'unassigned' ? null : targetEmployeeId)) &&
+            isSameDay(new Date(s.date), pasteDate)
+          );
+          if (!exists) newShifts.push({ ...item, id: uuidv4(), date: pasteDate, employeeId: targetEmployeeId === 'unassigned' ? null : targetEmployeeId, status: 'draft' });
+        } else {
+          const dur = item.endDate && item.startDate ? Math.round((new Date(item.endDate).getTime() - new Date(item.startDate).getTime()) / 86400000) : 0;
+          newLeave.push({ ...item, id: uuidv4(), startDate: pasteDate, endDate: addDays(pasteDate, dur), employeeId: targetEmployeeId === 'unassigned' ? item.employeeId : targetEmployeeId, status: 'draft' });
+        }
+      });
+    });
+    if (newShifts.length > 0) setShifts(prev => [...prev, ...newShifts]);
+    if (newLeave.length > 0) setLeave(prev => [...prev, ...newLeave]);
+    toast({ title: `Pasted ${newShifts.length + newLeave.length} item(s)`, description: `Starting ${format(targetDate, 'MMM d')}.` });
+    setSelectedCells(new Set());
+  }, [clipboard, shifts, leave, setShifts, setLeave, toast, isReadOnly]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!isSelectMode) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); handleCopySelected(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        if (!clipboard || selectedCells.size === 0) return;
+        const [firstKey] = Array.from(selectedCells);
+        const [empId, dateStr] = firstKey.split('|');
+        handlePasteSelected(empId, new Date(dateStr + 'T00:00:00'));
+      }
+      if (e.key === 'Escape') { setSelectedCells(new Set()); setIsSelectMode(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isSelectMode, handleCopySelected, handlePasteSelected, clipboard, selectedCells]);
+
   const handleDeleteLeave = (leaveId: string) => {
     if (isReadOnly) return;
     setLeave(leave.filter(l => l.id !== leaveId));
@@ -366,7 +488,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         {days.map((day) => {
             const shiftsForDay = shifts.filter(shift => isSameDay(new Date(shift.date), day) && !shift.isDayOff && !shift.isHolidayOff);
             return (
-                <div key={day.toISOString()} className="sticky top-0 z-10 col-start-auto p-2 text-center font-semibold bg-card border-b border-l">
+                <div key={day.toISOString()} className="sticky top-0 z-10 col-start-auto p-1 text-center font-semibold bg-card border-b border-l">
                     <div className="text-lg whitespace-nowrap">{format(day, 'E M/d')}</div>
                     <div className="text-xs text-muted-foreground font-normal flex justify-center gap-3 mt-1">
                         <TooltipProvider>
@@ -442,21 +564,63 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         </div>
         {days.map((day) => {
         const itemsForDay = getItemsForDay(day);
+        const key = cellKey(employee.id, day);
+        const isSelected = selectedCells.has(key);
+        const hasClipboard = !!clipboard && clipboard.length > 0;
         return (
             <div
             key={`${employee.id}-${day.toISOString()}`}
-            className={cn("group/cell col-start-auto p-1 border-b border-l min-h-[52px] space-y-1 bg-background/30 relative", viewMode === 'month' && day.getMonth() !== currentDate.getMonth() && 'bg-muted/50')}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleShiftDrop(e, employee.id === 'unassigned' ? null : employee.id, day)}
+            className={cn(
+              "group/cell col-start-auto border-b border-l min-h-[48px] space-y-0.5 relative transition-colors",
+              viewMode === 'week' ? 'p-0.5' : 'p-1',
+              viewMode === 'month' && day.getMonth() !== currentDate.getMonth() && 'bg-muted/50',
+              isSelected ? 'bg-primary/10 ring-2 ring-inset ring-primary' : 'bg-background/30',
+              isSelectMode && 'cursor-pointer select-none'
+            )}
+            onDragOver={(e) => { if (!isSelectMode) e.preventDefault(); }}
+            onDrop={(e) => { if (!isSelectMode) handleShiftDrop(e, employee.id === 'unassigned' ? null : employee.id, day); }}
+            onClick={(e) => { if (isSelectMode) handleCellSelect(employee.id, day, e); }}
             >
+            {/* Selected indicator */}
+            {isSelected && (
+              <div className="absolute top-0.5 right-0.5 text-primary pointer-events-none z-10">
+                <CheckSquare className="h-3.5 w-3.5" />
+              </div>
+            )}
             {itemsForDay.map((item) => (
-                <div key={item.id} draggable={!isReadOnly} onDragStart={(e) => handleShiftDragStart(e, item)} className="h-full">
-                    <ShiftBlock item={item} onClick={() => !isReadOnly && handleEditItemClick(item)} context="week" />
+                <div key={item.id} draggable={!isReadOnly && !isSelectMode} onDragStart={(e) => handleShiftDragStart(e, item)} className="h-full">
+                    <ShiftBlock item={item} onClick={() => { if (!isReadOnly && !isSelectMode) handleEditItemClick(item); }} context="week" />
                 </div>
             ))}
-            {itemsForDay.length === 0 && !isReadOnly && (
-                <Button variant="ghost" className="absolute inset-0 w-full h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity" onClick={() => handleEmptyCellClick(employee.id === 'unassigned' ? null : employee.id, day)}>
-                    <PlusCircle className="h-5 w-5 text-muted-foreground" />
+            {/* Normal mode: add button on empty cell */}
+            {itemsForDay.length === 0 && !isReadOnly && !isSelectMode && (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="absolute inset-0 w-full h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                            <PlusCircle className="h-5 w-5 text-muted-foreground" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="center" side="bottom" className="w-48">
+                        <DropdownMenuItem onClick={() => handleEmptyCellClick(employee.id === 'unassigned' ? null : employee.id, day)}>
+                            <Clock className="mr-2 h-4 w-4" />
+                            Add New Shift
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                            if (employee.id === 'unassigned') return;
+                            setEditingLeave({ employeeId: employee.id, type: 'VL', isAllDay: true, startDate: day, endDate: day });
+                            setIsLeaveEditorOpen(true);
+                        }}>
+                            <Palmtree className="mr-2 h-4 w-4" />
+                            Add New Time Off
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )}
+            {/* Select mode: paste button when clipboard has data and cell not selected */}
+            {!isReadOnly && isSelectMode && hasClipboard && !isSelected && (
+                <Button variant="ghost" className="absolute inset-0 w-full h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity"
+                  onClick={(e) => { e.stopPropagation(); handlePasteSelected(employee.id, day); }}>
+                    <ClipboardPaste className="h-4 w-4 text-primary" />
                 </Button>
             )}
             </div>
@@ -542,6 +706,33 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
     toast({ title: "Template Loaded" });
   };
 
+  const handleScheduleImportResult = (data: {
+    shifts: Shift[],
+    leave: Leave[],
+    monthlyOrders: Record<string, string[]>,
+    overwrittenCells: { employeeId: string, date: Date }[],
+    monthKeys: string[],
+  }) => {
+    const { shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells } = data;
+
+    const cellsToOverwrite = new Set(
+      overwrittenCells.map(cell => `${cell.employeeId}-${format(cell.date, 'yyyy-MM-dd')}`)
+    );
+
+    setShifts(prev => [
+      ...prev.filter(s => !s.employeeId || !cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)),
+      ...importedShifts
+    ]);
+
+    setLeave(prev => [
+      ...prev.filter(l => !l.employeeId || !cellsToOverwrite.has(`${l.employeeId}-${format(new Date(l.startDate), 'yyyy-MM-dd')}`)),
+      ...importedLeave
+    ]);
+
+    setMonthlyEmployeeOrder(prev => ({ ...prev, ...monthlyOrders }));
+    toast({ title: "Import Successful" });
+  };
+
   return (
     <Card className="h-full flex flex-col">
        <CardHeader>
@@ -551,7 +742,117 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                 <CardDescription>Drag and drop shifts, manage time off, and publish for your team.</CardDescription>
             </div>
              {!isReadOnly && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+                {/* ── Multi-select toolbar ── */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={isSelectMode ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={toggleSelectMode}
+                      >
+                        {isSelectMode ? <CheckSquare className="mr-2 h-4 w-4" /> : <Square className="mr-2 h-4 w-4" />}
+                        {isSelectMode ? 'Selecting' : 'Select'}
+                        {isSelectMode && selectedCells.size > 0 && ` (${selectedCells.size})`}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Toggle multi-select mode. Click cells to select, Shift+click for range.</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {isSelectMode && (
+                  <>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            const days = displayedDays.length > 0 ? displayedDays : [...firstHalfDays, ...secondHalfDays];
+                            const allKeys = new Set<string>();
+                            orderedEmployees.forEach(e => days.forEach(d => allKeys.add(cellKey(e.id, d))));
+                            setSelectedCells(allKeys);
+                          }}>
+                            <CheckSquare className="mr-2 h-4 w-4" />All
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Select all cells in current view</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="outline" onClick={handleCopySelected} disabled={selectedCells.size === 0}>
+                            <Clipboard className="mr-2 h-4 w-4" />Copy{clipboard ? ' ✓' : ''}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Copy selected cells (Ctrl+C)</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    {clipboard && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="sm" variant="outline" onClick={() => {
+                              if (selectedCells.size === 0) { toast({ title: 'Select a target cell first', variant: 'destructive' }); return; }
+                              const [firstKey] = Array.from(selectedCells);
+                              const [empId, dateStr] = firstKey.split('|');
+                              handlePasteSelected(empId, new Date(dateStr + 'T00:00:00'));
+                            }}>
+                              <ClipboardPaste className="mr-2 h-4 w-4" />Paste
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Paste at selected cell (Ctrl+V). Hover any cell for quick paste.</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" onClick={() => setSelectedCells(new Set())} disabled={selectedCells.size === 0}>
+                            <CircleSlash className="mr-2 h-4 w-4" />Clear
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Clear selection (Esc)</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+                            disabled={selectedCells.size === 0}
+                            onClick={() => {
+                              const toDeleteShiftIds = new Set<string>();
+                              const toDeleteLeaveIds = new Set<string>();
+                              selectedCells.forEach(key => {
+                                const [empId, dateStr] = key.split('|');
+                                const cellDate = new Date(dateStr + 'T00:00:00');
+                                shifts.forEach(s => {
+                                  if ((s.employeeId === empId || (empId === 'unassigned' && s.employeeId === null)) && isSameDay(new Date(s.date), cellDate))
+                                    toDeleteShiftIds.add(s.id);
+                                });
+                                leave.forEach(l => {
+                                  if (l.employeeId === empId && l.startDate && isSameDay(new Date(l.startDate), cellDate))
+                                    toDeleteLeaveIds.add(l.id);
+                                });
+                              });
+                              setShifts(prev => prev.filter(s => !toDeleteShiftIds.has(s.id)));
+                              setLeave(prev => prev.filter(l => !toDeleteLeaveIds.has(l.id)));
+                              const total = toDeleteShiftIds.size + toDeleteLeaveIds.size;
+                              toast({ title: `Deleted ${total} item(s)` });
+                              setSelectedCells(new Set());
+                            }}>
+                            <Trash2 className="mr-2 h-4 w-4" />Delete
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete all shifts/leave in selected cells</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </>
+                )}
+
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button>
@@ -584,6 +885,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         <DropdownMenuLabel>Data Management</DropdownMenuLabel>
                         <DropdownMenuGroup>
                             <DropdownMenuItem onClick={() => setIsScheduleImporterOpen(true)}><Upload className="mr-2 h-4 w-4" /><span>Import Schedule</span></DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsGoogleSheetSyncOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Sync from Google Sheets</span></DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setExportPreset('current-view'); setExportFrom(dateRange.from); setExportTo(dateRange.to); setIsExportDialogOpen(true); }}><FileSpreadsheet className="mr-2 h-4 w-4" /><span>Export to Excel</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
@@ -645,17 +947,31 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-auto" style={{ isolation: 'isolate' }}>
         <div className="overflow-auto">
-            <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${viewMode === 'month' ? 15 : displayedDays.length}, minmax(140px, 1fr))` }}>
-                {viewMode === 'month' ? (
-                    <>
-                        <div className="contents">{renderGridHeader(firstHalfDays)}{renderNotesRow(firstHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, firstHalfDays))}</div>
-                        <div className="h-8 bg-muted/20 col-span-full border-y flex items-center px-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">Second Half</div>
-                        <div className="contents">{renderGridHeader(secondHalfDays)}{renderNotesRow(secondHalfDays)}{orderedEmployees.map(e => renderEmployeeRow(e, secondHalfDays))}</div>
-                    </>
-                ) : (
-                    <>{renderGridHeader(displayedDays)}{renderNotesRow(displayedDays)}{orderedEmployees.map(e => renderEmployeeRow(e, displayedDays))}</>
-                )}
-            </div>
+            {viewMode === 'month' ? (
+              /* Month view: two separate grids so each half has its own exact column count */
+              <>
+                <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${firstHalfDays.length}, minmax(140px, 1fr))` }}>
+                  {renderGridHeader(firstHalfDays)}
+                  {renderNotesRow(firstHalfDays)}
+                  {orderedEmployees.map(e => renderEmployeeRow(e, firstHalfDays))}
+                </div>
+                <div className="h-8 bg-muted/20 border-y flex items-center px-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">Second Half</div>
+                <div className="grid min-w-max" style={{ gridTemplateColumns: `minmax(180px, 1.5fr) repeat(${secondHalfDays.length}, minmax(140px, 1fr))` }}>
+                  {renderGridHeader(secondHalfDays)}
+                  {renderNotesRow(secondHalfDays)}
+                  {orderedEmployees.map(e => renderEmployeeRow(e, secondHalfDays))}
+                </div>
+              </>
+            ) : (
+              /* Week / other views: no min-w-max so 1fr columns fill the viewport */
+              <div className="grid w-full" style={{ gridTemplateColumns: viewMode === 'week'
+                ? `160px repeat(${displayedDays.length}, 1fr)`
+                : `minmax(180px, 1.5fr) repeat(${displayedDays.length}, minmax(140px, 1fr))` }}>
+                {renderGridHeader(displayedDays)}
+                {renderNotesRow(displayedDays)}
+                {orderedEmployees.map(e => renderEmployeeRow(e, displayedDays))}
+              </div>
+            )}
         </div>
       </CardContent>
 
@@ -689,25 +1005,20 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
         shiftTemplates={shiftTemplates}
         leaveTypes={leaveTypes}
         onImport={(data) => {
-          const { shifts: importedShifts, leave: importedLeave, monthlyOrders, overwrittenCells } = data;
-          
-          const cellsToOverwrite = new Set(
-            overwrittenCells.map(cell => `${cell.employeeId}-${format(cell.date, 'yyyy-MM-dd')}`)
-          );
-
-          setShifts(prev => [
-            ...prev.filter(s => !s.employeeId || !cellsToOverwrite.has(`${s.employeeId}-${format(new Date(s.date), 'yyyy-MM-dd')}`)),
-            ...importedShifts
-          ]);
-
-          setLeave(prev => [
-            ...prev.filter(l => !l.employeeId || !cellsToOverwrite.has(`${l.employeeId}-${format(new Date(l.startDate), 'yyyy-MM-dd')}`)),
-            ...importedLeave
-          ]);
-
-          setMonthlyEmployeeOrder(prev => ({ ...prev, ...monthlyOrders }));
+          handleScheduleImportResult(data);
           setIsScheduleImporterOpen(false);
-          toast({ title: "Import Successful" });
+        }}
+      />
+
+      <GoogleSheetSyncDialog
+        isOpen={isGoogleSheetSyncOpen}
+        setIsOpen={setIsGoogleSheetSyncOpen}
+        employees={employees}
+        shiftTemplates={shiftTemplates}
+        leaveTypes={leaveTypes}
+        onImport={(data) => {
+          handleScheduleImportResult(data);
+          setIsGoogleSheetSyncOpen(false);
         }}
       />
 
@@ -866,28 +1177,24 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                         const headerRow = worksheet.getRow(currentRow);
                         headerRow.getCell(1).value = 'Employee';
                         headerRow.getCell(1).style = headerStyle;
-                        headerRow.getCell(2).value = 'Department';
-                        headerRow.getCell(2).style = headerStyle;
                         days.forEach((day, idx) => {
-                            const cell = headerRow.getCell(idx + 3);
-                            cell.value = format(day, 'EEE\nMM/dd');
+                            const cell = headerRow.getCell(idx + 2);
+                            cell.value = format(day, 'MM/dd/yyyy');
                             cell.style = headerStyle;
                         });
                         headerRow.height = 30;
                         currentRow++;
 
-                        // Employee rows
-                        orderedEmployees.forEach(emp => {
+                        // Employee rows — skip Unassigned Shifts
+                        orderedEmployees.filter(emp => emp.id !== 'unassigned').forEach(emp => {
                             const row = worksheet.getRow(currentRow);
-                            row.getCell(1).value = getFullName(emp) || 'Unassigned';
+                            row.getCell(1).value = getFullName(emp) || emp.firstName;
                             row.getCell(1).style = nameStyle;
-                            row.getCell(2).value = (emp as any).department || (emp as any).group || '';
-                            row.getCell(2).style = { ...nameStyle, font: { ...nameStyle.font, bold: false } };
                             row.height = 18;
 
                             days.forEach((day, idx) => {
                                 const shiftOnDay = shifts.find(s =>
-                                    (s.employeeId === emp.id || (emp.id === 'unassigned' && !s.employeeId)) &&
+                                    s.employeeId === emp.id &&
                                     isSameDay(new Date(s.date), day)
                                 );
                                 const leaveOnDay = leave.find(l => {
@@ -900,18 +1207,30 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                                 let cellColor = '';
                                 if (leaveOnDay) {
                                     cellValue = leaveOnDay.type;
-                                    cellColor = (leaveOnDay.color || '#f59e0b').replace('#', 'FF');
+                                    // Use actual leave type color
+                                    const rawColor = (leaveOnDay.color || '#f59e0b').replace('#', '');
+                                    cellColor = rawColor.length === 6 ? 'FF' + rawColor : rawColor;
                                 } else if (shiftOnDay) {
                                     if (shiftOnDay.isDayOff) { cellValue = 'OFF'; cellColor = 'FFE2E8F0'; }
                                     else if (shiftOnDay.isHolidayOff) { cellValue = 'HOL'; cellColor = 'FFFDE68A'; }
-                                    else { cellValue = `${shiftOnDay.startTime}-${shiftOnDay.endTime}`; cellColor = (shiftOnDay.color || '').replace('#', 'FF') || 'FFDBEAFE'; }
+                                    else {
+                                        cellValue = shiftOnDay.label || `${shiftOnDay.startTime}-${shiftOnDay.endTime}`;
+                                        // Prefer shift.color, fall back to matching template color
+                                        let gridColor = shiftOnDay.color;
+                                        if (!gridColor && shiftOnDay.label) {
+                                            const tpl = shiftTemplates.find(t => t.label === shiftOnDay.label || t.name === shiftOnDay.label);
+                                            gridColor = tpl?.color;
+                                        }
+                                        const rawColor = (gridColor || '#DBEAFE').replace('#', '');
+                                        cellColor = rawColor.length === 6 ? 'FF' + rawColor : rawColor;
+                                    }
                                 }
 
-                                const cell = row.getCell(idx + 3);
+                                const cell = row.getCell(idx + 2);
                                 cell.value = cellValue;
                                 cell.style = {
                                     alignment: { vertical: 'middle', horizontal: 'center' },
-                                    fill: cellColor ? { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor.startsWith('FF') ? cellColor : 'FF' + cellColor } } : undefined,
+                                    fill: cellColor ? { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor } } : undefined,
                                     border: {
                                         top: { style: 'hair', color: { argb: 'FFCBD5E1' } },
                                         bottom: { style: 'hair', color: { argb: 'FFCBD5E1' } },
@@ -925,15 +1244,14 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
 
                         // Separator row
                         const sepRow = worksheet.getRow(currentRow);
-                        for (let c = 1; c <= days.length + 2; c++) sepRow.getCell(c).style = separatorStyle;
+                        for (let c = 1; c <= days.length + 1; c++) sepRow.getCell(c).style = separatorStyle;
                         sepRow.height = 6;
                         currentRow++;
                     }
 
                     // Column widths
                     worksheet.getColumn(1).width = 24;
-                    worksheet.getColumn(2).width = 18; // Department
-                    for (let c = 3; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 2 : 21); c++) {
+                    for (let c = 2; c <= (periods[0] ? eachDayOfInterval(periods[0]).length + 1 : 20); c++) {
                         worksheet.getColumn(c).width = 13;
                     }
 

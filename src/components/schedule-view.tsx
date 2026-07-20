@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Employee, Shift, Leave, Notification, Note, Holiday, Task, SmtpSettings } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
-import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square } from 'lucide-react';
+import { PlusCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Copy, CircleSlash, UserX, Download, Settings, Save, Send, ChevronsUpDown, Users, Clock, Briefcase, GripVertical, Trash2, FileSpreadsheet, Settings2, Upload, AlertTriangle, Palmtree, Clipboard, ClipboardPaste, CheckSquare, Square, Sparkles, Search } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -23,6 +23,9 @@ import { saveAs } from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
 import { ScheduleImporter } from './schedule-importer';
 import { GoogleSheetSyncDialog } from './google-sheet-sync-dialog';
+import { SmartSchedulingDialog } from './smart-scheduling-dialog';
+import { CoverageGapDialog } from './coverage-gap-dialog';
+import type { AiConfig } from '@/app/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { DatePicker } from './ui/date-picker';
@@ -55,9 +58,10 @@ type ScheduleViewProps = {
   leaveTypes: LeaveTypeOption[];
   monthlyEmployeeOrder: Record<string, string[]>;
   setMonthlyEmployeeOrder: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
+  aiConfig?: AiConfig;
 }
 
-export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder }: ScheduleViewProps) {
+export default function ScheduleView({ employees, shifts, setShifts, leave, setLeave, notes, holidays, tasks, setTasks, currentUser, onPublish, addNotification, onViewNote, onEditNote, onManageHolidays, shiftTemplates, setShiftTemplates, leaveTypes, monthlyEmployeeOrder, setMonthlyEmployeeOrder, aiConfig }: ScheduleViewProps) {
   const isReadOnly = currentUser?.role === 'member';
   
   const visibleEmployees = useMemo(() => employees.filter(e => e.visibility?.schedule !== false), [employees]);
@@ -68,6 +72,8 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
   const [editingShift, setEditingShift] = useState<Shift | Partial<Shift> | null>(null);
   const [isScheduleImporterOpen, setIsScheduleImporterOpen] = useState(false);
   const [isGoogleSheetSyncOpen, setIsGoogleSheetSyncOpen] = useState(false);
+  const [isSmartSchedulingOpen, setIsSmartSchedulingOpen] = useState(false);
+  const [isCoverageGapOpen, setIsCoverageGapOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current-view' | 'this-week' | 'this-month' | 'custom'>('current-view');
   const [exportFrom, setExportFrom] = useState<Date>(new Date());
@@ -896,6 +902,12 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
                             <DropdownMenuItem onClick={handleLoadTemplate} disabled={!weekTemplate || viewMode !== 'week'}><Upload className="mr-2 h-4 w-4" /><span>Load Template</span></DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Smart Tools</DropdownMenuLabel>
+                        <DropdownMenuGroup>
+                            <DropdownMenuItem onClick={() => setIsSmartSchedulingOpen(true)}><Sparkles className="mr-2 h-4 w-4" /><span>Smart Scheduling</span></DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsCoverageGapOpen(true)}><Search className="mr-2 h-4 w-4" /><span>Gap Detector</span></DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
                         <DropdownMenuLabel>Settings</DropdownMenuLabel>
                          <DropdownMenuGroup>
                             <DropdownMenuItem onClick={onManageHolidays}><Settings className="mr-2 h-4 w-4" /><span>Manage Holidays</span></DropdownMenuItem>
@@ -945,7 +957,7 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
           </div>
         </div>
       </CardHeader>
-    <CardContent className="flex-1 p-0 overflow-auto" style={{ isolation: 'isolate' }}>
+      <CardContent className="flex-1 p-0 overflow-auto" style={{ isolation: 'isolate' }}>
         <div className="overflow-auto">
             {viewMode === 'month' ? (
                 <>
@@ -1012,6 +1024,26 @@ export default function ScheduleView({ employees, shifts, setShifts, leave, setL
           handleScheduleImportResult(data);
           setIsGoogleSheetSyncOpen(false);
         }}
+      />
+
+      <SmartSchedulingDialog
+        isOpen={isSmartSchedulingOpen}
+        setIsOpen={setIsSmartSchedulingOpen}
+        shifts={shifts}
+        employees={employees}
+        shiftTemplates={shiftTemplates}
+        aiConfig={aiConfig}
+        onAccept={(newShifts) => {
+          setShifts(prev => [...prev, ...newShifts]);
+          setIsSmartSchedulingOpen(false);
+        }}
+      />
+
+      <CoverageGapDialog
+        isOpen={isCoverageGapOpen}
+        setIsOpen={setIsCoverageGapOpen}
+        shifts={shifts}
+        employees={employees}
       />
 
       <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
